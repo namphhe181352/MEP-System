@@ -2,3 +2,4 @@
 # Local AI assistant config (per-developer, not for the team)
 CLAUDE.md
 CLAUDE.local.md
+.claude/
