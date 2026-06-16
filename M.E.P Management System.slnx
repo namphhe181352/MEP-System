@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="MEP.Auth.Api/MEP.Auth.Api.csproj" />
+  <Project Path="MEP.Data/MEP.Data.csproj" Id="de6ae980-6da0-4a29-a497-06a768ee86ed" />
+  <Project Path="MEP.Inventory.Api/MEP.Inventory.Api.csproj" Id="371e2443-f355-438f-8c91-4b37598f3452" />
+  <Project Path="MEP.Sale.Api/MEP.Sale.Api.csproj" Id="bf1124a1-203a-4442-8940-835da703b3de" />
+  <Project Path="MEP.Shared/MEP.Shared.csproj" Id="112099c5-8c74-45f2-88be-23b6f5183136" />
+</Solution>

@@ -1,0 +1,3 @@
+﻿<Project>
+  <Import Project="../buildMultiTargeting/MEP.Sale.Api.props" />
+</Project>

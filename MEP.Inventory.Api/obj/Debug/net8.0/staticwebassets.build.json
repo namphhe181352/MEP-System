@@ -1,0 +1,11 @@
+{
+  "Version": 1,
+  "Hash": "8MlJmuQgpTZhh+kV9owEM5tkOBMePw3ZADrVmcbvQmc=",
+  "Source": "MEP.Inventory.Api",
+  "BasePath": "_content/MEP.Inventory.Api",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": []
+}

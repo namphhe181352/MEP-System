@@ -1,0 +1,15 @@
+[
+  {
+    "Name": "New Profile",
+    "Projects": [
+      {
+        "Path": "MEP.Auth.Api\\MEP.Auth.Api.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "MEP.Inventory.Api\\MEP.Inventory.Api.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]

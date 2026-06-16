@@ -1,0 +1,17 @@
+/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/obj/Debug/net8.0/MEP.Data.csproj.AssemblyReference.cache
+/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/obj/Debug/net8.0/MEP.Data.GeneratedMSBuildEditorConfig.editorconfig
+/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/obj/Debug/net8.0/MEP.Data.AssemblyInfoInputs.cache
+/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/obj/Debug/net8.0/MEP.Data.AssemblyInfo.cs
+/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/obj/Debug/net8.0/MEP.Data.csproj.CoreCompileInputs.cache
+/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/bin/Debug/net8.0/MEP.Data.deps.json
+/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/bin/Debug/net8.0/MEP.Data.runtimeconfig.json
+/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/bin/Debug/net8.0/MEP.Data.dll
+/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/bin/Debug/net8.0/MEP.Data.pdb
+/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/bin/Debug/net8.0/MEP.Shared.dll
+/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/bin/Debug/net8.0/MEP.Shared.pdb
+/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/obj/Debug/net8.0/MEP.Data.csproj.Up2Date
+/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/obj/Debug/net8.0/MEP.Data.dll
+/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/obj/Debug/net8.0/refint/MEP.Data.dll
+/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/obj/Debug/net8.0/MEP.Data.pdb
+/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/obj/Debug/net8.0/MEP.Data.genruntimeconfig.cache
+/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/obj/Debug/net8.0/ref/MEP.Data.dll
