@@ -8,6 +8,9 @@ using Microsoft.OpenApi.Models;
 using System.Text;
 using MEP.Data.Models;
 using MEP.Data.Seed;
+// Rate Limit
+using System.Threading.RateLimiting; 
+using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -77,6 +80,38 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+//Cấu hình CORS chặt chẽ và chỉ cho phép Frontend (localhost:3000)
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowReactApp", policy =>
+    {
+        policy.WithOrigins("http://localhost:3000") // Chỉ định đích danh domain được phép
+              .AllowAnyHeader()  
+              .AllowAnyMethod()
+              .AllowCredentials(); // Refresh Token/Cookie 
+    });
+});
+
+// Cấu hình Rate Limit
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    
+    // Định nghĩa một policy tên là "StrictLimit"
+    options.AddPolicy("StrictLimit", httpContext =>
+    {
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,           // Cho phép tối đa 5 requests
+                Window = TimeSpan.FromMinutes(1), // Trong vòng 1 phút
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0             // Vượt mức --> chặn va không đưa vào hàng chờ
+            });
+    });
+});
+
 var app = builder.Build();
 
 // Kích hoạt Swagger UI
@@ -94,6 +129,10 @@ using (var scope = app.Services.CreateScope())
     await db.Database.MigrateAsync();
     await DatabaseSeeder.SeedAsync(db);
 }
+
+// Policy cho localhost:3000 và Rate Limit
+app.UseCors("AllowReactApp");
+app.UseRateLimiter();
 
 // QUAN TRỌNG: Thứ tự kích hoạt Middleware bảo mật (Authentication phải đứng trước Authorization)
 app.UseAuthentication();
