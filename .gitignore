@@ -1,6 +1,19 @@
-
 # Local AI assistant config (per-developer, not for the team)
 CLAUDE.md
 CLAUDE.local.md
 .claude/
 docs/
+
+# .NET Core / ASP.NET
+bin/
+obj/
+*.dll
+*.pdb
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.vs/
+*.log
+appsettings.Development.json
+appsettings.local.json

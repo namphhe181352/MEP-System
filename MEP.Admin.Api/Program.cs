@@ -19,12 +19,18 @@ builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
 var odataBuilder = new ODataConventionModelBuilder();
 odataBuilder.EntitySet<User>("Users");
 odataBuilder.EntitySet<Role>("Roles");
-odataBuilder.EntitySet<CommunityPost>("CommunityPosts");
-odataBuilder.EntitySet<CommunityCategory>("CommunityCategories");
-odataBuilder.EntitySet<ViolationReport>("ViolationReports");
-odataBuilder.EntitySet<SystemLog>("SystemLogs");
-odataBuilder.EntitySet<SystemNotification>("SystemNotifications");
-odataBuilder.EntitySet<StoreApproval>("StoreApprovals");
+var postsCfg = odataBuilder.EntitySet<CommunityPost>("CommunityPosts");
+postsCfg.EntityType.HasKey(p => p.PostId);
+var catsCfg = odataBuilder.EntitySet<CommunityCategory>("CommunityCategories");
+catsCfg.EntityType.HasKey(c => c.CategoryId);
+var reportsCfg = odataBuilder.EntitySet<ViolationReport>("ViolationReports");
+reportsCfg.EntityType.HasKey(r => r.ReportId);
+var logsCfg = odataBuilder.EntitySet<SystemLog>("SystemLogs");
+logsCfg.EntityType.HasKey(l => l.LogId);
+var notifCfg = odataBuilder.EntitySet<SystemNotification>("SystemNotifications");
+notifCfg.EntityType.HasKey(n => n.NotificationId);
+var approvalsCfg = odataBuilder.EntitySet<StoreApproval>("StoreApprovals");
+approvalsCfg.EntityType.HasKey(a => a.ApprovalId);
 builder.Services.AddControllers().AddOData(options =>
     options.Select().Filter().OrderBy().Count().SetMaxTop(100)
            .AddRouteComponents("odata", odataBuilder.GetEdmModel()));

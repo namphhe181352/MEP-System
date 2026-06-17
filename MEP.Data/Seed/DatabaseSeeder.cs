@@ -143,7 +143,8 @@ public static class DatabaseSeeder
             new { AssignmentId = Guid.Parse("40000000-0000-0000-0000-000000000005"), UserId = Guid.Parse("20000000-0000-0000-0000-000000000006"), BranchId = Guid.Parse("30000000-0000-0000-0000-000000000002") }, // Sale Nam 01
             new { AssignmentId = Guid.Parse("40000000-0000-0000-0000-000000000006"), UserId = Guid.Parse("20000000-0000-0000-0000-000000000007"), BranchId = Guid.Parse("30000000-0000-0000-0000-000000000001") }, // Kho Bắc 01
             new { AssignmentId = Guid.Parse("40000000-0000-0000-0000-000000000007"), UserId = Guid.Parse("20000000-0000-0000-0000-000000000008"), BranchId = Guid.Parse("30000000-0000-0000-0000-000000000002") }, // Kho Nam 01
-            new { AssignmentId = Guid.Parse("40000000-0000-0000-0000-000000000008"), UserId = Guid.Parse("20000000-0000-0000-0000-000000000009"), BranchId = Guid.Parse("30000000-0000-0000-0000-000000000001") }  // Kho Bắc 02
+            new { AssignmentId = Guid.Parse("40000000-0000-0000-0000-000000000008"), UserId = Guid.Parse("20000000-0000-0000-0000-000000000009"), BranchId = Guid.Parse("30000000-0000-0000-0000-000000000001") },  // Kho Bắc 02
+            new { AssignmentId = Guid.Parse("40000000-0000-0000-0000-000000000009"), UserId = Guid.Parse("20000000-0000-0000-0000-000000000001"), BranchId = Guid.Parse("30000000-0000-0000-0000-000000000001") }   // Admin -> Chi nhánh Bắc
         };
         foreach (var a in assignments)
         {

@@ -13,9 +13,7 @@ public class AdminMappingProfile : Profile
         CreateMap<User, StaffAccountDto>()
             .ForMember(d => d.Roles, o => o.MapFrom(s => s.Roles.Select(r => r.RoleName).ToList()))
             .ForMember(d => d.BranchName, o => o.MapFrom(s =>
-                s.StaffAssignments.FirstOrDefault().Branch != null
-                    ? s.StaffAssignments.FirstOrDefault().Branch!.BranchName
-                    : null));
+                s.StaffAssignments.FirstOrDefault()!.Branch!.BranchName));
 
         // User -> CommunityUserDto
         CreateMap<User, CommunityUserDto>();

@@ -42,10 +42,13 @@ public class StaffAccountsController : ControllerBase
             .Where(u => u.Roles.Any(r => staffRoles.Contains(r.RoleName)))
             .AsQueryable();
 
-        // Filter by role name (status param used as role filter per spec)
+        // Filter by role name OR by "active" (IsActive=1)
         if (!string.IsNullOrWhiteSpace(status))
         {
-            query = query.Where(u => u.Roles.Any(r => r.RoleName == status));
+            if (status.Equals("active", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(u => u.IsActive == 1);
+            else
+                query = query.Where(u => u.Roles.Any(r => r.RoleName == status));
         }
 
         // Search by FullName or Email
