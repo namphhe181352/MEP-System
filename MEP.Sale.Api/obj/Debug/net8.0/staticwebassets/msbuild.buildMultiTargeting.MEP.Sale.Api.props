@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="../build/MEP.Sale.Api.props" />
-</Project>
