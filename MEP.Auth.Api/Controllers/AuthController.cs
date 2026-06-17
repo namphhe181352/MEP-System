@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting; // Rate Limit
 
 namespace MEP.Auth.Api.Controllers
 {
@@ -30,6 +31,7 @@ namespace MEP.Auth.Api.Controllers
         // ==========================================
         // 1. REGISTER START: KIỂM TRA EMAIL & SINH OTP
         // ==========================================
+        [EnableRateLimiting("StrictLimit")]
         [HttpPost("register/start")]
         public async Task<IActionResult> RegisterStart([FromBody] RegisterStartDto dto)
         {
@@ -145,6 +147,7 @@ namespace MEP.Auth.Api.Controllers
         // ==========================================
         // 3. LOGIN: ĐĂNG NHẬP (DÙNG CHUNG CHO CẢ OWNER & STAFF)
         // ==========================================
+        [EnableRateLimiting("StrictLimit")]
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginDto dto)
         {
