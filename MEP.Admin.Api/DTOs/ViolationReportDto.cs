@@ -9,6 +9,7 @@ public class ViolationReportDto
     public string? PostTitle { get; set; }
     public string? CommentText { get; set; }
     public string ReporterName { get; set; } = null!;
+    public Guid ReportedUserId { get; set; }
     public string ReporterEmail { get; set; } = null!;
     public DateTime? ResolvedAt { get; set; }
     public string? ResolvedByName { get; set; }

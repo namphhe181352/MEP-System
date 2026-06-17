@@ -9,6 +9,7 @@ public class PostDto
     public short IsPinned { get; set; }
     public int ViewCount { get; set; }
     public string CategoryName { get; set; } = null!;
+    public Guid AuthorId { get; set; }
     public string AuthorName { get; set; } = null!;
     public string AuthorEmail { get; set; } = null!;
     public DateTime? CreatedAt { get; set; }

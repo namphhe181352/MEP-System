@@ -21,6 +21,7 @@ public class AdminMappingProfile : Profile
         // CommunityPost -> PostDto
         CreateMap<CommunityPost, PostDto>()
             .ForMember(d => d.CategoryName, o => o.MapFrom(s => s.Category != null ? s.Category.CategoryName : null))
+            .ForMember(d => d.AuthorId, o => o.MapFrom(s => s.User != null ? s.User.UserId : Guid.Empty))
             .ForMember(d => d.AuthorName, o => o.MapFrom(s => s.User != null ? s.User.FullName : null))
             .ForMember(d => d.AuthorEmail, o => o.MapFrom(s => s.User != null ? s.User.Email : null))
             .ForMember(d => d.CommentCount, o => o.MapFrom(s => s.Comments.Count))
@@ -30,6 +31,7 @@ public class AdminMappingProfile : Profile
         CreateMap<ViolationReport, ViolationReportDto>()
             .ForMember(d => d.PostTitle, o => o.MapFrom(s => s.Post != null ? s.Post.Title : null))
             .ForMember(d => d.CommentText, o => o.MapFrom(s => s.Comment != null ? s.Comment.CommentText : null))
+            .ForMember(d => d.ReportedUserId, o => o.MapFrom(s => s.Post != null ? s.Post.UserId : Guid.Empty))
             .ForMember(d => d.ReporterName, o => o.MapFrom(s => s.User != null ? s.User.FullName : null))
             .ForMember(d => d.ReporterEmail, o => o.MapFrom(s => s.User != null ? s.User.Email : null))
             .ForMember(d => d.ResolvedByName, o => o.MapFrom(s => s.ResolvedByUser != null ? s.ResolvedByUser.FullName : null));
