@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/MEP.Data.csproj": {}
+    "/Users/phuongnam/MEP-System/MEP.Data/MEP.Data.csproj": {}
   },
   "projects": {
-    "/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/MEP.Data.csproj": {
+    "/Users/phuongnam/MEP-System/MEP.Data/MEP.Data.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/MEP.Data.csproj",
+        "projectUniqueName": "/Users/phuongnam/MEP-System/MEP.Data/MEP.Data.csproj",
         "projectName": "MEP.Data",
-        "projectPath": "/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/MEP.Data.csproj",
+        "projectPath": "/Users/phuongnam/MEP-System/MEP.Data/MEP.Data.csproj",
         "packagesPath": "/Users/phuongnam/.nuget/packages/",
-        "outputPath": "/Users/phuongnam/Downloads/M.E.P Management System/MEP.Data/obj/",
+        "outputPath": "/Users/phuongnam/MEP-System/MEP.Data/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/Users/phuongnam/.nuget/NuGet/NuGet.Config"
@@ -27,8 +27,8 @@
           "net8.0": {
             "targetAlias": "net8.0",
             "projectReferences": {
-              "/Users/phuongnam/Downloads/M.E.P Management System/MEP.Shared/MEP.Shared.csproj": {
-                "projectPath": "/Users/phuongnam/Downloads/M.E.P Management System/MEP.Shared/MEP.Shared.csproj"
+              "/Users/phuongnam/MEP-System/MEP.Shared/MEP.Shared.csproj": {
+                "projectPath": "/Users/phuongnam/MEP-System/MEP.Shared/MEP.Shared.csproj"
               }
             }
           }
@@ -79,14 +79,14 @@
         }
       }
     },
-    "/Users/phuongnam/Downloads/M.E.P Management System/MEP.Shared/MEP.Shared.csproj": {
+    "/Users/phuongnam/MEP-System/MEP.Shared/MEP.Shared.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/Users/phuongnam/Downloads/M.E.P Management System/MEP.Shared/MEP.Shared.csproj",
+        "projectUniqueName": "/Users/phuongnam/MEP-System/MEP.Shared/MEP.Shared.csproj",
         "projectName": "MEP.Shared",
-        "projectPath": "/Users/phuongnam/Downloads/M.E.P Management System/MEP.Shared/MEP.Shared.csproj",
+        "projectPath": "/Users/phuongnam/MEP-System/MEP.Shared/MEP.Shared.csproj",
         "packagesPath": "/Users/phuongnam/.nuget/packages/",
-        "outputPath": "/Users/phuongnam/Downloads/M.E.P Management System/MEP.Shared/obj/",
+        "outputPath": "/Users/phuongnam/MEP-System/MEP.Shared/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/Users/phuongnam/.nuget/NuGet/NuGet.Config"

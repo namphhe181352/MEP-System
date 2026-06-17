@@ -22,6 +22,9 @@ public partial class User
     public string? PhoneNumber { get; set; }
 
     public bool IsVerified { get; set; } // NEW: for Owner store approval
+    public string? Status { get; set; } // ACTIVE / SUSPENDED / BANNED
+    public DateTime? SuspendedUntil { get; set; } // suspension end date
+    public string? SubscriptionPlan { get; set; } // BASIC / PREMIUM / ENTERPRISE
 
     public virtual ICollection<Comment> Comments { get; set; } = new List<Comment>();
 

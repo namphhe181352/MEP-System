@@ -217,6 +217,17 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.SortOrder)
                 .HasDefaultValue(0)
                 .HasColumnName("sort_order");
+            entity.Property(e => e.Slug)
+                .HasMaxLength(255)
+                .HasColumnName("slug");
+            entity.HasIndex(e => e.Slug).IsUnique().HasDatabaseName("ix_community_categories_slug");
+            entity.Property(e => e.ParentId)
+                .HasColumnName("parent_id");
+
+            entity.HasOne(d => d.Parent).WithMany(p => p.Children)
+                .HasForeignKey(d => d.ParentId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("community_categories_parent_id_fkey");
         });
 
         modelBuilder.Entity<CommunityPost>(entity =>
@@ -1034,6 +1045,12 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.UserAgent)
                 .HasMaxLength(255)
                 .HasColumnName("user_agent");
+            entity.Property(e => e.Level)
+                .HasMaxLength(20)
+                .HasColumnName("level");
+            entity.Property(e => e.Source)
+                .HasMaxLength(100)
+                .HasColumnName("source");
 
             entity.HasOne(d => d.User).WithMany(p => p.SystemLogs)
                 .HasForeignKey(d => d.UserId)
@@ -1078,6 +1095,15 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.IsVerified)
                 .HasDefaultValue(false)
                 .HasColumnName("is_verified");
+            entity.Property(e => e.Status)
+                .HasMaxLength(20)
+                .HasColumnName("status");
+            entity.Property(e => e.SuspendedUntil)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("suspended_until");
+            entity.Property(e => e.SubscriptionPlan)
+                .HasMaxLength(20)
+                .HasColumnName("subscription_plan");
             entity.Property(e => e.Username)
                 .HasMaxLength(50)
                 .HasColumnName("username");
@@ -1172,6 +1198,9 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.Target)
                 .HasMaxLength(50)
                 .HasColumnName("target");
+            entity.Property(e => e.IsUrgent)
+                .HasDefaultValue(false)
+                .HasColumnName("is_urgent");
             entity.Property(e => e.ScheduledAt)
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("scheduled_at");

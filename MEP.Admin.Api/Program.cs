@@ -1,7 +1,9 @@
 using MEP.Data.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.OData;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OData.ModelBuilder;
 using Microsoft.OpenApi.Models;
 using System.Text;
 
@@ -9,6 +11,23 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<MEPDatabaseContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// AutoMapper
+builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
+
+// OData
+var odataBuilder = new ODataConventionModelBuilder();
+odataBuilder.EntitySet<User>("Users");
+odataBuilder.EntitySet<Role>("Roles");
+odataBuilder.EntitySet<CommunityPost>("CommunityPosts");
+odataBuilder.EntitySet<CommunityCategory>("CommunityCategories");
+odataBuilder.EntitySet<ViolationReport>("ViolationReports");
+odataBuilder.EntitySet<SystemLog>("SystemLogs");
+odataBuilder.EntitySet<SystemNotification>("SystemNotifications");
+odataBuilder.EntitySet<StoreApproval>("StoreApprovals");
+builder.Services.AddControllers().AddOData(options =>
+    options.Select().Filter().OrderBy().Count().SetMaxTop(100)
+           .AddRouteComponents("odata", odataBuilder.GetEdmModel()));
 
 builder.Services.AddAuthentication(options =>
 {
@@ -30,11 +49,7 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-    {
-        options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
-    });
+builder.Services.AddAuthorization();
 
 builder.Services.AddCors(options =>
 {
@@ -47,6 +62,7 @@ builder.Services.AddCors(options =>
     });
 });
 
+builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "MEP Admin API", Version = "v1" });

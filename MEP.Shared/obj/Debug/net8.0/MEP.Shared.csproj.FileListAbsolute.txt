@@ -12,3 +12,18 @@
 /Users/phuongnam/Downloads/M.E.P Management System/MEP.Shared/obj/Debug/net8.0/MEP.Shared.pdb
 /Users/phuongnam/Downloads/M.E.P Management System/MEP.Shared/obj/Debug/net8.0/MEP.Shared.genruntimeconfig.cache
 /Users/phuongnam/Downloads/M.E.P Management System/MEP.Shared/obj/Debug/net8.0/ref/MEP.Shared.dll
+/Users/phuongnam/MEP-System/MEP.Shared/bin/Debug/net8.0/MEP.Shared.deps.json
+/Users/phuongnam/MEP-System/MEP.Shared/bin/Debug/net8.0/MEP.Shared.runtimeconfig.json
+/Users/phuongnam/MEP-System/MEP.Shared/bin/Debug/net8.0/MEP.Shared.dll
+/Users/phuongnam/MEP-System/MEP.Shared/bin/Debug/net8.0/MEP.Shared.pdb
+/Users/phuongnam/MEP-System/MEP.Shared/obj/Debug/net8.0/MEP.Shared.csproj.AssemblyReference.cache
+/Users/phuongnam/MEP-System/MEP.Shared/obj/Debug/net8.0/MEP.Shared.GeneratedMSBuildEditorConfig.editorconfig
+/Users/phuongnam/MEP-System/MEP.Shared/obj/Debug/net8.0/MEP.Shared.AssemblyInfoInputs.cache
+/Users/phuongnam/MEP-System/MEP.Shared/obj/Debug/net8.0/MEP.Shared.AssemblyInfo.cs
+/Users/phuongnam/MEP-System/MEP.Shared/obj/Debug/net8.0/MEP.Shared.csproj.CoreCompileInputs.cache
+/Users/phuongnam/MEP-System/MEP.Shared/obj/Debug/net8.0/MEP.Shared.sourcelink.json
+/Users/phuongnam/MEP-System/MEP.Shared/obj/Debug/net8.0/MEP.Shared.dll
+/Users/phuongnam/MEP-System/MEP.Shared/obj/Debug/net8.0/refint/MEP.Shared.dll
+/Users/phuongnam/MEP-System/MEP.Shared/obj/Debug/net8.0/MEP.Shared.pdb
+/Users/phuongnam/MEP-System/MEP.Shared/obj/Debug/net8.0/MEP.Shared.genruntimeconfig.cache
+/Users/phuongnam/MEP-System/MEP.Shared/obj/Debug/net8.0/ref/MEP.Shared.dll

@@ -27,6 +27,10 @@ public partial class SystemLog
 
     public string? UserAgent { get; set; }
 
+    public string? Level { get; set; } // INFO / WARN / ERROR
+
+    public string? Source { get; set; } // AuthService, Database, NotificationWorker, ...
+
     public DateTime? Timestamp { get; set; }
 
     public virtual User User { get; set; } = null!;

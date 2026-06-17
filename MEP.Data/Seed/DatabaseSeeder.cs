@@ -600,11 +600,157 @@ public static class DatabaseSeeder
         // 16. SYSTEM LOGS (5 log mẫu)
         // ============================================================
         await context.SystemLogs.AddRangeAsync(
-            new SystemLog { LogId = Guid.NewGuid(), UserId = ownerBac, Action = "APPROVE_PO", TableName = "purchase_orders", EntityType = "PurchaseOrder", Description = "Duyệt đơn mua hàng PO-2026-0002", IpAddress = "192.168.1.10", UserAgent = "Chrome/120.0", Timestamp = SeedTime.AddDays(-2) },
-            new SystemLog { LogId = Guid.NewGuid(), UserId = saleUser1, Action = "CREATE_INVOICE", TableName = "invoices", EntityType = "Invoice", Description = "Tạo hóa đơn INV-2026-0001 - 320,000 VND", IpAddress = "192.168.1.20", UserAgent = "Chrome/120.0", Timestamp = SeedTime.AddDays(-1) },
-            new SystemLog { LogId = Guid.NewGuid(), UserId = khoUser1, Action = "CREATE_STOCK_TICKET", TableName = "stock_tickets", EntityType = "StockTicket", Description = "Tạo phiếu kiểm kê STK-2026-0001", IpAddress = "192.168.1.30", UserAgent = "Firefox/121.0", Timestamp = SeedTime },
-            new SystemLog { LogId = Guid.NewGuid(), UserId = Guid.Parse("20000000-0000-0000-0000-000000000001"), Action = "RESOLVE_VIOLATION", TableName = "violation_reports", EntityType = "ViolationReport", Description = "Xử lý báo cáo vi phạm #1 - ẩn bài viết", IpAddress = "192.168.1.5", UserAgent = "Edge/120.0", Timestamp = SeedTime.AddDays(-2) },
-            new SystemLog { LogId = Guid.NewGuid(), UserId = ownerNam, Action = "CREATE_BRANCH_PRODUCT", TableName = "branch_products", EntityType = "BranchProduct", Description = "Thêm sản phẩm mới vào chi nhánh Nam", IpAddress = "192.168.2.10", UserAgent = "Safari/17.1", Timestamp = SeedTime.AddDays(-1).AddHours(8) }
+            new SystemLog { LogId = Guid.NewGuid(), UserId = ownerBac, Action = "APPROVE_PO", TableName = "purchase_orders", EntityType = "PurchaseOrder", Description = "Duyệt đơn mua hàng PO-2026-0002", IpAddress = "192.168.1.10", UserAgent = "Chrome/120.0", Level = "INFO", Source = "InventoryService", Timestamp = SeedTime.AddDays(-2) },
+            new SystemLog { LogId = Guid.NewGuid(), UserId = saleUser1, Action = "CREATE_INVOICE", TableName = "invoices", EntityType = "Invoice", Description = "Tạo hóa đơn INV-2026-0001 - 320,000 VND", IpAddress = "192.168.1.20", UserAgent = "Chrome/120.0", Level = "INFO", Source = "SaleService", Timestamp = SeedTime.AddDays(-1) },
+            new SystemLog { LogId = Guid.NewGuid(), UserId = khoUser1, Action = "CREATE_STOCK_TICKET", TableName = "stock_tickets", EntityType = "StockTicket", Description = "Tạo phiếu kiểm kê STK-2026-0001", IpAddress = "192.168.1.30", UserAgent = "Firefox/121.0", Level = "INFO", Source = "InventoryService", Timestamp = SeedTime },
+            new SystemLog { LogId = Guid.NewGuid(), UserId = Guid.Parse("20000000-0000-0000-0000-000000000001"), Action = "RESOLVE_VIOLATION", TableName = "violation_reports", EntityType = "ViolationReport", Description = "Xử lý báo cáo vi phạm #1 - ẩn bài viết", IpAddress = "192.168.1.5", UserAgent = "Edge/120.0", Level = "WARN", Source = "AdminService", Timestamp = SeedTime.AddDays(-2) },
+            new SystemLog { LogId = Guid.NewGuid(), UserId = ownerNam, Action = "CREATE_BRANCH_PRODUCT", TableName = "branch_products", EntityType = "BranchProduct", Description = "Thêm sản phẩm mới vào chi nhánh Nam", IpAddress = "192.168.2.10", UserAgent = "Safari/17.1", Level = "INFO", Source = "InventoryService", Timestamp = SeedTime.AddDays(-1).AddHours(8) }
+        );
+        await context.SaveChangesAsync();
+
+        // ============================================================
+        // 17. SYSTEM NOTIFICATIONS (5 notification mẫu)
+        // ============================================================
+        var adminId = Guid.Parse("20000000-0000-0000-0000-000000000001");
+        await context.SystemNotifications.AddRangeAsync(
+            new SystemNotification
+            {
+                NotificationId = Guid.NewGuid(),
+                Title = "Chào mừng đến với M.E.P System",
+                Content = "Cảm ơn quý cửa hàng đã tham gia hệ thống M.E.P Management. Chúc quý cửa hàng kinh doanh thắng lợi!",
+                Target = "ALL",
+                IsUrgent = false,
+                Status = "SENT",
+                SentAt = SeedTime.AddDays(-10),
+                CreatedBy = adminId,
+                CreatedAt = SeedTime.AddDays(-10)
+            },
+            new SystemNotification
+            {
+                NotificationId = Guid.NewGuid(),
+                Title = "Bảo trì hệ thống ngày 15/06/2026",
+                Content = "Hệ thống sẽ bảo trì từ 02:00 đến 04:00 sáng. Vui lòng lưu dữ liệu trước giờ bảo trì.",
+                Target = "ALL",
+                IsUrgent = true,
+                Status = "SENT",
+                SentAt = SeedTime.AddDays(-3),
+                CreatedBy = adminId,
+                CreatedAt = SeedTime.AddDays(-3)
+            },
+            new SystemNotification
+            {
+                NotificationId = Guid.NewGuid(),
+                Title = "Thông báo cập nhật chính sách giá",
+                Content = "Từ ngày 20/06/2026, chính sách giá bán lẻ sẽ được cập nhật theo bảng giá mới.",
+                Target = "OWNER",
+                IsUrgent = false,
+                Status = "SCHEDULED",
+                ScheduledAt = SeedTime.AddDays(7),
+                CreatedBy = adminId,
+                CreatedAt = SeedTime.AddDays(-1)
+            },
+            new SystemNotification
+            {
+                NotificationId = Guid.NewGuid(),
+                Title = "Cập nhật quy định vận chuyển",
+                Content = "Thông tin về quy định vận chuyển mới cho các sản phẩm có giá trị cao.",
+                Target = "STAFF",
+                IsUrgent = false,
+                Status = "SENT",
+                SentAt = SeedTime.AddDays(-5),
+                CreatedBy = adminId,
+                CreatedAt = SeedTime.AddDays(-5)
+            },
+            new SystemNotification
+            {
+                NotificationId = Guid.NewGuid(),
+                Title = "Hướng dẫn sử dụng module Báo cáo",
+                Content = "Video hướng dẫn sử dụng module Báo cáo doanh thu đã được cập nhật.",
+                Target = "OWNER",
+                IsUrgent = false,
+                Status = "DRAFT",
+                CreatedBy = adminId,
+                CreatedAt = SeedTime
+            }
+        );
+        await context.SaveChangesAsync();
+
+        // ============================================================
+        // 18. STORE APPROVALS (5 store approval mẫu)
+        // ============================================================
+        // Create some pending owner registrations
+        var communityUsers = await context.Users
+            .Include(u => u.Roles)
+            .Where(u => u.Roles.Any(r => r.RoleName == "CommunityUser"))
+            .Take(3)
+            .ToListAsync();
+
+        await context.StoreApprovals.AddRangeAsync(
+            new StoreApproval
+            {
+                ApprovalId = Guid.NewGuid(),
+                UserId = communityUsers.ElementAtOrDefault(0)?.UserId ?? Guid.NewGuid(),
+                StoreName = "Vật Tư Điện Bắc Ninh",
+                BusinessLicense = "BN-00123456",
+                TaxCode = "2400123456",
+                StoreAddress = "123 Đường Trần Hưng Đạo, TP Bắc Ninh, Bắc Ninh",
+                DocumentUrls = "[]",
+                Status = "PENDING",
+                CreatedAt = SeedTime.AddDays(-3)
+            },
+            new StoreApproval
+            {
+                ApprovalId = Guid.NewGuid(),
+                UserId = communityUsers.ElementAtOrDefault(1)?.UserId ?? Guid.NewGuid(),
+                StoreName = "Thiết Bị Điện Miền Trung",
+                BusinessLicense = "HN-00876543",
+                TaxCode = "0108123456",
+                StoreAddress = "45 Lê Lợi, TP Đà Nẵng",
+                DocumentUrls = "[]",
+                Status = "PENDING",
+                CreatedAt = SeedTime.AddDays(-2)
+            },
+            new StoreApproval
+            {
+                ApprovalId = Guid.NewGuid(),
+                UserId = communityUsers.ElementAtOrDefault(2)?.UserId ?? Guid.NewGuid(),
+                StoreName = "Cấp Nước Sạch Sài Gòn",
+                BusinessLicense = "HCM-00112233",
+                TaxCode = "0312456789",
+                StoreAddress = "78 Nguyễn Trãi, Quận 5, TP.HCM",
+                DocumentUrls = "[]",
+                Status = "PENDING",
+                CreatedAt = SeedTime.AddDays(-1)
+            },
+            new StoreApproval
+            {
+                ApprovalId = Guid.NewGuid(),
+                UserId = ownerBac,
+                StoreName = "Vật Tư Xây Dựng Trần Bắc",
+                BusinessLicense = "HN-00123457",
+                TaxCode = "0101122334",
+                StoreAddress = "12 Hoàng Quốc Việt, Cầu Giấy, Hà Nội",
+                DocumentUrls = "[]",
+                Status = "APPROVED",
+                ReviewedBy = adminId,
+                ReviewedAt = SeedTime.AddDays(-5),
+                CreatedAt = SeedTime.AddDays(-7)
+            },
+            new StoreApproval
+            {
+                ApprovalId = Guid.NewGuid(),
+                UserId = Guid.NewGuid(),
+                StoreName = "Điện Lạnh Gia Lai",
+                BusinessLicense = "GL-00000001",
+                TaxCode = "5901234567",
+                StoreAddress = "90 Lê Duẩn, TP Pleiku, Gia Lai",
+                DocumentUrls = "[]",
+                Status = "REJECTED",
+                RejectReason = "Giấy phép kinh doanh không hợp lệ. Vui lòng tải lên giấy phép mới.",
+                ReviewedBy = adminId,
+                ReviewedAt = SeedTime.AddDays(-4),
+                CreatedAt = SeedTime.AddDays(-6)
+            }
         );
         await context.SaveChangesAsync();
     }

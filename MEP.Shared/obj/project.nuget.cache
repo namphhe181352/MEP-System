@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "sCnkkybicv8=",
+  "dgSpecHash": "pI5Cue7nJ8w=",
   "success": true,
-  "projectFilePath": "/Users/phuongnam/Downloads/M.E.P Management System/MEP.Shared/MEP.Shared.csproj",
+  "projectFilePath": "/Users/phuongnam/MEP-System/MEP.Shared/MEP.Shared.csproj",
   "expectedPackageFiles": [
     "/Users/phuongnam/.nuget/packages/automapper/12.0.1/automapper.12.0.1.nupkg.sha512",
     "/Users/phuongnam/.nuget/packages/automapper.extensions.microsoft.dependencyinjection/12.0.1/automapper.extensions.microsoft.dependencyinjection.12.0.1.nupkg.sha512",
