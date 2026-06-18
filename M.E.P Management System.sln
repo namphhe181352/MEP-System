@@ -1,16 +1,9 @@
-﻿Microsoft Visual Studio Solution File, Format Version 12.00
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MEP.Auth.Api", "MEP.Auth.Api\MEP.Auth.Api.csproj", "{11111111-1111-1111-1111-111111111111}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MEP.Data", "MEP.Data\MEP.Data.csproj", "{DE6AE980-6DA0-4A29-A497-06A768EE86ED}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MEP.Inventory.Api", "MEP.Inventory.Api\MEP.Inventory.Api.csproj", "{371E2443-F355-438F-8C91-4B37598F3452}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MEP.Sale.Api", "MEP.Sale.Api\MEP.Sale.Api.csproj", "{BF1124A1-203A-4442-8940-835DA703B3DE}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MEP.Shared", "MEP.Shared\MEP.Shared.csproj", "{112099C5-8C74-45F2-88BE-23B6F5183136}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MEP.Admin.Api", "MEP.Admin.Api\MEP.Admin.Api.csproj", "{F517E669-7106-45CB-B797-4625AE7DA139}"
+VisualStudioVersion = 17.14.36908.2
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MEP_Management_System", "MEP_Management_System\MEP_Management_System.csproj", "{2FFCDD97-E27E-9304-DB56-34A4FA6C16F6}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -18,32 +11,15 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{11111111-1111-1111-1111-111111111111}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{11111111-1111-1111-1111-111111111111}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{11111111-1111-1111-1111-111111111111}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{11111111-1111-1111-1111-111111111111}.Release|Any CPU.Build.0 = Release|Any CPU
-		{DE6AE980-6DA0-4A29-A497-06A768EE86ED}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{DE6AE980-6DA0-4A29-A497-06A768EE86ED}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{DE6AE980-6DA0-4A29-A497-06A768EE86ED}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{DE6AE980-6DA0-4A29-A497-06A768EE86ED}.Release|Any CPU.Build.0 = Release|Any CPU
-		{371E2443-F355-438F-8C91-4B37598F3452}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{371E2443-F355-438F-8C91-4B37598F3452}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{371E2443-F355-438F-8C91-4B37598F3452}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{371E2443-F355-438F-8C91-4B37598F3452}.Release|Any CPU.Build.0 = Release|Any CPU
-		{BF1124A1-203A-4442-8940-835DA703B3DE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{BF1124A1-203A-4442-8940-835DA703B3DE}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{BF1124A1-203A-4442-8940-835DA703B3DE}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{BF1124A1-203A-4442-8940-835DA703B3DE}.Release|Any CPU.Build.0 = Release|Any CPU
-		{112099C5-8C74-45F2-88BE-23B6F5183136}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{112099C5-8C74-45F2-88BE-23B6F5183136}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{112099C5-8C74-45F2-88BE-23B6F5183136}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{112099C5-8C74-45F2-88BE-23B6F5183136}.Release|Any CPU.Build.0 = Release|Any CPU
-		{F517E669-7106-45CB-B797-4625AE7DA139}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{F517E669-7106-45CB-B797-4625AE7DA139}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{F517E669-7106-45CB-B797-4625AE7DA139}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{F517E669-7106-45CB-B797-4625AE7DA139}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2FFCDD97-E27E-9304-DB56-34A4FA6C16F6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2FFCDD97-E27E-9304-DB56-34A4FA6C16F6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2FFCDD97-E27E-9304-DB56-34A4FA6C16F6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2FFCDD97-E27E-9304-DB56-34A4FA6C16F6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {8DEE9751-8A07-4210-88D6-3C79D166C79B}
 	EndGlobalSection
 EndGlobal

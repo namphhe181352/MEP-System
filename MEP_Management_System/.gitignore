@@ -1,0 +1,48 @@
+## OTHERS
+*.tlog
+*.log
+*.url
+
+## Visual Studio Thư mục tạm và file cấu hình cá nhân
+.vs/
+Generated_Code/
+_ReSharper.*/
+*.Dottext
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+## Thư mục Build (Quan trọng: Không commit code đã biên dịch)
+[Bb]in/
+[Oo]bj/
+
+## Thư mục lưu trữ các Package tải về
+packages/
+!packages/repositories.config
+Nuget.config
+*.nuget.props
+*.nuget.targets
+
+## Rider & JetBrains (Nếu bạn hoặc đồng nghiệp có dùng)
+.idea/
+*.sln.iml
+
+## Visual Studio Code (Nếu có dùng)
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+## File cấu hình chứa thông tin nhạy cảm (CỰC KỲ QUAN TRỌNG)
+# Hãy bỏ comment nếu bạn muốn giấu chuỗi kết nối Database / JWT Key trên server Git chung
+# appsettings.Development.json
+# appsettings.Local.json
+
+## Hệ điều hành
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store

@@ -1,6 +1,0 @@
-@MEP.Sale.Api_HostAddress = http://localhost:5182
-
-GET {{MEP.Sale.Api_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###
