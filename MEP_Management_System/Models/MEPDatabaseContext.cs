@@ -65,6 +65,8 @@ public partial class MEPDatabaseContext : DbContext
 
     public virtual DbSet<Supplier> Suppliers { get; set; }
 
+    public virtual DbSet<SupplierRating> SupplierRatings { get; set; }
+
     public virtual DbSet<SystemConfig> SystemConfigs { get; set; }
 
     public virtual DbSet<StoreApproval> StoreApprovals { get; set; }
@@ -1019,6 +1021,25 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.ContactEmail)
                 .HasMaxLength(150)
                 .HasColumnName("contact_email");
+            entity.Property(e => e.ContactPerson)
+                .HasMaxLength(100)
+                .HasColumnName("contact_person");
+            entity.Property(e => e.TaxCode)
+                .HasMaxLength(50)
+                .HasColumnName("tax_code");
+            entity.Property(e => e.GroupName)
+                .HasMaxLength(50)
+                .HasColumnName("group_name");
+            entity.Property(e => e.BankAccount)
+                .HasMaxLength(50)
+                .HasColumnName("bank_account");
+            entity.Property(e => e.BankName)
+                .HasMaxLength(100)
+                .HasColumnName("bank_name");
+            entity.Property(e => e.Website)
+                .HasMaxLength(255)
+                .HasColumnName("website");
+            entity.Property(e => e.Notes).HasColumnName("notes");
             entity.Property(e => e.Address)
                 .HasMaxLength(255)
                 .HasColumnName("address");
@@ -1029,6 +1050,58 @@ public partial class MEPDatabaseContext : DbContext
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("created_at");
+            entity.Property(e => e.AverageRating)
+                .HasPrecision(3, 2)
+                .HasColumnName("average_rating");
+            entity.Property(e => e.RatingCount)
+                .HasDefaultValue(0)
+                .HasColumnName("rating_count");
+            entity.Property(e => e.LastRatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("last_rated_at");
+        });
+
+        modelBuilder.Entity<SupplierRating>(entity =>
+        {
+            entity.HasKey(e => e.RatingId).HasName("supplier_ratings_pkey");
+
+            entity.ToTable("supplier_ratings");
+
+            entity.Property(e => e.RatingId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("rating_id");
+            entity.Property(e => e.SupplierId).HasColumnName("supplier_id");
+            entity.Property(e => e.PurchaseOrderId).HasColumnName("purchase_order_id");
+            entity.Property(e => e.QualityScore).HasColumnName("quality_score");
+            entity.Property(e => e.DeliveryScore).HasColumnName("delivery_score");
+            entity.Property(e => e.PriceScore).HasColumnName("price_score");
+            entity.Property(e => e.ServiceScore).HasColumnName("service_score");
+            entity.Property(e => e.OverallRating)
+                .HasPrecision(3, 2)
+                .HasColumnName("overall_rating");
+            entity.Property(e => e.Comment).HasColumnName("comment");
+            entity.Property(e => e.RatedBy).HasColumnName("rated_by");
+            entity.Property(e => e.RatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("rated_at");
+
+            entity.HasIndex(e => e.SupplierId, "ix_supplier_ratings_supplier_id");
+            entity.HasIndex(e => e.RatedAt, "ix_supplier_ratings_rated_at");
+
+            entity.HasOne(d => d.Supplier).WithMany(p => p.SupplierRatings)
+                .HasForeignKey(d => d.SupplierId)
+                .HasConstraintName("supplier_ratings_supplier_id_fkey");
+
+            entity.HasOne(d => d.PurchaseOrder).WithMany()
+                .HasForeignKey(d => d.PurchaseOrderId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("supplier_ratings_po_id_fkey");
+
+            entity.HasOne(d => d.RatedByUser).WithMany()
+                .HasForeignKey(d => d.RatedBy)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("supplier_ratings_rated_by_fkey");
         });
 
         modelBuilder.Entity<SystemConfig>(entity =>
