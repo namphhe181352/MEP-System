@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using AutoMapper;
 using MEP_Management_System.Models;
@@ -93,14 +93,6 @@ namespace MEP_Management_System.Controllers
                 _context.Roles.Add(ownerRole);
             }
 
-            var newBranch = new Branch
-            {
-                BranchId = Guid.NewGuid(),
-                BranchName = dto.BranchName,
-                Address = "Chưa cập nhật"
-            };
-            _context.Branches.Add(newBranch);
-
             var newUser = new User
             {
                 UserId = Guid.NewGuid(),
@@ -109,38 +101,29 @@ namespace MEP_Management_System.Controllers
                 FullName = dto.FullName,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                 IsActive = 1,
+                IsVerified = false, // Must be approved by Admin
                 CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
             };
 
             newUser.Roles.Add(ownerRole);
             _context.Users.Add(newUser);
 
-            var staffAssignment = new StaffAssignment
+            var storeApproval = new StoreApproval
             {
-                AssignmentId = Guid.NewGuid(),
+                ApprovalId = Guid.NewGuid(),
                 UserId = newUser.UserId,
-                BranchId = newBranch.BranchId,
-                AssignedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
+                StoreName = dto.BranchName,
+                Status = "PENDING",
+                CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
             };
-            _context.StaffAssignments.Add(staffAssignment);
+            _context.StoreApprovals.Add(storeApproval);
 
             otp.IsUsed = 1;
             await _context.SaveChangesAsync();
 
-            // 🎯 ĐỒNG BỘ: Sinh Token có kèm BranchId cho Owner mới đăng ký
-            var rolesList = new List<string> { ownerRole.RoleName };
-            var jwtToken = _jwtHelper.GenerateToken(newUser.UserId, newUser.Username, newUser.FullName, rolesList, newBranch.BranchId.ToString());
-
-            var responseDto = _mapper.Map<UserResponseDto>(newUser);
-            responseDto.Token = jwtToken;
-            responseDto.Roles = rolesList;
-
             return Ok(new
             {
-                message = "Đăng ký doanh nghiệp và tài khoản quản trị tối cao thành công!",
-                branchId = newBranch.BranchId,
-                roles = rolesList, // Trả thêm mảng roles ra ngoài body để Front-end dễ check
-                data = responseDto
+                message = "Đăng ký thành công! Đơn xin mở cửa hàng của bạn đang chờ Admin duyệt. Vui lòng quay lại sau.",
             });
         }
 
@@ -158,6 +141,7 @@ namespace MEP_Management_System.Controllers
             if (!isCorrectPassword) return BadRequest(new { message = "Mật khẩu không chính xác." });
 
             if (user.IsActive != 1) return BadRequest(new { message = "Tài khoản của bạn hiện đang bị khóa." });
+            if (!user.IsVerified) return BadRequest(new { message = "Tài khoản của bạn đang chờ Admin duyệt mở cửa hàng." });
 
             // 🎯 LẤY DANH SÁCH ROLE THỰC TẾ (Sẽ ra "Owner" hoặc "Staff" tùy tài khoản)
             var userRoles = await _context.Roles

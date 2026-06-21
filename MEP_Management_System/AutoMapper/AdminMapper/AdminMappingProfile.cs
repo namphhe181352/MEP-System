@@ -1,4 +1,5 @@
 using MEP_Management_System.DTOs;
+using MEP_Management_System.DTOs.AdminDTOs;
 using MEP_Management_System.Models;
 using AutoMapper;
 using System.Text.Json;
@@ -55,9 +56,9 @@ public class AdminMappingProfile : Profile
 
         // StoreApproval -> StoreApprovalDto
         CreateMap<StoreApproval, StoreApprovalDto>()
-            .ForMember(d => d.UserEmail, o => o.MapFrom(s => s.User != null ? s.User.Email : null))
-            .ForMember(d => d.UserFullName, o => o.MapFrom(s => s.User != null ? s.User.FullName : null))
-            .ForMember(d => d.ReviewedByName, o => o.MapFrom(s => s.ReviewedByUser != null ? s.ReviewedByUser.FullName : null))
+            .ForMember(dest => dest.OwnerEmail, opt => opt.MapFrom(src => src.User != null ? src.User.Email : null))
+            .ForMember(dest => dest.OwnerName, opt => opt.MapFrom(src => src.User != null ? src.User.FullName : null))
+            .ForMember(dest => dest.ReviewerName, opt => opt.MapFrom(src => src.ReviewedByUser != null ? src.ReviewedByUser.FullName : null))
             .ForMember(d => d.DocumentUrls, o => o.MapFrom(s => ParseDocumentUrls(s.DocumentUrls)));
     }
 
