@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace MEP_Management_System.Models;
@@ -29,5 +29,26 @@ public partial class Customer
 
     public DateTime? CreatedAt { get; set; }
 
+    /// <summary>Individual | Enterprise | Agent | Contractor</summary>
+    public string? Group { get; set; }
+
+    public string? Notes { get; set; }
+
+    /// <summary>Derived but cached for performance</summary>
+    public decimal? TotalSpent { get; set; }
+
+    /// <summary>Derived but cached for performance</summary>
+    public int? OrderCount { get; set; }
+
+    /// <summary>Derived but cached for performance</summary>
+    public DateTime? LastVisit { get; set; }
+
+    /// <summary>Derived from TotalSpent: Bronze/Silver/Gold/Platinum</summary>
+    public string? MembershipTier { get; set; }
+
+    public DateTime? UpdatedAt { get; set; }
+
+
     public virtual ICollection<Order> Orders { get; set; } = new List<Order>();
+    public virtual ICollection<LoyaltyTransaction> LoyaltyTransactions { get; set; } = new List<LoyaltyTransaction>();
 }

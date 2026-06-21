@@ -20,4 +20,6 @@ public partial class Branch
     public virtual ICollection<StockTicket> StockTickets { get; set; } = new List<StockTicket>();
 
     public virtual ICollection<SystemConfig> SystemConfigs { get; set; } = new List<SystemConfig>();
+    public virtual ICollection<Shift> Shifts { get; set; } = new List<Shift>();
+    public virtual ICollection<DailySummary> DailySummaries { get; set; } = new List<DailySummary>();
 }
