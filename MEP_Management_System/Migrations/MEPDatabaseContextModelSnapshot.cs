@@ -1098,9 +1098,6 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("conversion_id")
                         .HasDefaultValueSql("uuid_generate_v4()");
 
-                    b.Property<Guid?>("BranchProductId")
-                        .HasColumnType("uuid");
-
                     b.Property<decimal>("ConvertValue")
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)")
@@ -1129,8 +1126,6 @@ namespace MEP_Management_System.Migrations
 
                     b.HasKey("ConversionId")
                         .HasName("product_conversion_units_pkey");
-
-                    b.HasIndex("BranchProductId");
 
                     b.HasIndex("ProductId");
 
@@ -1939,10 +1934,30 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("address");
 
+                    b.Property<decimal?>("AverageRating")
+                        .HasPrecision(3, 2)
+                        .HasColumnType("numeric(3,2)")
+                        .HasColumnName("average_rating");
+
+                    b.Property<string>("BankAccount")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("bank_account");
+
+                    b.Property<string>("BankName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("bank_name");
+
                     b.Property<string>("ContactEmail")
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)")
                         .HasColumnName("contact_email");
+
+                    b.Property<string>("ContactPerson")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("contact_person");
 
                     b.Property<string>("ContactPhone")
                         .HasMaxLength(20)
@@ -1954,6 +1969,25 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("GroupName")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("group_name");
+
+                    b.Property<DateTime?>("LastRatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("last_rated_at");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text")
+                        .HasColumnName("notes");
+
+                    b.Property<int?>("RatingCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("rating_count");
 
                     b.Property<short?>("Status")
                         .ValueGeneratedOnAdd()
@@ -1967,10 +2001,85 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("character varying(150)")
                         .HasColumnName("supplier_name");
 
+                    b.Property<string>("TaxCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("tax_code");
+
+                    b.Property<string>("Website")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("website");
+
                     b.HasKey("SupplierId")
                         .HasName("suppliers_pkey");
 
                     b.ToTable("suppliers", (string)null);
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.SupplierRating", b =>
+                {
+                    b.Property<Guid>("RatingId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("rating_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<string>("Comment")
+                        .HasColumnType("text")
+                        .HasColumnName("comment");
+
+                    b.Property<short>("DeliveryScore")
+                        .HasColumnType("smallint")
+                        .HasColumnName("delivery_score");
+
+                    b.Property<decimal>("OverallRating")
+                        .HasPrecision(3, 2)
+                        .HasColumnType("numeric(3,2)")
+                        .HasColumnName("overall_rating");
+
+                    b.Property<short>("PriceScore")
+                        .HasColumnType("smallint")
+                        .HasColumnName("price_score");
+
+                    b.Property<Guid?>("PurchaseOrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("purchase_order_id");
+
+                    b.Property<short>("QualityScore")
+                        .HasColumnType("smallint")
+                        .HasColumnName("quality_score");
+
+                    b.Property<DateTime?>("RatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("rated_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<Guid?>("RatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rated_by");
+
+                    b.Property<short>("ServiceScore")
+                        .HasColumnType("smallint")
+                        .HasColumnName("service_score");
+
+                    b.Property<Guid>("SupplierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("supplier_id");
+
+                    b.HasKey("RatingId")
+                        .HasName("supplier_ratings_pkey");
+
+                    b.HasIndex("PurchaseOrderId");
+
+                    b.HasIndex("RatedBy");
+
+                    b.HasIndex(new[] { "RatedAt" }, "ix_supplier_ratings_rated_at");
+
+                    b.HasIndex(new[] { "SupplierId" }, "ix_supplier_ratings_supplier_id");
+
+                    b.ToTable("supplier_ratings", (string)null);
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.SystemConfig", b =>
@@ -2558,10 +2667,6 @@ namespace MEP_Management_System.Migrations
 
             modelBuilder.Entity("MEP_Management_System.Models.ProductConversionUnit", b =>
                 {
-                    b.HasOne("MEP_Management_System.Models.BranchProduct", null)
-                        .WithMany("ProductConversionUnits")
-                        .HasForeignKey("BranchProductId");
-
                     b.HasOne("MEP_Management_System.Models.Product", "Product")
                         .WithMany("ProductConversionUnits")
                         .HasForeignKey("ProductId")
@@ -2838,6 +2943,34 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.SupplierRating", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.PurchaseOrder", "PurchaseOrder")
+                        .WithMany()
+                        .HasForeignKey("PurchaseOrderId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("supplier_ratings_po_id_fkey");
+
+                    b.HasOne("MEP_Management_System.Models.User", "RatedByUser")
+                        .WithMany()
+                        .HasForeignKey("RatedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("supplier_ratings_rated_by_fkey");
+
+                    b.HasOne("MEP_Management_System.Models.Supplier", "Supplier")
+                        .WithMany("SupplierRatings")
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("supplier_ratings_supplier_id_fkey");
+
+                    b.Navigation("PurchaseOrder");
+
+                    b.Navigation("RatedByUser");
+
+                    b.Navigation("Supplier");
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.SystemConfig", b =>
                 {
                     b.HasOne("MEP_Management_System.Models.Branch", "Branch")
@@ -2960,8 +3093,6 @@ namespace MEP_Management_System.Migrations
                 {
                     b.Navigation("OrderItems");
 
-                    b.Navigation("ProductConversionUnits");
-
                     b.Navigation("ReturnItems");
 
                     b.Navigation("StockTicketItems");
@@ -3051,6 +3182,8 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Products");
 
                     b.Navigation("PurchaseOrders");
+
+                    b.Navigation("SupplierRatings");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.User", b =>
