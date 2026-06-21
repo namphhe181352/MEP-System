@@ -15,13 +15,13 @@ namespace MEP_Management_System.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class AuthController : ControllerBase
+    public class authController : ControllerBase
     {
         private readonly MEPDatabaseContext _context;
         private readonly IMapper _mapper;
         private readonly JwtHelper _jwtHelper;
 
-        public AuthController(MEPDatabaseContext context, IMapper mapper, JwtHelper jwtHelper)
+        public authController(MEPDatabaseContext context, IMapper mapper, JwtHelper jwtHelper)
         {
             _context = context;
             _mapper = mapper;

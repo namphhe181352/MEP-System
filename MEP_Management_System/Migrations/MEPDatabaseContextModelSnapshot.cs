@@ -23,7 +23,7 @@ namespace MEP_Management_System.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "uuid-ossp");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("MEP.Data.Models.Branch", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Branch", b =>
                 {
                     b.Property<Guid>("BranchId")
                         .ValueGeneratedOnAdd()
@@ -48,7 +48,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("branches", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.BranchProduct", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.BranchProduct", b =>
                 {
                     b.Property<Guid>("BranchProductId")
                         .ValueGeneratedOnAdd()
@@ -141,7 +141,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("branch_products", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Comment", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Comment", b =>
                 {
                     b.Property<Guid>("CommentId")
                         .ValueGeneratedOnAdd()
@@ -178,7 +178,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("comments", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.CommunityCategory", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.CommunityCategory", b =>
                 {
                     b.Property<Guid>("CategoryId")
                         .ValueGeneratedOnAdd()
@@ -230,7 +230,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("community_categories", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.CommunityPost", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.CommunityPost", b =>
                 {
                     b.Property<Guid>("PostId")
                         .ValueGeneratedOnAdd()
@@ -301,7 +301,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("community_posts", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Customer", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Customer", b =>
                 {
                     b.Property<Guid>("CustomerId")
                         .ValueGeneratedOnAdd()
@@ -371,7 +371,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("customers", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Invoice", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Invoice", b =>
                 {
                     b.Property<Guid>("InvoiceId")
                         .ValueGeneratedOnAdd()
@@ -430,7 +430,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("invoices", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.InvoiceItem", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.InvoiceItem", b =>
                 {
                     b.Property<Guid>("InvoiceItemId")
                         .ValueGeneratedOnAdd()
@@ -466,7 +466,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("invoice_items", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.MediaResource", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.MediaResource", b =>
                 {
                     b.Property<Guid>("MediaId")
                         .ValueGeneratedOnAdd()
@@ -516,7 +516,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("media_resources", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Order", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Order", b =>
                 {
                     b.Property<Guid>("OrderId")
                         .ValueGeneratedOnAdd()
@@ -595,7 +595,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("orders", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.OrderItem", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.OrderItem", b =>
                 {
                     b.Property<Guid>("OrderItemId")
                         .ValueGeneratedOnAdd()
@@ -631,7 +631,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("order_items", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.OtpVerification", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.OtpVerification", b =>
                 {
                     b.Property<Guid>("OtpId")
                         .ValueGeneratedOnAdd()
@@ -679,7 +679,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("otp_verifications", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Permission", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Permission", b =>
                 {
                     b.Property<Guid>("PermissionId")
                         .ValueGeneratedOnAdd()
@@ -708,7 +708,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("permissions", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Product", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Product", b =>
                 {
                     b.Property<Guid>("ProductId")
                         .ValueGeneratedOnAdd()
@@ -822,7 +822,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("products", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.ProductAttribute", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.ProductAttribute", b =>
                 {
                     b.Property<Guid>("AttributeId")
                         .ValueGeneratedOnAdd()
@@ -854,16 +854,13 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("product_attributes", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.ProductConversionUnit", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.ProductConversionUnit", b =>
                 {
                     b.Property<Guid>("ConversionId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("conversion_id")
                         .HasDefaultValueSql("uuid_generate_v4()");
-
-                    b.Property<Guid?>("BranchProductId")
-                        .HasColumnType("uuid");
 
                     b.Property<decimal>("ConvertValue")
                         .HasPrecision(10, 2)
@@ -894,14 +891,12 @@ namespace MEP_Management_System.Migrations
                     b.HasKey("ConversionId")
                         .HasName("product_conversion_units_pkey");
 
-                    b.HasIndex("BranchProductId");
-
                     b.HasIndex("ProductId");
 
                     b.ToTable("product_conversion_units", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.PurchaseOrder", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.PurchaseOrder", b =>
                 {
                     b.Property<Guid>("PurchaseOrderId")
                         .ValueGeneratedOnAdd()
@@ -972,7 +967,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("purchase_orders", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.PurchaseOrderItem", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.PurchaseOrderItem", b =>
                 {
                     b.Property<Guid>("PoItemId")
                         .ValueGeneratedOnAdd()
@@ -1008,7 +1003,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("purchase_order_items", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.ReturnItem", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.ReturnItem", b =>
                 {
                     b.Property<Guid>("ReturnItemId")
                         .ValueGeneratedOnAdd()
@@ -1049,7 +1044,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("return_items", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.ReturnOrder", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.ReturnOrder", b =>
                 {
                     b.Property<Guid>("ReturnOrderId")
                         .ValueGeneratedOnAdd()
@@ -1108,7 +1103,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("return_orders", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Role", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Role", b =>
                 {
                     b.Property<Guid>("RoleId")
                         .ValueGeneratedOnAdd()
@@ -1142,7 +1137,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("roles", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.StaffAssignment", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.StaffAssignment", b =>
                 {
                     b.Property<Guid>("AssignmentId")
                         .ValueGeneratedOnAdd()
@@ -1174,7 +1169,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("staff_assignments", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.StockTicket", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.StockTicket", b =>
                 {
                     b.Property<Guid>("StockTicketId")
                         .ValueGeneratedOnAdd()
@@ -1228,7 +1223,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("stock_tickets", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.StockTicketItem", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.StockTicketItem", b =>
                 {
                     b.Property<Guid>("TicketItemId")
                         .ValueGeneratedOnAdd()
@@ -1269,7 +1264,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("stock_ticket_items", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.StoreApproval", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.StoreApproval", b =>
                 {
                     b.Property<Guid>("ApprovalId")
                         .ValueGeneratedOnAdd()
@@ -1343,7 +1338,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("store_approvals", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Supplier", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Supplier", b =>
                 {
                     b.Property<Guid>("SupplierId")
                         .ValueGeneratedOnAdd()
@@ -1356,10 +1351,30 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("address");
 
+                    b.Property<decimal?>("AverageRating")
+                        .HasPrecision(3, 2)
+                        .HasColumnType("numeric(3,2)")
+                        .HasColumnName("average_rating");
+
+                    b.Property<string>("BankAccount")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("bank_account");
+
+                    b.Property<string>("BankName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("bank_name");
+
                     b.Property<string>("ContactEmail")
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)")
                         .HasColumnName("contact_email");
+
+                    b.Property<string>("ContactPerson")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("contact_person");
 
                     b.Property<string>("ContactPhone")
                         .HasMaxLength(20)
@@ -1371,6 +1386,25 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("GroupName")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("group_name");
+
+                    b.Property<DateTime?>("LastRatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("last_rated_at");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text")
+                        .HasColumnName("notes");
+
+                    b.Property<int?>("RatingCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("rating_count");
 
                     b.Property<short?>("Status")
                         .ValueGeneratedOnAdd()
@@ -1384,13 +1418,88 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("character varying(150)")
                         .HasColumnName("supplier_name");
 
+                    b.Property<string>("TaxCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("tax_code");
+
+                    b.Property<string>("Website")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("website");
+
                     b.HasKey("SupplierId")
                         .HasName("suppliers_pkey");
 
                     b.ToTable("suppliers", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.SystemConfig", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.SupplierRating", b =>
+                {
+                    b.Property<Guid>("RatingId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("rating_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<string>("Comment")
+                        .HasColumnType("text")
+                        .HasColumnName("comment");
+
+                    b.Property<short>("DeliveryScore")
+                        .HasColumnType("smallint")
+                        .HasColumnName("delivery_score");
+
+                    b.Property<decimal>("OverallRating")
+                        .HasPrecision(3, 2)
+                        .HasColumnType("numeric(3,2)")
+                        .HasColumnName("overall_rating");
+
+                    b.Property<short>("PriceScore")
+                        .HasColumnType("smallint")
+                        .HasColumnName("price_score");
+
+                    b.Property<Guid?>("PurchaseOrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("purchase_order_id");
+
+                    b.Property<short>("QualityScore")
+                        .HasColumnType("smallint")
+                        .HasColumnName("quality_score");
+
+                    b.Property<DateTime?>("RatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("rated_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<Guid?>("RatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rated_by");
+
+                    b.Property<short>("ServiceScore")
+                        .HasColumnType("smallint")
+                        .HasColumnName("service_score");
+
+                    b.Property<Guid>("SupplierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("supplier_id");
+
+                    b.HasKey("RatingId")
+                        .HasName("supplier_ratings_pkey");
+
+                    b.HasIndex("PurchaseOrderId");
+
+                    b.HasIndex("RatedBy");
+
+                    b.HasIndex(new[] { "RatedAt" }, "ix_supplier_ratings_rated_at");
+
+                    b.HasIndex(new[] { "SupplierId" }, "ix_supplier_ratings_supplier_id");
+
+                    b.ToTable("supplier_ratings", (string)null);
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.SystemConfig", b =>
                 {
                     b.Property<Guid>("ConfigId")
                         .ValueGeneratedOnAdd()
@@ -1421,7 +1530,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("system_configs", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.SystemLog", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.SystemLog", b =>
                 {
                     b.Property<Guid>("LogId")
                         .ValueGeneratedOnAdd()
@@ -1492,7 +1601,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("system_logs", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.SystemNotification", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.SystemNotification", b =>
                 {
                     b.Property<Guid>("NotificationId")
                         .ValueGeneratedOnAdd()
@@ -1557,7 +1666,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("system_notifications", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.User", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.User", b =>
                 {
                     b.Property<Guid>("UserId")
                         .ValueGeneratedOnAdd()
@@ -1641,7 +1750,7 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("users", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.ViolationReport", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.ViolationReport", b =>
                 {
                     b.Property<Guid>("ReportId")
                         .ValueGeneratedOnAdd()
@@ -1742,15 +1851,15 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("user_roles", (string)null);
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.BranchProduct", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.BranchProduct", b =>
                 {
-                    b.HasOne("MEP.Data.Models.Branch", "Branch")
+                    b.HasOne("MEP_Management_System.Models.Branch", "Branch")
                         .WithMany("BranchProducts")
                         .HasForeignKey("BranchId")
                         .IsRequired()
                         .HasConstraintName("branch_products_branch_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.Product", "Product")
+                    b.HasOne("MEP_Management_System.Models.Product", "Product")
                         .WithMany("BranchProducts")
                         .HasForeignKey("ProductId")
                         .IsRequired()
@@ -1761,16 +1870,16 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Product");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Comment", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Comment", b =>
                 {
-                    b.HasOne("MEP.Data.Models.CommunityPost", "Post")
+                    b.HasOne("MEP_Management_System.Models.CommunityPost", "Post")
                         .WithMany("Comments")
                         .HasForeignKey("PostId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("comments_post_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.User", "User")
+                    b.HasOne("MEP_Management_System.Models.User", "User")
                         .WithMany("Comments")
                         .HasForeignKey("UserId")
                         .IsRequired()
@@ -1781,9 +1890,9 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.CommunityCategory", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.CommunityCategory", b =>
                 {
-                    b.HasOne("MEP.Data.Models.CommunityCategory", "Parent")
+                    b.HasOne("MEP_Management_System.Models.CommunityCategory", "Parent")
                         .WithMany("Children")
                         .HasForeignKey("ParentId")
                         .OnDelete(DeleteBehavior.SetNull)
@@ -1792,15 +1901,15 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Parent");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.CommunityPost", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.CommunityPost", b =>
                 {
-                    b.HasOne("MEP.Data.Models.CommunityCategory", "Category")
+                    b.HasOne("MEP_Management_System.Models.CommunityCategory", "Category")
                         .WithMany("CommunityPosts")
                         .HasForeignKey("CategoryId")
                         .IsRequired()
                         .HasConstraintName("community_posts_category_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.User", "User")
+                    b.HasOne("MEP_Management_System.Models.User", "User")
                         .WithMany("CommunityPosts")
                         .HasForeignKey("UserId")
                         .IsRequired()
@@ -1811,15 +1920,15 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Invoice", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Invoice", b =>
                 {
-                    b.HasOne("MEP.Data.Models.Order", "Order")
+                    b.HasOne("MEP_Management_System.Models.Order", "Order")
                         .WithMany("Invoices")
                         .HasForeignKey("OrderId")
                         .IsRequired()
                         .HasConstraintName("invoices_order_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.User", "User")
+                    b.HasOne("MEP_Management_System.Models.User", "User")
                         .WithMany("Invoices")
                         .HasForeignKey("UserId")
                         .IsRequired()
@@ -1830,15 +1939,15 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.InvoiceItem", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.InvoiceItem", b =>
                 {
-                    b.HasOne("MEP.Data.Models.BranchProduct", "BranchProduct")
+                    b.HasOne("MEP_Management_System.Models.BranchProduct", "BranchProduct")
                         .WithMany()
                         .HasForeignKey("BranchProductId")
                         .IsRequired()
                         .HasConstraintName("invoice_items_branch_product_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.Invoice", "Invoice")
+                    b.HasOne("MEP_Management_System.Models.Invoice", "Invoice")
                         .WithMany("InvoiceItems")
                         .HasForeignKey("InvoiceId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1850,15 +1959,15 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Invoice");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.MediaResource", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.MediaResource", b =>
                 {
-                    b.HasOne("MEP.Data.Models.CommunityPost", "Post")
+                    b.HasOne("MEP_Management_System.Models.CommunityPost", "Post")
                         .WithMany("MediaResources")
                         .HasForeignKey("PostId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .HasConstraintName("media_resources_post_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.Product", "Product")
+                    b.HasOne("MEP_Management_System.Models.Product", "Product")
                         .WithMany("MediaResources")
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1869,20 +1978,20 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Product");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Order", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Order", b =>
                 {
-                    b.HasOne("MEP.Data.Models.Branch", "Branch")
+                    b.HasOne("MEP_Management_System.Models.Branch", "Branch")
                         .WithMany("Orders")
                         .HasForeignKey("BranchId")
                         .IsRequired()
                         .HasConstraintName("orders_branch_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.Customer", "Customer")
+                    b.HasOne("MEP_Management_System.Models.Customer", "Customer")
                         .WithMany("Orders")
                         .HasForeignKey("CustomerId")
                         .HasConstraintName("orders_customer_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.User", "User")
+                    b.HasOne("MEP_Management_System.Models.User", "User")
                         .WithMany("Orders")
                         .HasForeignKey("UserId")
                         .IsRequired()
@@ -1895,15 +2004,15 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.OrderItem", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.OrderItem", b =>
                 {
-                    b.HasOne("MEP.Data.Models.BranchProduct", "BranchProduct")
+                    b.HasOne("MEP_Management_System.Models.BranchProduct", "BranchProduct")
                         .WithMany("OrderItems")
                         .HasForeignKey("BranchProductId")
                         .IsRequired()
                         .HasConstraintName("order_items_branch_product_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.Order", "Order")
+                    b.HasOne("MEP_Management_System.Models.Order", "Order")
                         .WithMany("OrderItems")
                         .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1915,9 +2024,9 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Order");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Product", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Product", b =>
                 {
-                    b.HasOne("MEP.Data.Models.Supplier", "Supplier")
+                    b.HasOne("MEP_Management_System.Models.Supplier", "Supplier")
                         .WithMany("Products")
                         .HasForeignKey("SupplierId")
                         .HasConstraintName("products_supplier_id_fkey");
@@ -1925,9 +2034,9 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Supplier");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.ProductAttribute", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.ProductAttribute", b =>
                 {
-                    b.HasOne("MEP.Data.Models.Product", "Product")
+                    b.HasOne("MEP_Management_System.Models.Product", "Product")
                         .WithMany("ProductAttributes")
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1937,13 +2046,9 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Product");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.ProductConversionUnit", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.ProductConversionUnit", b =>
                 {
-                    b.HasOne("MEP.Data.Models.BranchProduct", null)
-                        .WithMany("ProductConversionUnits")
-                        .HasForeignKey("BranchProductId");
-
-                    b.HasOne("MEP.Data.Models.Product", "Product")
+                    b.HasOne("MEP_Management_System.Models.Product", "Product")
                         .WithMany("ProductConversionUnits")
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1953,20 +2058,20 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Product");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.PurchaseOrder", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.PurchaseOrder", b =>
                 {
-                    b.HasOne("MEP.Data.Models.User", "ApprovedByUser")
+                    b.HasOne("MEP_Management_System.Models.User", "ApprovedByUser")
                         .WithMany()
                         .HasForeignKey("ApprovedBy")
                         .HasConstraintName("purchase_orders_approved_by_fkey");
 
-                    b.HasOne("MEP.Data.Models.Supplier", "Supplier")
+                    b.HasOne("MEP_Management_System.Models.Supplier", "Supplier")
                         .WithMany("PurchaseOrders")
                         .HasForeignKey("SupplierId")
                         .IsRequired()
                         .HasConstraintName("purchase_orders_supplier_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.User", "User")
+                    b.HasOne("MEP_Management_System.Models.User", "User")
                         .WithMany("PurchaseOrders")
                         .HasForeignKey("UserId")
                         .IsRequired()
@@ -1979,15 +2084,15 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.PurchaseOrderItem", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.PurchaseOrderItem", b =>
                 {
-                    b.HasOne("MEP.Data.Models.Product", "Product")
+                    b.HasOne("MEP_Management_System.Models.Product", "Product")
                         .WithMany("PurchaseOrderItems")
                         .HasForeignKey("ProductId")
                         .IsRequired()
                         .HasConstraintName("purchase_order_items_product_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.PurchaseOrder", "PurchaseOrder")
+                    b.HasOne("MEP_Management_System.Models.PurchaseOrder", "PurchaseOrder")
                         .WithMany("PurchaseOrderItems")
                         .HasForeignKey("PurchaseOrderId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1999,15 +2104,15 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("PurchaseOrder");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.ReturnItem", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.ReturnItem", b =>
                 {
-                    b.HasOne("MEP.Data.Models.BranchProduct", "BranchProduct")
+                    b.HasOne("MEP_Management_System.Models.BranchProduct", "BranchProduct")
                         .WithMany("ReturnItems")
                         .HasForeignKey("BranchProductId")
                         .IsRequired()
                         .HasConstraintName("return_items_branch_product_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.ReturnOrder", "ReturnOrder")
+                    b.HasOne("MEP_Management_System.Models.ReturnOrder", "ReturnOrder")
                         .WithMany("ReturnItems")
                         .HasForeignKey("ReturnOrderId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2019,15 +2124,15 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("ReturnOrder");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.ReturnOrder", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.ReturnOrder", b =>
                 {
-                    b.HasOne("MEP.Data.Models.Order", "Order")
+                    b.HasOne("MEP_Management_System.Models.Order", "Order")
                         .WithMany("ReturnOrders")
                         .HasForeignKey("OrderId")
                         .IsRequired()
                         .HasConstraintName("return_orders_order_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.User", "User")
+                    b.HasOne("MEP_Management_System.Models.User", "User")
                         .WithMany("ReturnOrders")
                         .HasForeignKey("UserId")
                         .IsRequired()
@@ -2038,16 +2143,16 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.StaffAssignment", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.StaffAssignment", b =>
                 {
-                    b.HasOne("MEP.Data.Models.Branch", "Branch")
+                    b.HasOne("MEP_Management_System.Models.Branch", "Branch")
                         .WithMany("StaffAssignments")
                         .HasForeignKey("BranchId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("staff_assignments_branch_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.User", "User")
+                    b.HasOne("MEP_Management_System.Models.User", "User")
                         .WithMany("StaffAssignments")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2059,15 +2164,15 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.StockTicket", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.StockTicket", b =>
                 {
-                    b.HasOne("MEP.Data.Models.Branch", "Branch")
+                    b.HasOne("MEP_Management_System.Models.Branch", "Branch")
                         .WithMany("StockTickets")
                         .HasForeignKey("BranchId")
                         .IsRequired()
                         .HasConstraintName("stock_tickets_branch_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.User", "User")
+                    b.HasOne("MEP_Management_System.Models.User", "User")
                         .WithMany("StockTickets")
                         .HasForeignKey("UserId")
                         .IsRequired()
@@ -2078,15 +2183,15 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.StockTicketItem", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.StockTicketItem", b =>
                 {
-                    b.HasOne("MEP.Data.Models.BranchProduct", "BranchProduct")
+                    b.HasOne("MEP_Management_System.Models.BranchProduct", "BranchProduct")
                         .WithMany("StockTicketItems")
                         .HasForeignKey("BranchProductId")
                         .IsRequired()
                         .HasConstraintName("stock_ticket_items_branch_product_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.StockTicket", "StockTicket")
+                    b.HasOne("MEP_Management_System.Models.StockTicket", "StockTicket")
                         .WithMany("StockTicketItems")
                         .HasForeignKey("StockTicketId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2098,14 +2203,14 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("StockTicket");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.StoreApproval", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.StoreApproval", b =>
                 {
-                    b.HasOne("MEP.Data.Models.User", "ReviewedByUser")
+                    b.HasOne("MEP_Management_System.Models.User", "ReviewedByUser")
                         .WithMany()
                         .HasForeignKey("ReviewedBy")
                         .HasConstraintName("store_approvals_reviewed_by_fkey");
 
-                    b.HasOne("MEP.Data.Models.User", "User")
+                    b.HasOne("MEP_Management_System.Models.User", "User")
                         .WithMany("StoreApprovals")
                         .HasForeignKey("UserId")
                         .IsRequired()
@@ -2116,9 +2221,37 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.SystemConfig", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.SupplierRating", b =>
                 {
-                    b.HasOne("MEP.Data.Models.Branch", "Branch")
+                    b.HasOne("MEP_Management_System.Models.PurchaseOrder", "PurchaseOrder")
+                        .WithMany()
+                        .HasForeignKey("PurchaseOrderId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("supplier_ratings_po_id_fkey");
+
+                    b.HasOne("MEP_Management_System.Models.User", "RatedByUser")
+                        .WithMany()
+                        .HasForeignKey("RatedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("supplier_ratings_rated_by_fkey");
+
+                    b.HasOne("MEP_Management_System.Models.Supplier", "Supplier")
+                        .WithMany("SupplierRatings")
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("supplier_ratings_supplier_id_fkey");
+
+                    b.Navigation("PurchaseOrder");
+
+                    b.Navigation("RatedByUser");
+
+                    b.Navigation("Supplier");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.SystemConfig", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.Branch", "Branch")
                         .WithMany("SystemConfigs")
                         .HasForeignKey("BranchId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2127,9 +2260,9 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Branch");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.SystemLog", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.SystemLog", b =>
                 {
-                    b.HasOne("MEP.Data.Models.User", "User")
+                    b.HasOne("MEP_Management_System.Models.User", "User")
                         .WithMany("SystemLogs")
                         .HasForeignKey("UserId")
                         .IsRequired()
@@ -2138,9 +2271,9 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.SystemNotification", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.SystemNotification", b =>
                 {
-                    b.HasOne("MEP.Data.Models.User", "CreatedByUser")
+                    b.HasOne("MEP_Management_System.Models.User", "CreatedByUser")
                         .WithMany("SystemNotifications")
                         .HasForeignKey("CreatedBy")
                         .IsRequired()
@@ -2149,26 +2282,26 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("CreatedByUser");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.ViolationReport", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.ViolationReport", b =>
                 {
-                    b.HasOne("MEP.Data.Models.Comment", "Comment")
+                    b.HasOne("MEP_Management_System.Models.Comment", "Comment")
                         .WithMany("ViolationReports")
                         .HasForeignKey("CommentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .HasConstraintName("violation_reports_comment_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.CommunityPost", "Post")
+                    b.HasOne("MEP_Management_System.Models.CommunityPost", "Post")
                         .WithMany("ViolationReports")
                         .HasForeignKey("PostId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .HasConstraintName("violation_reports_post_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.User", "ResolvedByUser")
+                    b.HasOne("MEP_Management_System.Models.User", "ResolvedByUser")
                         .WithMany()
                         .HasForeignKey("ResolvedBy")
                         .HasConstraintName("violation_reports_resolved_by_fkey");
 
-                    b.HasOne("MEP.Data.Models.User", "User")
+                    b.HasOne("MEP_Management_System.Models.User", "User")
                         .WithMany("ViolationReports")
                         .HasForeignKey("UserId")
                         .IsRequired()
@@ -2185,14 +2318,14 @@ namespace MEP_Management_System.Migrations
 
             modelBuilder.Entity("RolePermission", b =>
                 {
-                    b.HasOne("MEP.Data.Models.Permission", null)
+                    b.HasOne("MEP_Management_System.Models.Permission", null)
                         .WithMany()
                         .HasForeignKey("PermissionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("role_permissions_permission_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.Role", null)
+                    b.HasOne("MEP_Management_System.Models.Role", null)
                         .WithMany()
                         .HasForeignKey("RoleId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2202,14 +2335,14 @@ namespace MEP_Management_System.Migrations
 
             modelBuilder.Entity("UserRole", b =>
                 {
-                    b.HasOne("MEP.Data.Models.Role", null)
+                    b.HasOne("MEP_Management_System.Models.Role", null)
                         .WithMany()
                         .HasForeignKey("RoleId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("user_roles_role_id_fkey");
 
-                    b.HasOne("MEP.Data.Models.User", null)
+                    b.HasOne("MEP_Management_System.Models.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2217,7 +2350,7 @@ namespace MEP_Management_System.Migrations
                         .HasConstraintName("user_roles_user_id_fkey");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Branch", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Branch", b =>
                 {
                     b.Navigation("BranchProducts");
 
@@ -2230,32 +2363,28 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("SystemConfigs");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.BranchProduct", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.BranchProduct", b =>
                 {
                     b.Navigation("OrderItems");
-
-                    b.Navigation("ProductConversionUnits");
 
                     b.Navigation("ReturnItems");
 
                     b.Navigation("StockTicketItems");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Comment", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Comment", b =>
                 {
                     b.Navigation("ViolationReports");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.CommunityCategory", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.CommunityCategory", b =>
                 {
-                    b.Navigation("Children");
-
                     b.Navigation("Children");
 
                     b.Navigation("CommunityPosts");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.CommunityPost", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.CommunityPost", b =>
                 {
                     b.Navigation("Comments");
 
@@ -2264,17 +2393,17 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("ViolationReports");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Customer", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Customer", b =>
                 {
                     b.Navigation("Orders");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Invoice", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Invoice", b =>
                 {
                     b.Navigation("InvoiceItems");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Order", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Order", b =>
                 {
                     b.Navigation("Invoices");
 
@@ -2283,7 +2412,7 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("ReturnOrders");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Product", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Product", b =>
                 {
                     b.Navigation("BranchProducts");
 
@@ -2296,29 +2425,31 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("PurchaseOrderItems");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.PurchaseOrder", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.PurchaseOrder", b =>
                 {
                     b.Navigation("PurchaseOrderItems");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.ReturnOrder", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.ReturnOrder", b =>
                 {
                     b.Navigation("ReturnItems");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.StockTicket", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.StockTicket", b =>
                 {
                     b.Navigation("StockTicketItems");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.Supplier", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.Supplier", b =>
                 {
                     b.Navigation("Products");
 
                     b.Navigation("PurchaseOrders");
+
+                    b.Navigation("SupplierRatings");
                 });
 
-            modelBuilder.Entity("MEP.Data.Models.User", b =>
+            modelBuilder.Entity("MEP_Management_System.Models.User", b =>
                 {
                     b.Navigation("Comments");
 

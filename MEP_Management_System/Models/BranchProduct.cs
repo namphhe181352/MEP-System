@@ -39,8 +39,6 @@ public partial class BranchProduct
 
     public virtual Product Product { get; set; } = null!;
 
-    public virtual ICollection<ProductConversionUnit> ProductConversionUnits { get; set; } = new List<ProductConversionUnit>();
-
     public virtual ICollection<ReturnItem> ReturnItems { get; set; } = new List<ReturnItem>();
 
     public virtual ICollection<StockTicketItem> StockTicketItems { get; set; } = new List<StockTicketItem>();
