@@ -27,5 +27,8 @@ public partial class Payment
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>Optional — chi nhánh ghi nhận giao dịch. Nullable cho store không có branch.</summary>
+    public Guid? BranchId { get; set; }
+
     public virtual Invoice Invoice { get; set; } = null!;
 }
