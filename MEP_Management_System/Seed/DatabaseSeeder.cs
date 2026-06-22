@@ -1,4 +1,4 @@
-﻿using BCrypt.Net;
+using BCrypt.Net;
 using Microsoft.EntityFrameworkCore;
 using MEP_Management_System.Models;
 
@@ -28,18 +28,18 @@ public static class DatabaseSeeder
         // ============================================================
         var users = new List<User>
         {
-            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000001"), Username = "admin@mep.vn", Email = "admin@mep.vn", FullName = "Nguyễn Văn Admin", PhoneNumber = "0901000001", PasswordHash = passwordHash, IsActive = 1, CreatedAt = SeedTime },
-            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000002"), Username = "owner.bac@mep.vn", Email = "owner.bac@mep.vn", FullName = "Trần Văn Bắc (Owner)", PhoneNumber = "0902000001", PasswordHash = passwordHash, IsActive = 1, CreatedAt = SeedTime },
-            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000003"), Username = "owner.nam@mep.vn", Email = "owner.nam@mep.vn", FullName = "Lê Thị Nam (Owner)", PhoneNumber = "0902000002", PasswordHash = passwordHash, IsActive = 1, CreatedAt = SeedTime },
-            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000004"), Username = "sale.bac01@mep.vn", Email = "sale.bac01@mep.vn", FullName = "Phạm Thị Hoa (Sale Bắc)", PhoneNumber = "0903000001", PasswordHash = passwordHash, IsActive = 1, CreatedAt = SeedTime },
-            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000005"), Username = "sale.bac02@mep.vn", Email = "sale.bac02@mep.vn", FullName = "Nguyễn Văn Minh (Sale Bắc)", PhoneNumber = "0903000002", PasswordHash = passwordHash, IsActive = 1, CreatedAt = SeedTime },
-            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000006"), Username = "sale.nam01@mep.vn", Email = "sale.nam01@mep.vn", FullName = "Đặng Thị Lan (Sale Nam)", PhoneNumber = "0903000003", PasswordHash = passwordHash, IsActive = 1, CreatedAt = SeedTime },
-            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000007"), Username = "kho.bac01@mep.vn", Email = "kho.bac01@mep.vn", FullName = "Hoàng Văn Tùng (Kho Bắc)", PhoneNumber = "0904000001", PasswordHash = passwordHash, IsActive = 1, CreatedAt = SeedTime },
-            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000008"), Username = "kho.nam01@mep.vn", Email = "kho.nam01@mep.vn", FullName = "Vũ Thị Hương (Kho Nam)", PhoneNumber = "0904000002", PasswordHash = passwordHash, IsActive = 1, CreatedAt = SeedTime },
-            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000009"), Username = "kho.bac02@mep.vn", Email = "kho.bac02@mep.vn", FullName = "Bùi Văn Cường (Kho Bắc)", PhoneNumber = "0904000003", PasswordHash = passwordHash, IsActive = 1, CreatedAt = SeedTime },
-            new() { UserId = Guid.Parse("20000000-0000-0000-0000-00000000000A"), Username = "community01@mep.vn", Email = "community01@mep.vn", FullName = "Lê Minh Tuấn (Community)", PhoneNumber = "0905000001", PasswordHash = passwordHash, IsActive = 1, CreatedAt = SeedTime },
-            new() { UserId = Guid.Parse("20000000-0000-0000-0000-00000000000B"), Username = "community02@mep.vn", Email = "community02@mep.vn", FullName = "Trần Thị Mai (Community)", PhoneNumber = "0905000002", PasswordHash = passwordHash, IsActive = 1, CreatedAt = SeedTime },
-            new() { UserId = Guid.Parse("20000000-0000-0000-0000-00000000000C"), Username = "community03@mep.vn", Email = "community03@mep.vn", FullName = "Phạm Văn Đức (Community)", PhoneNumber = "0905000003", PasswordHash = passwordHash, IsActive = 1, CreatedAt = SeedTime }
+            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000001"), Username = "admin@mep.vn", Email = "admin@mep.vn", FullName = "Nguyễn Văn Admin", PhoneNumber = "0901000001", PasswordHash = passwordHash, IsActive = 1, IsVerified = true, CreatedAt = SeedTime },
+            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000002"), Username = "owner.bac@mep.vn", Email = "owner.bac@mep.vn", FullName = "Trần Văn Bắc (Owner)", PhoneNumber = "0902000001", PasswordHash = passwordHash, IsActive = 1, IsVerified = true, CreatedAt = SeedTime },
+            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000003"), Username = "owner.nam@mep.vn", Email = "owner.nam@mep.vn", FullName = "Lê Thị Nam (Owner)", PhoneNumber = "0902000002", PasswordHash = passwordHash, IsActive = 1, IsVerified = true, CreatedAt = SeedTime },
+            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000004"), Username = "sale.bac01@mep.vn", Email = "sale.bac01@mep.vn", FullName = "Phạm Thị Hoa (Sale Bắc)", PhoneNumber = "0903000001", PasswordHash = passwordHash, IsActive = 1, IsVerified = true, CreatedAt = SeedTime },
+            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000005"), Username = "sale.bac02@mep.vn", Email = "sale.bac02@mep.vn", FullName = "Nguyễn Văn Minh (Sale Bắc)", PhoneNumber = "0903000002", PasswordHash = passwordHash, IsActive = 1, IsVerified = true, CreatedAt = SeedTime },
+            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000006"), Username = "sale.nam01@mep.vn", Email = "sale.nam01@mep.vn", FullName = "Đặng Thị Lan (Sale Nam)", PhoneNumber = "0903000003", PasswordHash = passwordHash, IsActive = 1, IsVerified = true, CreatedAt = SeedTime },
+            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000007"), Username = "kho.bac01@mep.vn", Email = "kho.bac01@mep.vn", FullName = "Hoàng Văn Tùng (Kho Bắc)", PhoneNumber = "0904000001", PasswordHash = passwordHash, IsActive = 1, IsVerified = true, CreatedAt = SeedTime },
+            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000008"), Username = "kho.nam01@mep.vn", Email = "kho.nam01@mep.vn", FullName = "Vũ Thị Hương (Kho Nam)", PhoneNumber = "0904000002", PasswordHash = passwordHash, IsActive = 1, IsVerified = true, CreatedAt = SeedTime },
+            new() { UserId = Guid.Parse("20000000-0000-0000-0000-000000000009"), Username = "kho.bac02@mep.vn", Email = "kho.bac02@mep.vn", FullName = "Bùi Văn Cường (Kho Bắc)", PhoneNumber = "0904000003", PasswordHash = passwordHash, IsActive = 1, IsVerified = true, CreatedAt = SeedTime },
+            new() { UserId = Guid.Parse("20000000-0000-0000-0000-00000000000A"), Username = "community01@mep.vn", Email = "community01@mep.vn", FullName = "Lê Minh Tuấn (Community)", PhoneNumber = "0905000001", PasswordHash = passwordHash, IsActive = 1, IsVerified = true, CreatedAt = SeedTime },
+            new() { UserId = Guid.Parse("20000000-0000-0000-0000-00000000000B"), Username = "community02@mep.vn", Email = "community02@mep.vn", FullName = "Trần Thị Mai (Community)", PhoneNumber = "0905000002", PasswordHash = passwordHash, IsActive = 1, IsVerified = true, CreatedAt = SeedTime },
+            new() { UserId = Guid.Parse("20000000-0000-0000-0000-00000000000C"), Username = "community03@mep.vn", Email = "community03@mep.vn", FullName = "Phạm Văn Đức (Community)", PhoneNumber = "0905000003", PasswordHash = passwordHash, IsActive = 1, IsVerified = true, CreatedAt = SeedTime }
         };
         await context.Users.AddRangeAsync(users);
         await context.SaveChangesAsync();

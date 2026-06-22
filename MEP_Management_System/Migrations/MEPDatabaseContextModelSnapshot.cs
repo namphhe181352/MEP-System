@@ -727,6 +727,9 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("payment_method");
 
+                    b.Property<string>("PromotionCode")
+                        .HasColumnType("text");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -860,6 +863,10 @@ namespace MEP_Management_System.Migrations
                         .HasPrecision(15, 2)
                         .HasColumnType("numeric(15,2)")
                         .HasColumnName("amount");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_id");
 
                     b.Property<decimal?>("CashReceived")
                         .HasPrecision(15, 2)
