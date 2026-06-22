@@ -37,7 +37,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// 1. GET /api/products - List all products with pagination, filtering, and sorting
         /// </summary>
         [HttpGet]
-        public async Task<IActionResult> GetProducts([FromQuery] MEP_Management_System.DTOs.InventoryDTOs.ProductParameters @params)
+        public async Task<IActionResult> GetProducts([FromQuery] DTOs.InventoryDTOs.ProductParameters @params)
         {
             try
             {

@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.4.11626.88 stable
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MEP_Management_System", "MEP_Management_System\MEP_Management_System.csproj", "{07980BE0-837D-A10A-971B-F7273EB36B01}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{07980BE0-837D-A10A-971B-F7273EB36B01}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{07980BE0-837D-A10A-971B-F7273EB36B01}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{07980BE0-837D-A10A-971B-F7273EB36B01}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{07980BE0-837D-A10A-971B-F7273EB36B01}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C043B50C-FB64-482B-928B-8533D07DCFC9}
+	EndGlobalSection
+EndGlobal

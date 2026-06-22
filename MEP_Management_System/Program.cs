@@ -1,5 +1,6 @@
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
+using MEP_Management_System.Services.InventoryService;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.OData;
 using Microsoft.EntityFrameworkCore;
@@ -59,6 +60,7 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
+builder.Services.AddScoped<IInventoryReportService, InventoryReportService>();
 builder.Services.AddAuthorization();
 
 builder.Services.AddCors(options =>
@@ -109,7 +111,26 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseSwagger();
-app.UseSwaggerUI();
+
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "MEP API V1");
+
+    c.HeadContent = @"
+        <script>
+            window.addEventListener('load', function() {
+                setTimeout(function() {
+                    // 🔥 THAY CHUỖI TOKEN MỚI (HẠN 1 NĂM) CỦA BẠN VÀO ĐÂY:
+                    var token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6Ijk4NmM0NWQwLWFhMjctNDdkMi1iNzdmLWFiN2ZkZTc4ZTZiOCIsImh0dHA6Ly9zY2hlbWFzLnhtbHNvYXAub3JnL3dzLzIwMDUvMDUvaWRlbnRpdHkvY2xhaW1zL25hbWUiOiIxMjNAZ21haWwuY29tIiwiaHR0cDovL3NjaGVtYXMueG1sc29hcC5vcmcvd3MvMjAwNS8wNS9pZGVudGl0eS9jbGFpbXMvZ2l2ZW5uYW1lIjoiMTIzNDU2IiwiYnJhbmNoSWQiOiI1MWUyMWZjYy0xYjM2LTRkZTktODkxZC0xY2QxMjdlNGRmYjQiLCJodHRwOi8vc2NoZW1hcy5taWNyb3NvZnQuY29tL3dzLzIwMDgvMDYvaWRlbnRpdHkvY2xhaW1zL3JvbGUiOiJPd25lciIsImV4cCI6MTgxMzY2MzA3OSwiaXNzIjoiSW52ZW50b3J5U2VydmljZUFQSSIsImF1ZCI6IkludmVudG9yeVNlcnZpY2VVc2VycyJ9.27NE92OeBSsRhjWZcqrrxGPEjvsyUP3NtH9gmTHf-wE';
+                    if (token) {
+                        ui.preauthorizeApiKey('Bearer', token);
+                        console.log('--- Swagger đã tự động Đăng nhập tài khoản Owner thành công! ---');
+                    }
+                }, 1000);
+            });
+        </script>
+    ";
+});
 
 app.UseCors("AllowFrontend");
 app.UseHttpsRedirection();
