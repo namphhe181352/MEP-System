@@ -1,4 +1,4 @@
-using BCrypt.Net;
+﻿using BCrypt.Net;
 using Microsoft.EntityFrameworkCore;
 using MEP_Management_System.Models;
 
@@ -753,6 +753,150 @@ public static class DatabaseSeeder
                 CreatedAt = SeedTime.AddDays(-6)
             }
         );
+        await context.SaveChangesAsync();
+
+        // ============================================================
+        // 19. PROMOTIONS (Sprint 1 - Sale API)
+        // ============================================================
+        var promotions = new List<Promotion>
+        {
+            new Promotion
+            {
+                PromotionId = Guid.Parse("d0000000-0000-0000-0000-000000000001"),
+                PromotionCode = "SUMMER2026",
+                Name = "Summer Sale 2026",
+                Description = "Giảm 10% cho đơn hàng từ 500.000đ trở lên",
+                DiscountType = "Percentage",
+                DiscountValue = 10m,
+                MinOrderAmount = 500000m,
+                MaxDiscountAmount = 100000m,
+                StartDate = new DateTime(2026, 1, 1),
+                EndDate = new DateTime(2026, 12, 31),
+                UsageLimit = 1000,
+                UsedCount = 0,
+                IsActive = true,
+                CreatedAt = new DateTime(2026, 1, 1)
+            },
+            new Promotion
+            {
+                PromotionId = Guid.Parse("d0000000-0000-0000-0000-000000000002"),
+                PromotionCode = "NEWUSER",
+                Name = "Khuyến mãi khách hàng mới",
+                Description = "Giảm 50.000đ cho khách hàng lần đầu mua hàng",
+                DiscountType = "FixedAmount",
+                DiscountValue = 50000m,
+                MinOrderAmount = 200000m,
+                MaxDiscountAmount = 50000m,
+                StartDate = new DateTime(2026, 1, 1),
+                EndDate = new DateTime(2026, 12, 31),
+                UsageLimit = 500,
+                UsedCount = 0,
+                IsActive = true,
+                CreatedAt = new DateTime(2026, 1, 1)
+            },
+            new Promotion
+            {
+                PromotionId = Guid.Parse("d0000000-0000-0000-0000-000000000003"),
+                PromotionCode = "VIP10",
+                Name = "VIP 10% Off",
+                Description = "Giảm 10% không giới hạn cho khách VIP",
+                DiscountType = "Percentage",
+                DiscountValue = 10m,
+                MinOrderAmount = 0m,
+                MaxDiscountAmount = null,
+                StartDate = new DateTime(2026, 1, 1),
+                EndDate = new DateTime(2026, 12, 31),
+                UsageLimit = null,
+                UsedCount = 0,
+                IsActive = true,
+                CreatedAt = new DateTime(2026, 1, 1)
+            }
+        };
+        context.Promotions.AddRange(promotions);
+
+        // Update existing customers with Group, Notes, TotalSpent, OrderCount, LastVisit, MembershipTier, UpdatedAt
+        var existingCustomers = context.Customers.ToList();
+        var customerGroups = new[] { "Individual", "Enterprise", "Agent", "Contractor" };
+        var tiers = new[] { "Bronze", "Silver", "Gold", "Platinum" };
+        var rand = new Random(42);
+        for (int i = 0; i < allCustomers.Count; i++)
+        {
+            var c = existingCustomers[i];
+            c.Group = customerGroups[i % customerGroups.Length];
+            c.Notes = i == 0 ? "Khách hàng VIP, ưu tiên xử lý" : (i == 1 ? "Cần theo dõi công nợ" : null);
+            c.TotalSpent = (decimal)(rand.NextDouble() * 50000000 + 100000);
+            c.OrderCount = rand.Next(1, 50);
+            c.LastVisit = DateTime.UtcNow.AddDays(-rand.Next(1, 60));
+            c.MembershipTier = tiers[rand.Next(0, tiers.Length)];
+            c.UpdatedAt = DateTime.UtcNow;
+        }
+
+        // ============================================================
+        // 20. SHIFTS (Sprint 1 - Sale API)
+        // ============================================================
+        var hnBranchId = Guid.Parse("30000000-0000-0000-0000-000000000001");
+        var saleUserId = Guid.Parse("20000000-0000-0000-0000-000000000004"); // sale.bac01
+
+        var shifts = new List<Shift>
+        {
+            new Shift
+            {
+                ShiftId = Guid.Parse("e0000000-0000-0000-0000-000000000001"),
+                ShiftCode = "SHIFT-20260621-001",
+                UserId = saleUserId,
+                BranchId = hnBranchId,
+                Status = "OPEN",
+                StartedAt = DateTime.UtcNow.Date.AddHours(8),
+                OpeningBalance = 5000000m,
+                ExpectedCash = null,
+                ActualCash = null,
+                Variance = null,
+                TotalRevenue = 0m,
+                TotalOrders = 0
+            },
+            new Shift
+            {
+                ShiftId = Guid.Parse("e0000000-0000-0000-0000-000000000002"),
+                ShiftCode = "SHIFT-20260620-001",
+                UserId = saleUserId,
+                BranchId = hnBranchId,
+                Status = "CLOSED",
+                StartedAt = DateTime.UtcNow.Date.AddDays(-1).AddHours(8),
+                EndedAt = DateTime.UtcNow.Date.AddDays(-1).AddHours(17),
+                OpeningBalance = 5000000m,
+                ExpectedCash = 8750000m,
+                ActualCash = 8720000m,
+                Variance = -30000m,
+                TotalRevenue = 3750000m,
+                TotalOrders = 12
+            }
+        };
+        context.Shifts.AddRange(shifts);
+
+        // ============================================================
+        // 21. LOYALTY TRANSACTIONS (Sprint 1 - Sale API)
+        // ============================================================
+        if (existingCustomers.Count > 0)
+        {
+            var loyaltyTxns = new List<LoyaltyTransaction>();
+            for (int i = 0; i < Math.Min(5, existingCustomers.Count); i++)
+            {
+                var c = existingCustomers[i];
+                loyaltyTxns.Add(new LoyaltyTransaction
+                {
+                    TransactionId = Guid.Parse("f0000000-0000-0000-0000-00000000000" + (i + 1)),
+                    CustomerId = c.CustomerId,
+                    Points = (i + 1) * 100,
+                    TransactionType = "EARN",
+                    ReferenceType = "Order",
+                    ReferenceId = Guid.NewGuid(),
+                    Description = "Tích điểm từ mua hàng",
+                    CreatedAt = DateTime.UtcNow.AddDays(-i * 3)
+                });
+            }
+            context.LoyaltyTransactions.AddRange(loyaltyTxns);
+        }
+
         await context.SaveChangesAsync();
     }
 }

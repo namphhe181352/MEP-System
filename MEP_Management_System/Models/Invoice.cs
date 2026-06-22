@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace MEP_Management_System.Models;
@@ -26,6 +26,8 @@ public partial class Invoice
     public DateTime? CreatedAt { get; set; }
 
     public virtual ICollection<InvoiceItem> InvoiceItems { get; set; } = new List<InvoiceItem>();
+    public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
+    public virtual ICollection<Receipt> Receipts { get; set; } = new List<Receipt>();
 
     public virtual Order Order { get; set; } = null!;
 

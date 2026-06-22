@@ -20,6 +20,9 @@ public partial class Order
     /// <summary>Tiền giảm giá (theo SRS Business Rules BR-75).</summary>
     public decimal? DiscountAmount { get; set; }
 
+    /// <summary>Mã khuyến mãi được áp dụng (BR-75).</summary>
+    public string? PromotionCode { get; set; }
+
     /// <summary>Tiền thuế VAT (áp dụng theo SystemConfig.VAT_RATE).</summary>
     public decimal? TaxAmount { get; set; }
 
