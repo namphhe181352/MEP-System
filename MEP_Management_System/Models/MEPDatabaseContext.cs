@@ -94,7 +94,7 @@ public partial class MEPDatabaseContext : DbContext
     public virtual DbSet<DailySummary> DailySummaries { get; set; }
 
     public virtual DbSet<ViolationReport> ViolationReports { get; set; }
-
+    public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         if (!optionsBuilder.IsConfigured)
@@ -123,7 +123,25 @@ public partial class MEPDatabaseContext : DbContext
                 .HasMaxLength(100)
                 .HasColumnName("branch_name");
         });
+        modelBuilder.Entity<SupplierPayment>(entity =>
+        {
+            entity.HasKey(e => e.PaymentId);
+            entity.ToTable("SupplierPayments");
+            entity.Property(e => e.Amount).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.PaymentMethod).HasMaxLength(50);
+            entity.Property(e => e.ReferenceCode).HasMaxLength(100);
+            entity.Property(e => e.IsDeleted).HasDefaultValue((short)0);
 
+            entity.HasOne(d => d.Supplier)
+                .WithMany()
+                .HasForeignKey(d => d.SupplierId)
+                .OnDelete(DeleteBehavior.ClientSetNull);
+
+            entity.HasOne(d => d.PurchaseOrder)
+                .WithMany()
+                .HasForeignKey(d => d.PurchaseOrderId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
         modelBuilder.Entity<BranchProduct>(entity =>
         {
             entity.HasKey(e => e.BranchProductId).HasName("branch_products_pkey");

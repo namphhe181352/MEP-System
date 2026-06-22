@@ -15,9 +15,6 @@
         public string? Status { get; set; } = "all";
     }
 
-    // ============================================================
-    // RESPONSE – MỘT DÒNG CÔNG NỢ NCC
-    // ============================================================
     public class SupplierDebtDto
     {
         public string Id { get; set; } = null!;
@@ -102,5 +99,36 @@
         public decimal Quantity { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal LineTotal { get; set; }
+    }
+
+
+    public class CreateSupplierPaymentDto
+    {
+        public Guid SupplierId { get; set; }
+        public Guid? PurchaseOrderId { get; set; }
+        public decimal Amount { get; set; }
+        public string PaymentMethod { get; set; } = null!;
+        public string? ReferenceCode { get; set; }
+        public string? Note { get; set; }
+    }
+
+    public class UpdateSupplierPaymentDto
+    {
+        public string? Note { get; set; }
+    }
+
+    public class SupplierPaymentResponseDto
+    {
+        public Guid PaymentId { get; set; }
+        public Guid SupplierId { get; set; }
+        public string SupplierName { get; set; } = null!;
+        public string? OrderCode { get; set; }
+        public decimal Amount { get; set; }
+        public string PaymentDate { get; set; } = null!;
+        public string PaymentMethod { get; set; } = null!;
+        public string? ReferenceCode { get; set; }
+        public string? Note { get; set; }
+        public string RecordedByName { get; set; } = null!;
+        public string Status { get; set; } = null!; // "ACTIVE" | "CANCELLED"
     }
 }

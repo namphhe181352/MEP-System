@@ -45,13 +45,20 @@ namespace MEP_Management_System.Services
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
+            //var token = new JwtSecurityToken(
+            //    issuer: _config["Jwt:Issuer"],
+            //    audience: _config["Jwt:Audience"],
+            //    claims: claims,
+            //    expires: DateTime.UtcNow.AddMinutes(Convert.ToDouble(_config["Jwt:ExpiryInMinutes"])),
+            //    signingCredentials: creds
+            //);
             var token = new JwtSecurityToken(
-                issuer: _config["Jwt:Issuer"],
-                audience: _config["Jwt:Audience"],
-                claims: claims,
-                expires: DateTime.UtcNow.AddMinutes(Convert.ToDouble(_config["Jwt:ExpiryInMinutes"])),
-                signingCredentials: creds
-            );
+    issuer: _config["Jwt:Issuer"],
+    audience: _config["Jwt:Audience"],
+    claims: claims,
+    expires: DateTime.UtcNow.AddDays(365), // 🔥 Sửa thành AddDays(365) để dùng 1 năm không lo hết hạn
+    signingCredentials: creds
+);
 
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
