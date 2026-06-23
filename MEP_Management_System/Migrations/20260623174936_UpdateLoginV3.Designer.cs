@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MEP_Management_System.Migrations
 {
     [DbContext(typeof(MEPDatabaseContext))]
-    [Migration("20260623065934_StaffAccountManagement")]
-    partial class StaffAccountManagement
+    [Migration("20260623174936_UpdateLoginV3")]
+    partial class UpdateLoginV3
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -2532,6 +2532,13 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid?>("DefaultBranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(150)
@@ -2589,6 +2596,8 @@ namespace MEP_Management_System.Migrations
 
                     b.HasKey("UserId")
                         .HasName("users_pkey");
+
+                    b.HasIndex("CreatedBy");
 
                     b.HasIndex(new[] { "Email" }, "users_email_unique")
                         .IsUnique();
@@ -3366,6 +3375,17 @@ namespace MEP_Management_System.Migrations
                         .HasForeignKey("CreatedBy")
                         .IsRequired()
                         .HasConstraintName("system_notifications_created_by_fkey");
+
+                    b.Navigation("CreatedByUser");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.User", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("users_created_by_fkey");
 
                     b.Navigation("CreatedByUser");
                 });

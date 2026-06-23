@@ -26,6 +26,7 @@ public partial class User
     public DateTime? SuspendedUntil { get; set; } // suspension end date
     public string? SubscriptionPlan { get; set; } // BASIC / PREMIUM / ENTERPRISE
     public Guid? CreatedBy { get; set; } // NEW: Self-referencing foreign key to track which Owner created this User
+    public Guid? DefaultBranchId { get; set; } // NEW: User's default branch
 
     public virtual User? CreatedByUser { get; set; } // Navigation property: User who created this User
 

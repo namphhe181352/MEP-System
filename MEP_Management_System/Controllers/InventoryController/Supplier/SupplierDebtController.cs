@@ -1,6 +1,7 @@
 ﻿using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -15,16 +16,12 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
     public class SupplierDebtController : ControllerBase
     {
         private readonly MEPDatabaseContext _context;
+        private readonly ICurrentBranchAccessor _currentBranch;
 
-        public SupplierDebtController(MEPDatabaseContext context)
+        public SupplierDebtController(MEPDatabaseContext context, ICurrentBranchAccessor currentBranch)
         {
             _context = context;
-        }
-
-        private Guid? GetUserBranchId()
-        {
-            var branchIdClaim = User.FindFirst("branchId")?.Value ?? User.FindFirst(ClaimTypes.GroupSid)?.Value;
-            return Guid.TryParse(branchIdClaim, out Guid branchId) ? branchId : null;
+            _currentBranch = currentBranch;
         }
 
         // ============================================================
@@ -37,12 +34,12 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         //   pageSize     – mặc định 20
         // ============================================================
         [HttpGet]
-        public async Task<IActionResult> GetSupplierDebts([FromQuery] SupplierDebtParameters @params)
+        public async Task<IActionResult> GetSupplierDebts([FromQuery] SupplierDebtParameters @params, [FromQuery] Guid? branchId = null)
         {
             try
             {
-                var branchId = GetUserBranchId();
-                if (branchId == null)
+                var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
+                if (resolvedBranchId == null)
                     return Unauthorized(new ApiResponse<object>
                     {
                         Success = false,
@@ -53,7 +50,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                 // ----- Lấy tất cả PO của chi nhánh (thông qua user thuộc branch) -----
                 // Lấy danh sách userId thuộc branch hiện tại
                 var branchUserIds = await _context.StaffAssignments
-                    .Where(sa => sa.BranchId == branchId.Value)
+                    .Where(sa => sa.BranchId == resolvedBranchId.Value)
                     .Select(sa => sa.UserId)
                     .ToListAsync();
 

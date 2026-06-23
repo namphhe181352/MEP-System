@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -6,28 +6,28 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace MEP_Management_System.Migrations
 {
     /// <inheritdoc />
-    public partial class AddCreatedByColumn : Migration
+    public partial class AddDefaultBranchIdToUser : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<Guid>(
-                name: "created_by",
+                name: "default_branch_id",
                 table: "users",
                 type: "uuid",
                 nullable: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_users_created_by",
+                name: "IX_users_default_branch_id",
                 table: "users",
-                column: "created_by");
+                column: "default_branch_id");
 
             migrationBuilder.AddForeignKey(
-                name: "users_created_by_fkey",
+                name: "users_default_branch_id_fkey",
                 table: "users",
-                column: "created_by",
-                principalTable: "users",
-                principalColumn: "user_id",
+                column: "default_branch_id",
+                principalTable: "branches",
+                principalColumn: "branch_id",
                 onDelete: ReferentialAction.SetNull);
         }
 
@@ -35,15 +35,15 @@ namespace MEP_Management_System.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropForeignKey(
-                name: "users_created_by_fkey",
+                name: "users_default_branch_id_fkey",
                 table: "users");
 
             migrationBuilder.DropIndex(
-                name: "IX_users_created_by",
+                name: "IX_users_default_branch_id",
                 table: "users");
 
             migrationBuilder.DropColumn(
-                name: "created_by",
+                name: "default_branch_id",
                 table: "users");
         }
     }

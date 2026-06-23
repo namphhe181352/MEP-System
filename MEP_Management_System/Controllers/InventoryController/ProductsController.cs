@@ -2,6 +2,7 @@ using AutoMapper;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -21,29 +22,26 @@ namespace MEP_Management_System.Controllers.InventoryController
     {
         private readonly MEPDatabaseContext _context;
         private readonly IMapper _mapper;
+        private readonly ICurrentBranchAccessor _currentBranch;
 
-        public ProductsController(MEPDatabaseContext context, IMapper mapper)
+        public ProductsController(MEPDatabaseContext context, IMapper mapper, ICurrentBranchAccessor currentBranch)
         {
             _context = context;
             _mapper = mapper;
-        }
-
-        private Guid? GetUserBranchId()
-        {
-            var branchIdClaim = User.FindFirst("branchId")?.Value ?? User.FindFirst(ClaimTypes.GroupSid)?.Value;
-            return Guid.TryParse(branchIdClaim, out Guid branchId) ? branchId : null;
+            _currentBranch = currentBranch;
         }
 
         /// <summary>
         /// 1. GET /api/products - List all products with pagination, filtering, and sorting
+        /// For Owner role: provide branchId via query param (?branchId=guid) or X-Branch-Id header
         /// </summary>
         [HttpGet]
-        public async Task<IActionResult> GetProducts([FromQuery] DTOs.InventoryDTOs.ProductParameters @params)
+        public async Task<IActionResult> GetProducts([FromQuery] DTOs.InventoryDTOs.ProductParameters @params, [FromQuery] Guid? branchId = null)
         {
             try
             {
-                var branchId = GetUserBranchId();
-                if (branchId == null)
+                var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
+                if (resolvedBranchId == null)
                 {
                     return Unauthorized(new ApiResponse<object>
                     {
@@ -69,7 +67,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Include(bp => bp.Product).ThenInclude(p => p.MediaResources)
                     .Include(bp => bp.Product).ThenInclude(p => p.ProductAttributes)
                     .Include(bp => bp.Product).ThenInclude(p => p.ProductConversionUnits)
-                    .Where(bp => bp.BranchId == branchId.Value).AsQueryable();
+                    .Where(bp => bp.BranchId == resolvedBranchId.Value).AsQueryable();
 
                 // Search by product name, code, or barcode
                 if (!string.IsNullOrWhiteSpace(@params.SearchTerm))
@@ -155,14 +153,15 @@ namespace MEP_Management_System.Controllers.InventoryController
 
         /// <summary>
         /// 2. GET /api/products/{id} - Get product details by ID
+        /// For Owner role: provide branchId via query param (?branchId=guid) or X-Branch-Id header
         /// </summary>
         [HttpGet("{id:guid}")]
-        public async Task<IActionResult> GetProductById(Guid id)
+        public async Task<IActionResult> GetProductById(Guid id, [FromQuery] Guid? branchId = null)
         {
             try
             {
-                var branchId = GetUserBranchId();
-                if (branchId == null)
+                var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
+                if (resolvedBranchId == null)
                 {
                     return Unauthorized(new ApiResponse<object>
                     {
@@ -177,7 +176,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Include(bp => bp.Product).ThenInclude(p => p.MediaResources)
                     .Include(bp => bp.Product).ThenInclude(p => p.ProductAttributes)
                     .Include(bp => bp.Product).ThenInclude(p => p.ProductConversionUnits)
-                    .FirstOrDefaultAsync(bp => bp.ProductId == id && bp.BranchId == branchId.Value);
+                    .FirstOrDefaultAsync(bp => bp.ProductId == id && bp.BranchId == resolvedBranchId.Value);
 
                 if (bp == null)
                 {
@@ -216,7 +215,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = GetUserBranchId();
+                var branchId = _currentBranch.GetBranchId();
                 if (branchId == null)
                 {
                     return Unauthorized(new ApiResponse<object>
@@ -379,7 +378,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = GetUserBranchId();
+                var branchId = _currentBranch.GetBranchId();
                 if (branchId == null)
                 {
                     return Unauthorized(new ApiResponse<object>
@@ -394,7 +393,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Include(b => b.Product).ThenInclude(p => p.MediaResources)
                     .Include(b => b.Product).ThenInclude(p => p.ProductAttributes)
                     .Include(b => b.Product).ThenInclude(p => p.ProductConversionUnits)
-                    .FirstOrDefaultAsync(b => b.ProductId == id && b.BranchId == branchId.Value);
+                    .Include(b => b.Product).FirstOrDefaultAsync(b => b.ProductId == id && b.BranchId == branchId.Value);
 
                 if (bp == null)
                 {
@@ -531,7 +530,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = GetUserBranchId();
+                var branchId = _currentBranch.GetBranchId();
                 if (branchId == null)
                 {
                     return Unauthorized(new ApiResponse<object>
@@ -543,7 +542,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 var bp = await _context.BranchProducts
-                    .FirstOrDefaultAsync(b => b.ProductId == id && b.BranchId == branchId.Value);
+                    .Include(b => b.Product).FirstOrDefaultAsync(b => b.ProductId == id && b.BranchId == branchId.Value);
 
                 if (bp == null)
                 {
@@ -556,6 +555,12 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 bp.IsActive = 0;
+                if (bp.Product != null)
+                {
+                    bp.Product.Status = 0;
+                    _context.Products.Update(bp.Product);
+                }
+                _context.BranchProducts.Update(bp);
                 await _context.SaveChangesAsync();
 
                 return Ok(new ApiResponse<object>
@@ -584,7 +589,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = GetUserBranchId();
+                var branchId = _currentBranch.GetBranchId();
                 if (branchId == null)
                 {
                     return Unauthorized(new ApiResponse<object>
@@ -596,7 +601,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 var bp = await _context.BranchProducts
-                    .FirstOrDefaultAsync(b => b.ProductId == id && b.BranchId == branchId.Value);
+ .Include(b => b.Product) // ← THÊM DÒNG NÀY
+  .FirstOrDefaultAsync(b => b.ProductId == id && b.BranchId == branchId.Value);
 
                 if (bp == null)
                 {
@@ -609,8 +615,13 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 bp.IsActive = (short?)(isActive ? 1 : 0);
+                if (bp.Product != null)
+                {
+                    bp.Product.Status = (short?)(isActive ? 1 : 0);
+                    _context.Products.Update(bp.Product);
+                }
+                _context.BranchProducts.Update(bp);
                 await _context.SaveChangesAsync();
-
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
@@ -627,7 +638,103 @@ namespace MEP_Management_System.Controllers.InventoryController
                 });
             }
         }
+        /// <summary>
+        /// 7. PATCH /api/products/toggle-status-bulk - Toggle status for many products at once
+        /// </summary>
+        [Authorize(Roles = "Owner")]
+        [HttpPatch("toggle-status-bulk")]
+        public async Task<IActionResult> ToggleStatusBulk([FromBody] BulkToggleStatusRequest request)
+        {
+            try
+            {
+                var branchId = _currentBranch.GetBranchId();
+                if (branchId == null)
+                {
+                    return Unauthorized(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "JWT token is missing or invalid",
+                        Errors = new() { "Authorization header required" }
+                    });
+                }
 
+                if (request?.Ids == null || !request.Ids.Any())
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Validation failed",
+                        Errors = new() { "ids must not be empty" }
+                    });
+                }
+
+                // Giới hạn 500 id / lần để tránh quá tải request
+                if (request.Ids.Count > 500)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Validation failed",
+                        Errors = new() { "Maximum 500 ids per request" }
+                    });
+                }
+
+                // Lấy ra các BranchProduct thuộc branch hiện tại
+                var bps = await _context.BranchProducts
+                .Include(b => b.Product)
+                .Where(b => b.BranchId == branchId.Value && request.Ids.Contains(b.ProductId))
+                .ToListAsync();
+
+                if (!bps.Any())
+                {
+                    return NotFound(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "No products found",
+                        Errors = new() { "None of the provided ids belong to the current branch" }
+                    });
+                }
+
+                var updatedIds = new List<Guid>();
+                var notFoundIds = request.Ids.Except(bps.Select(b => b.ProductId)).ToList();
+
+                foreach (var bp in bps)
+                {
+                    bp.IsActive = (short?)(request.IsActive ? 1 : 0);
+                    if (bp.Product != null)
+                    {
+                        bp.Product.Status = (short?)(request.IsActive ? 1 : 0);
+                        _context.Products.Update(bp.Product);
+                    }
+                    _context.BranchProducts.Update(bp);
+                    updatedIds.Add(bp.ProductId);
+                }
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<BulkToggleStatusResponse>
+                {
+                    Success = true,
+                    Message = $"Updated {updatedIds.Count} product(s) successfully",
+                    Data = new BulkToggleStatusResponse
+                    {
+                        UpdatedCount = updatedIds.Count,
+                        UpdatedIds = updatedIds,
+                        NotFoundIds = notFoundIds,
+                        NewStatus = request.IsActive ? "Active" : "Inactive"
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Error updating product statuses",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
         // ========== HELPER METHODS ==========
 
         /// <summary>

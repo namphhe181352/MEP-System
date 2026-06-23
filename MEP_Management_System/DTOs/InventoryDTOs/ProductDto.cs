@@ -244,5 +244,19 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public DateTime? CreatedAt { get; set; }
         public List<InwardInventoryItemResponseDto> Items { get; set; } = new();
     }
+
+    public class BulkToggleStatusRequest
+    {
+        public List<Guid> Ids { get; set; } = new();
+        public bool IsActive { get; set; }
+    }
+
+    public class BulkToggleStatusResponse
+    {
+        public int UpdatedCount { get; set; }
+        public List<Guid> UpdatedIds { get; set; } = new();
+        public List<Guid> NotFoundIds { get; set; } = new();
+        public string NewStatus { get; set; } = null!;
+    }
     #endregion
 }

@@ -7,6 +7,7 @@ using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Hubs;
 using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -22,17 +23,13 @@ public class InventoryCheckController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
     private readonly IHubContext<InventoryHub> _hub;
+    private readonly ICurrentBranchAccessor _currentBranch;
 
-    public InventoryCheckController(MEPDatabaseContext context , IHubContext<InventoryHub> hub)
+    public InventoryCheckController(MEPDatabaseContext context, IHubContext<InventoryHub> hub, ICurrentBranchAccessor currentBranch)
     {
         _context = context;
-        _hub = hub; // 3. Gán giá trị
-    }
-
-    private Guid? GetUserBranchId()
-    {
-        var branchClaim = User.FindFirst("branchId")?.Value ?? User.FindFirst(ClaimTypes.GroupSid)?.Value;
-        return Guid.TryParse(branchClaim, out var branchId) ? branchId : null;
+        _hub = hub;
+        _currentBranch = currentBranch;
     }
 
     private Guid? GetUserId()
@@ -47,12 +44,13 @@ public class InventoryCheckController : ControllerBase
         [FromQuery] DateTime? startDate,
         [FromQuery] DateTime? endDate,
         [FromQuery] int pageNumber = 1,
-        [FromQuery] int pageSize = 20)
+        [FromQuery] int pageSize = 20,
+        [FromQuery] Guid? branchId = null)
     {
         try
         {
-            var branchId = GetUserBranchId();
-            if (branchId == null)
+            var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
+            if (resolvedBranchId == null)
             {
                 return Unauthorized(new ApiResponse<object>
                 {
@@ -73,7 +71,7 @@ public class InventoryCheckController : ControllerBase
             }
 
             var query = _context.InventoryCheckTickets
-                .Where(ticket => ticket.BranchId == branchId.Value)
+                .Where(ticket => ticket.BranchId == resolvedBranchId.Value)
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(status))
@@ -157,7 +155,7 @@ public class InventoryCheckController : ControllerBase
     {
         try
         {
-            var branchId = GetUserBranchId();
+            var branchId = _currentBranch.GetBranchId();
             if (branchId == null)
             {
                 return Unauthorized(new ApiResponse<object>
@@ -216,7 +214,7 @@ public class InventoryCheckController : ControllerBase
                 });
             }
 
-            var branchId = GetUserBranchId();
+            var branchId = _currentBranch.GetBranchId();
             if (branchId == null)
             {
                 return Unauthorized(new ApiResponse<object>
@@ -315,7 +313,7 @@ public class InventoryCheckController : ControllerBase
                 });
             }
 
-            var branchId = GetUserBranchId();
+            var branchId = _currentBranch.GetBranchId();
             if (branchId == null)
             {
                 return Unauthorized(new ApiResponse<object>
@@ -397,7 +395,7 @@ public class InventoryCheckController : ControllerBase
         using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
-            var branchId = GetUserBranchId();
+            var branchId = _currentBranch.GetBranchId();
             if (branchId == null)
             {
                 return Unauthorized(new ApiResponse<object>
@@ -515,7 +513,7 @@ public class InventoryCheckController : ControllerBase
     {
         try
         {
-            var branchId = GetUserBranchId();
+            var branchId = _currentBranch.GetBranchId();
             if (branchId == null)
             {
                 return Unauthorized(new ApiResponse<object>

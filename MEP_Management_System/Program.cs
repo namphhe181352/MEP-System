@@ -21,6 +21,8 @@ builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
 // Services
 builder.Services.AddSingleton<JwtHelper>();
 builder.Services.AddScoped<INotificationSender, LogNotificationSender>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentBranchAccessor, CurrentBranchAccessor>();
 
 // OData
 var odataBuilder = new ODataConventionModelBuilder();

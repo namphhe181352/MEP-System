@@ -120,6 +120,9 @@ namespace MEP_Management_System.Controllers
             };
             _context.Branches.Add(branch);
 
+            // 🎯 Gán DefaultBranchId cho user khi tạo
+            newUser.DefaultBranchId = branch.BranchId;
+
             // Gán Owner vào Branch luôn
             _context.StaffAssignments.Add(new StaffAssignment
             {
@@ -163,7 +166,7 @@ namespace MEP_Management_System.Controllers
 
             if (isOwner)
             {
-                // Owner: lấy tất cả branches, không gán branchId vào JWT
+                // Owner: lấy tất cả branches
                 var branches = await _context.StaffAssignments
                     .Where(sa => sa.UserId == user.UserId)
                     .Include(sa => sa.Branch)
@@ -179,6 +182,12 @@ namespace MEP_Management_System.Controllers
                     .ToListAsync();
 
                 branchesForResponse = branches;
+
+                // 🎯 Dùng DefaultBranchId từ DB
+                if (user.DefaultBranchId != null)
+                {
+                    branchIdForToken = user.DefaultBranchId.ToString();
+                }
             }
             else
             {
@@ -204,11 +213,23 @@ namespace MEP_Management_System.Controllers
             responseDto.Token = jwtToken;
             responseDto.Roles = userRoles;
 
+            // Determine defaultBranchId
+            Guid? defaultBranchId = user.DefaultBranchId;
+            if (defaultBranchId == null && isOwner)
+            {
+                // If Owner has no default branch set, use first available branch
+                if (branchesForResponse is List<dynamic> branchList && branchList.Count > 0)
+                {
+                    defaultBranchId = branchList[0].BranchId;
+                }
+            }
+
             return Ok(new
             {
                 message = "Đăng nhập thành công!",
                 roles = userRoles,
                 branches = branchesForResponse, // Owner nhận list branches, Staff nhận null
+                defaultBranchId = defaultBranchId, // Add this
                 data = responseDto
             });
         }

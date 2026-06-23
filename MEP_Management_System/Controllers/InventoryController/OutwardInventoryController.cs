@@ -1,6 +1,7 @@
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -19,16 +20,12 @@ namespace MEP_Management_System.Controllers.InventoryController
     public class OutwardInventoryController : ControllerBase
     {
         private readonly MEPDatabaseContext _context;
+        private readonly ICurrentBranchAccessor _currentBranch;
 
-        public OutwardInventoryController(MEPDatabaseContext context)
+        public OutwardInventoryController(MEPDatabaseContext context, ICurrentBranchAccessor currentBranch)
         {
             _context = context;
-        }
-
-        private Guid? GetUserBranchId()
-        {
-            var branchIdClaim = User.FindFirst("branchId")?.Value ?? User.FindFirst(ClaimTypes.GroupSid)?.Value;
-            return Guid.TryParse(branchIdClaim, out Guid branchId) ? branchId : null;
+            _currentBranch = currentBranch;
         }
 
         private Guid? GetCurrentUserId()
@@ -55,12 +52,13 @@ namespace MEP_Management_System.Controllers.InventoryController
             [FromQuery] DateTime? fromDate,
             [FromQuery] DateTime? toDate,
             [FromQuery] int pageNumber = 1,
-            [FromQuery] int pageSize = 10)
+            [FromQuery] int pageSize = 10,
+            [FromQuery] Guid? branchId = null)
         {
             try
             {
-                var branchId = GetUserBranchId();
-                if (branchId == null)
+                var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
+                if (resolvedBranchId == null)
                 {
                     return Unauthorized(new ApiResponse<object> { Success = false, Message = "JWT token is missing or invalid", Errors = new() { "Authorization header required" } });
                 }
@@ -73,7 +71,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Include(st => st.StockTicketItems)
                         .ThenInclude(item => item.BranchProduct)
                             .ThenInclude(bp => bp.Product)
-                    .Where(st => st.BranchId == branchId.Value)
+                    .Where(st => st.BranchId == resolvedBranchId.Value)
                     .Where(st => st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER")
                     .AsQueryable();
 
@@ -125,7 +123,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = GetUserBranchId();
+                var branchId = _currentBranch.GetBranchId();
                 if (branchId == null)
                 {
                     return Unauthorized(new ApiResponse<object> { Success = false, Message = "JWT token is missing or invalid", Errors = new() { "Authorization header required" } });
@@ -162,7 +160,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = GetUserBranchId();
+                var branchId = _currentBranch.GetBranchId();
                 if (branchId == null)
                 {
                     return Unauthorized(new ApiResponse<object> { Success = false, Message = "JWT token is missing or invalid", Errors = new() { "Authorization header required" } });
@@ -288,7 +286,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = GetUserBranchId();
+                var branchId = _currentBranch.GetBranchId();
                 if (branchId == null)
                 {
                     return Unauthorized(new ApiResponse<object> { Success = false, Message = "JWT token is missing or invalid", Errors = new() { "Authorization header required" } });
@@ -330,7 +328,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = GetUserBranchId();
+                var branchId = _currentBranch.GetBranchId();
                 if (branchId == null)
                 {
                     return Unauthorized(new ApiResponse<object> { Success = false, Message = "JWT token is missing or invalid", Errors = new() { "Authorization header required" } });
