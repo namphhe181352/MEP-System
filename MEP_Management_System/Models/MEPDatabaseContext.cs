@@ -121,12 +121,40 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.BranchId)
                 .HasDefaultValueSql("uuid_generate_v4()")
                 .HasColumnName("branch_id");
+            entity.Property(e => e.BranchCode)
+                .HasMaxLength(50)
+                .HasColumnName("branch_code");
+            entity.Property(e => e.Phone)
+                .HasMaxLength(50)
+                .HasColumnName("phone");
+            entity.Property(e => e.City)
+                .HasMaxLength(100)
+                .HasColumnName("city");
             entity.Property(e => e.Address)
                 .HasMaxLength(255)
                 .HasColumnName("address");
             entity.Property(e => e.BranchName)
                 .HasMaxLength(100)
                 .HasColumnName("branch_name");
+            entity.Property(e => e.Type)
+                .HasMaxLength(50)
+                .HasColumnName("type");
+            entity.Property(e => e.ManagerUserId)
+                .HasColumnName("manager_user_id");
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue((short)1)
+                .HasColumnName("is_active");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("updated_at");
+
+            entity.HasOne(d => d.ManagerUser)
+                .WithMany()
+                .HasForeignKey(d => d.ManagerUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
         modelBuilder.Entity<SupplierPayment>(entity =>
         {

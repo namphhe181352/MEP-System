@@ -36,14 +36,54 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("address");
 
+                    b.Property<string>("BranchCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("branch_code");
+
                     b.Property<string>("BranchName")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("branch_name");
 
+                    b.Property<string>("City")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("city");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<short>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)1)
+                        .HasColumnName("is_active");
+
+                    b.Property<Guid?>("ManagerUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("manager_user_id");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("Type")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("type");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("updated_at");
+
                     b.HasKey("BranchId")
                         .HasName("branches_pkey");
+
+                    b.HasIndex("ManagerUserId");
 
                     b.ToTable("branches", (string)null);
                 });
@@ -574,6 +614,87 @@ namespace MEP_Management_System.Migrations
                         .HasDatabaseName("uk_inventory_check_ticket_code");
 
                     b.ToTable("inventory_check_tickets", (string)null);
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.InventoryTransferDetail", b =>
+                {
+                    b.Property<Guid>("DetailId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("detail_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.Property<Guid>("TransferId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("transfer_id");
+
+                    b.Property<int>("TransferQuantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("transfer_quantity");
+
+                    b.HasKey("DetailId")
+                        .HasName("inventory_transfer_details_pkey");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("TransferId");
+
+                    b.ToTable("inventory_transfer_details", (string)null);
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.InventoryTransferTicket", b =>
+                {
+                    b.Property<Guid>("TransferId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("transfer_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<Guid>("FromBranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("from_branch_id");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("ToBranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("to_branch_id");
+
+                    b.Property<string>("TransferCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("transfer_code");
+
+                    b.HasKey("TransferId")
+                        .HasName("inventory_transfer_tickets_pkey");
+
+                    b.HasIndex("TransferCode")
+                        .IsUnique()
+                        .HasDatabaseName("uk_inventory_transfer_code");
+
+                    b.ToTable("inventory_transfer_tickets", (string)null);
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.Invoice", b =>
@@ -2579,6 +2700,16 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("user_roles", (string)null);
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.Branch", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.User", "ManagerUser")
+                        .WithMany()
+                        .HasForeignKey("ManagerUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("ManagerUser");
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.BranchProduct", b =>
                 {
                     b.HasOne("MEP_Management_System.Models.Branch", "Branch")
@@ -2676,6 +2807,24 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Product");
 
                     b.Navigation("Ticket");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.InventoryTransferDetail", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .IsRequired();
+
+                    b.HasOne("MEP_Management_System.Models.InventoryTransferTicket", "Transfer")
+                        .WithMany("Details")
+                        .HasForeignKey("TransferId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Transfer");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.Invoice", b =>
@@ -3315,6 +3464,11 @@ namespace MEP_Management_System.Migrations
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.InventoryCheckTicket", b =>
+                {
+                    b.Navigation("Details");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.InventoryTransferTicket", b =>
                 {
                     b.Navigation("Details");
                 });
