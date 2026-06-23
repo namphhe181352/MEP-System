@@ -21,6 +21,29 @@ public class ProductsController : ControllerBase
         _context = context;
     }
 
+
+    // GET /api/pos/products
+    [HttpGet]
+    public async Task<ActionResult<List<ProductPriceDto>>> GetProducts()
+    {
+        var branchId = Guid.Parse(User.FindFirst("branchId")?.Value ?? throw new Exception("branchId not found"));
+        var products = await _context.BranchProducts
+            .Include(b => b.Product)
+            .Where(b => b.BranchId == branchId && b.IsActive == 1)
+            .Take(100)
+            .ToListAsync();
+
+        return Ok(products.Select(b => new ProductPriceDto
+        {
+            ProductId = b.ProductId,
+            ProductName = b.Product?.ProductName,
+            ProductCode = b.Product?.ProductCode,
+            Barcode = b.Product?.Barcode,
+            RetailPrice = b.SellPrice,
+            FloorPrice = b.CostPrice,
+            Unit = b.Product?.BaseUnit
+        }).ToList());
+    }
     // GET /api/pos/products/{productId}/price
     [HttpGet("{productId:guid}/price")]
     public async Task<ActionResult<ProductPriceDto>> GetPrice(Guid productId)

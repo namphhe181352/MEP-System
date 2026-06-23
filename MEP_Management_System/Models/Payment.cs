@@ -4,7 +4,7 @@ public partial class Payment
 {
     public Guid PaymentId { get; set; }
 
-    public Guid InvoiceId { get; set; }
+    public Guid? InvoiceId { get; set; }
 
     /// <summary>Cash | Transfer | Combined | Debt</summary>
     public string Method { get; set; } = null!;

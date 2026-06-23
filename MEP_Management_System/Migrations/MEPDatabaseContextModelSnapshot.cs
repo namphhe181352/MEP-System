@@ -884,7 +884,7 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-                    b.Property<Guid>("InvoiceId")
+                    b.Property<Guid?>("InvoiceId")
                         .HasColumnType("uuid")
                         .HasColumnName("invoice_id");
 
@@ -2034,7 +2034,7 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("decimal(18, 2)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<short>("IsDeleted")
                         .ValueGeneratedOnAdd()
@@ -2045,7 +2045,7 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("text");
 
                     b.Property<DateTime>("PaymentDate")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("PaymentMethod")
                         .IsRequired()
@@ -2696,8 +2696,6 @@ namespace MEP_Management_System.Migrations
                     b.HasOne("MEP_Management_System.Models.Invoice", "Invoice")
                         .WithMany("Payments")
                         .HasForeignKey("InvoiceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
                         .HasConstraintName("payments_invoice_id_fkey");
 
                     b.Navigation("Invoice");
