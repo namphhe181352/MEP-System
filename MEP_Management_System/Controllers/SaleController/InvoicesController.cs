@@ -87,30 +87,49 @@ public class InvoicesController : ControllerBase
         var branchId = GetBranchId();
         var userId = GetUserId();
 
-        var todayCount = await _context.Orders
-            .Where(o => o.BranchId == branchId && o.CreatedAt.HasValue && o.CreatedAt.Value.Date == DateTime.UtcNow.Date)
-            .CountAsync();
+        var now = DateTime.UtcNow;
+        var todayPrefixInv = $"INV-{now.Year}-";
+        var todayPrefixOrder = $"POS-{now:yyyyMMdd}-";
+
+        var existingInvCodes = await _context.Invoices
+            .Where(i => i.InvoiceCode != null && i.InvoiceCode.StartsWith(todayPrefixInv))
+            .Select(i => i.InvoiceCode)
+            .ToListAsync();
+        var existingOrderCodes = await _context.Orders
+            .Where(o => o.OrderCode != null && o.OrderCode.StartsWith(todayPrefixOrder))
+            .Select(o => o.OrderCode)
+            .ToListAsync();
+
+        int GetSeq(string prefix, string code) =>
+            int.TryParse(code.Substring(prefix.Length), out var n) ? n : 0;
+
+        var maxInvSeq = existingInvCodes.Count == 0 ? 0 : existingInvCodes.Max(c => GetSeq(todayPrefixInv, c));
+        var maxOrderSeq = existingOrderCodes.Count == 0 ? 0 : existingOrderCodes.Max(c => GetSeq(todayPrefixOrder, c));
+        var nextSeq = Math.Max(maxInvSeq, maxOrderSeq) + 1;
+
+        var invCode = CodeGenerator.GenerateInvoiceCode(nextSeq, now);
+        var orderCode = CodeGenerator.GenerateOrderCode(nextSeq, now);
 
         var order = new Models.Order
         {
             OrderId = Guid.NewGuid(),
-            OrderCode = CodeGenerator.GenerateOrderCode(todayCount + 1),
+            OrderCode = orderCode,
             BranchId = branchId,
             CustomerId = request.CustomerId,
             UserId = userId,
             Status = "Draft",
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = now,
             Note = request.Note
         };
 
         var invoice = new Models.Invoice
         {
             InvoiceId = Guid.NewGuid(),
-            InvoiceCode = CodeGenerator.GenerateInvoiceCode(todayCount + 1),
+            InvoiceCode = invCode,
             OrderId = order.OrderId,
             UserId = userId,
             Status = "Draft",
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = now,
             TotalAmount = 0
         };
 

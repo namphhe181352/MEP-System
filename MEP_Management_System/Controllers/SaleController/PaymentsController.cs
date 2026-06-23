@@ -168,7 +168,7 @@ public class PaymentsController : ControllerBase
         var payment = new Payment
         {
             PaymentId = Guid.NewGuid(),
-            InvoiceId = Guid.Empty,
+            InvoiceId = null,
             Method = PaymentMethod.Debt,
             Amount = request.Amount,
             Status = "Confirmed",
