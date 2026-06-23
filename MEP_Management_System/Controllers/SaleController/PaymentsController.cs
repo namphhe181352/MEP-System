@@ -8,22 +8,24 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MEP_Management_System.Models;
 using MEP_Management_System.DTOs.SaleDTOs;
+using MEP_Management_System.Services;
 
 namespace MEP_Management_System.Controllers.SaleController;
 
 [ApiController]
 [Route("api/pos")]
 [Authorize(Roles = "SalesStaff,Owner")]
-[Tags("Quản lý bán hàng (Sale)")]
 public class PaymentsController : ControllerBase
 {
     private readonly Models.MEPDatabaseContext _context;
     private readonly IMapper _mapper;
+    private readonly MepNotificationService _notifications;
 
-    public PaymentsController(Models.MEPDatabaseContext context, IMapper mapper)
+    public PaymentsController(Models.MEPDatabaseContext context, IMapper mapper, MepNotificationService notifications)
     {
         _context = context;
         _mapper = mapper;
+        _notifications = notifications;
     }
 
     private Guid GetBranchId() =>
@@ -38,6 +40,7 @@ public class PaymentsController : ControllerBase
         var branchId = GetBranchId();
         var invoice = await _context.Invoices
             .Include(i => i.Order).ThenInclude(o => o.Customer)
+            .Include(i => i.InvoiceItems)
             .FirstOrDefaultAsync(i => i.InvoiceId == invoiceId && i.Order.BranchId == branchId);
 
         if (invoice == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Invoice not found"));
@@ -143,6 +146,7 @@ public class PaymentsController : ControllerBase
     [HttpPost("payments/{paymentId:guid}/confirm-transfer")]
     public async Task<ActionResult<PaymentDto>> ConfirmTransfer(Guid paymentId)
     {
+        var branchId = GetBranchId();
         var payment = await _context.Payments.FindAsync(paymentId);
         if (payment == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Payment not found"));
         if (payment.Method != PaymentMethod.Transfer) return BadRequest(ApiErrorResponse.Create("MSG-76", "Only transfer payments need confirmation"));
@@ -151,6 +155,9 @@ public class PaymentsController : ControllerBase
         payment.Status = "Confirmed";
         payment.PaidAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
+
+        // Real-time: notify branch staff that transfer was confirmed
+        _ = _notifications.NotifyBranchPaymentConfirmed(branchId, paymentId);
 
         return Ok(_mapper.Map<PaymentDto>(payment));
     }

@@ -21,11 +21,13 @@ public class InvoicesController : ControllerBase
 {
     private readonly Models.MEPDatabaseContext _context;
     private readonly IMapper _mapper;
+    private readonly MepNotificationService _notifications;
 
-    public InvoicesController(Models.MEPDatabaseContext context, IMapper mapper)
+    public InvoicesController(Models.MEPDatabaseContext context, IMapper mapper, MepNotificationService notifications)
     {
         _context = context;
         _mapper = mapper;
+        _notifications = notifications;
     }
 
     private Guid GetBranchId() =>
@@ -141,6 +143,18 @@ public class InvoicesController : ControllerBase
         var dto = _mapper.Map<InvoiceDto>(invoice);
         dto.OrderId = order.OrderId;
         dto.UserId = userId;
+
+        // Real-time: notify branch staff that a new invoice was created
+        _ = _notifications.NotifyBranchInvoiceCreated(branchId, new
+        {
+            invoice.InvoiceId,
+            invoice.InvoiceCode,
+            invoice.Status,
+            invoice.TotalAmount,
+            invoice.CreatedAt,
+            UserId = userId
+        });
+
         return CreatedAtAction(nameof(GetInvoice), new { invoiceId = invoice.InvoiceId }, dto);
     }
 
@@ -185,7 +199,8 @@ public class InvoicesController : ControllerBase
         var unitPrice = request.UnitPrice ?? bp.SellPrice;
         if (unitPrice < bp.CostPrice) return BadRequest(ApiErrorResponse.Create("MSG-63", "Price override below floor price"));
 
-        var existingItem = invoice.InvoiceItems.FirstOrDefault(ii => ii.BranchProductId == bp.BranchProductId && ii.SellPrice == unitPrice);
+        var existingItem = invoice.InvoiceItems
+            .FirstOrDefault(ii => ii.BranchProductId == bp.BranchProductId && ii.SellPrice == unitPrice);
         if (existingItem != null)
         {
             existingItem.Quantity += request.Quantity;
@@ -201,8 +216,10 @@ public class InvoicesController : ControllerBase
                 SellPrice = unitPrice
             };
             _context.InvoiceItems.Add(item);
+            invoice.InvoiceItems.Add(item);
         }
 
+        await _context.SaveChangesAsync();
         invoice.TotalAmount = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
         await _context.SaveChangesAsync();
 
@@ -272,7 +289,7 @@ public class InvoicesController : ControllerBase
     {
         var branchId = GetBranchId();
         var invoice = await _context.Invoices
-            .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct)
+            .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct).ThenInclude(bp => bp.Product)
             .Include(i => i.Order).ThenInclude(o => o.Customer)
             .Include(i => i.Order).ThenInclude(o => o.User)
             .FirstOrDefaultAsync(i => i.InvoiceId == invoiceId && i.Order.BranchId == branchId);
@@ -312,6 +329,21 @@ public class InvoicesController : ControllerBase
 
         var dto = _mapper.Map<InvoiceDto>(invoice);
         dto.OrderId = invoice.OrderId;
+
+        // Real-time: query items fresh (not from change-tracked entity) for notification payload
+        var stockUpdates = await _context.InvoiceItems
+            .Include(ii => ii.BranchProduct).ThenInclude(bp => bp.Product)
+            .Where(ii => ii.InvoiceId == invoiceId)
+            .Select(ii => new
+            {
+                ii.BranchProductId,
+                ProductId = ii.BranchProduct.ProductId,
+                ProductName = ii.BranchProduct.Product.ProductName,
+                NewAvailableStock = ii.BranchProduct.AvailableStock
+            } as object)
+            .ToListAsync();
+        _ = _notifications.NotifyBranchInvoiceFinalized(branchId, invoice.InvoiceId, stockUpdates);
+
         return Ok(dto);
     }
 

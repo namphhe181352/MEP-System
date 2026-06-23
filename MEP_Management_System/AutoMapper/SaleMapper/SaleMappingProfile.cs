@@ -20,6 +20,8 @@ public class SaleMappingProfile : Profile
             .ForMember(d => d.Items, o => o.MapFrom(s => s.InvoiceItems));
 
         CreateMap<InvoiceItem, DTOs.SaleDTOs.InvoiceItemDto>()
+            .ForMember(d => d.ProductId, o => o.MapFrom(s => s.BranchProduct != null ? s.BranchProduct.ProductId : Guid.Empty))
+            .ForMember(d => d.UnitPrice, o => o.MapFrom(s => s.SellPrice))
             .ForMember(d => d.LineTotal, o => o.MapFrom(s => s.Quantity * s.SellPrice))
             .ForMember(d => d.ProductName, o => o.MapFrom(s => s.BranchProduct != null && s.BranchProduct.Product != null ? s.BranchProduct.Product.ProductName : null))
             .ForMember(d => d.ProductCode, o => o.MapFrom(s => s.BranchProduct != null && s.BranchProduct.Product != null ? s.BranchProduct.Product.ProductCode : null))
