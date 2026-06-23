@@ -3,12 +3,12 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using AutoMapper;
+using MEP_Management_System.DTOs.SaleDTOs;
+using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using MEP_Management_System.Models;
-using MEP_Management_System.DTOs.SaleDTOs;
-using MEP_Management_System.Services;
 
 namespace MEP_Management_System.Controllers.SaleController;
 
@@ -19,11 +19,13 @@ public class ShiftsController : ControllerBase
 {
     private readonly Models.MEPDatabaseContext _context;
     private readonly IMapper _mapper;
+    private readonly MepNotificationService _notifications;
 
-    public ShiftsController(Models.MEPDatabaseContext context, IMapper mapper)
+    public ShiftsController(Models.MEPDatabaseContext context, IMapper mapper, MepNotificationService notifications)
     {
         _context = context;
         _mapper = mapper;
+        _notifications = notifications;
     }
 
     private Guid GetBranchId() =>
@@ -60,7 +62,19 @@ public class ShiftsController : ControllerBase
         _context.Shifts.Add(shift);
         await _context.SaveChangesAsync();
 
-        return Ok(_mapper.Map<ShiftDto>(shift));
+        var dto = _mapper.Map<ShiftDto>(shift);
+
+        // Real-time: notify branch staff that a new shift was opened
+        _ = _notifications.NotifyBranchShiftOpened(branchId, new
+        {
+            shift.ShiftId,
+            shift.ShiftCode,
+            shift.StartedAt,
+            shift.OpeningBalance,
+            UserId = userId
+        });
+
+        return Ok(dto);
     }
 
     // POST /api/pos/shifts/{shiftId}/end
@@ -92,7 +106,23 @@ public class ShiftsController : ControllerBase
         shift.Status = "CLOSED";
 
         await _context.SaveChangesAsync();
-        return Ok(_mapper.Map<ShiftDto>(shift));
+
+        var dto = _mapper.Map<ShiftDto>(shift);
+
+        // Real-time: notify branch staff that shift was closed with summary
+        _ = _notifications.NotifyBranchShiftClosed(branchId, shift.ShiftId.ToString(), new
+        {
+            shift.ShiftId,
+            shift.ShiftCode,
+            shift.TotalRevenue,
+            shift.TotalOrders,
+            shift.Variance,
+            shift.ExpectedCash,
+            shift.ActualCash,
+            shift.EndedAt
+        });
+
+        return Ok(dto);
     }
 
     // GET /api/pos/shifts/{shiftId}/summary

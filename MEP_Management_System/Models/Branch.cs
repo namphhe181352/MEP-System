@@ -9,7 +9,25 @@ public partial class Branch
 
     public string BranchName { get; set; } = null!;
 
+    public string? BranchCode { get; set; }
+
+    public string? Phone { get; set; }
+
+    public string? City { get; set; }
+
     public string? Address { get; set; }
+
+    public string? Type { get; set; }
+
+    public Guid? ManagerUserId { get; set; }
+
+    public short IsActive { get; set; }
+
+    public DateTime? CreatedAt { get; set; }
+
+    public DateTime? UpdatedAt { get; set; }
+
+    public virtual User? ManagerUser { get; set; }
 
     public virtual ICollection<BranchProduct> BranchProducts { get; set; } = new List<BranchProduct>();
 

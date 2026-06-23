@@ -4,11 +4,13 @@ using MEP_Management_System.Services.InventoryService;
 using MEP_Management_System.Hubs;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.OData;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OData.ModelBuilder;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using System.Threading.Tasks;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -63,11 +65,28 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
         ClockSkew = TimeSpan.Zero
     };
+    // Allow SignalR clients to send JWT via ?access_token= query string
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken) &&
+                (path.StartsWithSegments("/r/inventoryHub") ||
+                 path.StartsWithSegments("/r/mepHub") ||
+                 path.StartsWithSegments("/r/posHub")))
+            {
+                context.Token = accessToken;
+            }
+            return Task.CompletedTask;
+        }
+    };
 });
 
 builder.Services.AddScoped<IInventoryReportService, InventoryReportService>();
+builder.Services.AddScoped<MepNotificationService>();
 builder.Services.AddSignalR();
-builder.Services.AddAuthorization();
 
 builder.Services.AddCors(options =>
 {
@@ -145,5 +164,7 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<InventoryHub>("/r/inventoryHub");
+app.MapHub<MepHub>("/r/mepHub");
+app.MapHub<PosHub>("/r/posHub");
 
 app.Run();

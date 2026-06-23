@@ -15,6 +15,7 @@ namespace MEP_Management_System.Controllers.InventoryController
     [Authorize]
     [ApiController]
     [Route("api/[controller]")]
+    [Tags("Xuất nhập kho (Inventory)")]
     public class OutwardInventoryController : ControllerBase
     {
         private readonly MEPDatabaseContext _context;

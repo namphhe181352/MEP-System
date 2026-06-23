@@ -5,7 +5,9 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
+using MEP_Management_System.Hubs;
 using MEP_Management_System.Models;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -15,13 +17,16 @@ namespace MEP_Management_System.Controllers.InventoryController;
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]
+[Tags("Quản lý Kho (Inventory)")]
 public class InventoryCheckController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
+    private readonly IHubContext<InventoryHub> _hub;
 
-    public InventoryCheckController(MEPDatabaseContext context)
+    public InventoryCheckController(MEPDatabaseContext context , IHubContext<InventoryHub> hub)
     {
         _context = context;
+        _hub = hub; // 3. Gán giá trị
     }
 
     private Guid? GetUserBranchId()

@@ -10,6 +10,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
     [Authorize]
     [ApiController]
     [Route("api/suppliers")]
+    [Tags("Quản lý nhà cung cấp (Inventory)")]
     public class SupplierController : ControllerBase
     {
         private readonly MEPDatabaseContext _context;

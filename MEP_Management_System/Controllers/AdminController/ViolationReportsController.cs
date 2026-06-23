@@ -11,6 +11,7 @@ namespace MEP_Management_System.Controllers;
 [ApiController]
 [Route("api/admin/violation-reports")]
 [Authorize(Roles = "Admin")]
+[Tags("Admin (Admin)")]
 public class ViolationReportsController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;

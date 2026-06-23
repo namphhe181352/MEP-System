@@ -10,6 +10,7 @@ namespace MEP_Management_System.Controllers;
 [ApiController]
 [Route("api/admin/community-categories")]
 [Authorize(Roles = "Admin")]
+[Tags("Admin (Admin)")]
 public class CommunityCategoriesController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
