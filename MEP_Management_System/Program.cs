@@ -1,6 +1,7 @@
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
 using MEP_Management_System.Services.InventoryService;
+using MEP_Management_System.Hubs;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.OData;
 using Microsoft.EntityFrameworkCore;
@@ -62,6 +63,7 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddScoped<IInventoryReportService, InventoryReportService>();
+builder.Services.AddSignalR();
 builder.Services.AddAuthorization();
 
 builder.Services.AddCors(options =>
@@ -139,5 +141,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<InventoryHub>("/r/inventoryHub");
 
 app.Run();

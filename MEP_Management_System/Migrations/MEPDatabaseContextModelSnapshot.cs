@@ -491,6 +491,91 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("daily_summaries", (string)null);
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.InventoryCheckDetail", b =>
+                {
+                    b.Property<Guid>("DetailId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("detail_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<int>("ActualQuantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("actual_quantity");
+
+                    b.Property<int>("Discrepancy")
+                        .HasColumnType("integer")
+                        .HasColumnName("discrepancy");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.Property<int>("SystemQuantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("system_quantity");
+
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_id");
+
+                    b.HasKey("DetailId")
+                        .HasName("inventory_check_details_pkey");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("TicketId");
+
+                    b.ToTable("inventory_check_details", (string)null);
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.InventoryCheckTicket", b =>
+                {
+                    b.Property<Guid>("TicketId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("TicketCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("ticket_code");
+
+                    b.HasKey("TicketId")
+                        .HasName("inventory_check_tickets_pkey");
+
+                    b.HasIndex("TicketCode")
+                        .IsUnique()
+                        .HasDatabaseName("uk_inventory_check_ticket_code");
+
+                    b.ToTable("inventory_check_tickets", (string)null);
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.Invoice", b =>
                 {
                     b.Property<Guid>("InvoiceId")
@@ -2575,6 +2660,24 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Branch");
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.InventoryCheckDetail", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .IsRequired();
+
+                    b.HasOne("MEP_Management_System.Models.InventoryCheckTicket", "Ticket")
+                        .WithMany("Details")
+                        .HasForeignKey("TicketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Ticket");
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.Invoice", b =>
                 {
                     b.HasOne("MEP_Management_System.Models.Order", "Order")
@@ -3209,6 +3312,11 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("LoyaltyTransactions");
 
                     b.Navigation("Orders");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.InventoryCheckTicket", b =>
+                {
+                    b.Navigation("Details");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.Invoice", b =>
