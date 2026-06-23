@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace MEP_Management_System.Models;
@@ -51,4 +51,5 @@ public partial class User
     public virtual ICollection<SystemNotification> SystemNotifications { get; set; } = new List<SystemNotification>();
 
     public virtual ICollection<StoreApproval> StoreApprovals { get; set; } = new List<StoreApproval>();
+    public virtual ICollection<Shift> Shifts { get; set; } = new List<Shift>();
 }
