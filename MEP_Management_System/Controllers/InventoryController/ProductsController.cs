@@ -16,6 +16,7 @@ namespace MEP_Management_System.Controllers.InventoryController
     [Authorize]
     [ApiController]
     [Route("api/[controller]")]
+    [Tags("Quản lý Kho (Inventory)")]
     public class ProductsController : ControllerBase
     {
         private readonly MEPDatabaseContext _context;

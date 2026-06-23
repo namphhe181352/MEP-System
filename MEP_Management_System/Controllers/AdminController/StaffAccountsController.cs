@@ -9,6 +9,7 @@ namespace MEP_Management_System.Controllers;
 [Authorize(Roles = "Admin")]
 [ApiController]
 [Route("api/admin/staff")]
+[Tags("Admin (Admin)")]
 public class StaffAccountsController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;

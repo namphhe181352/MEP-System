@@ -10,6 +10,7 @@ namespace MEP_Management_System.Controllers;
 [Authorize(Roles = "Admin")]
 [ApiController]
 [Route("api/admin/dashboard")]
+[Tags("Admin (Admin)")]
 public class AdminDashboardController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;

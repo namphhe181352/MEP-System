@@ -10,6 +10,7 @@ namespace MEP_Management_System.Controllers;
 [ApiController]
 [Route("api/admin/posts")]
 [Authorize(Roles = "Admin")]
+[Tags("Admin (Admin)")]
 public class PostsModerationController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;

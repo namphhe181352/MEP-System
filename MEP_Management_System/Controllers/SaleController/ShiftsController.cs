@@ -15,6 +15,7 @@ namespace MEP_Management_System.Controllers.SaleController;
 [ApiController]
 [Route("api/pos/shifts")]
 [Authorize(Roles = "SalesStaff,Owner")]
+[Tags("Quản lý bán hàng (Sale)")]
 public class ShiftsController : ControllerBase
 {
     private readonly Models.MEPDatabaseContext _context;

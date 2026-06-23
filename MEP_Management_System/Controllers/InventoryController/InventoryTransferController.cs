@@ -16,6 +16,7 @@ namespace MEP_Management_System.Controllers.InventoryController;
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]
+[Tags("Quản lý Kho (Inventory)")]
 public class InventoryTransferController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
@@ -130,7 +131,12 @@ public class InventoryTransferController : ControllerBase
                 bp.AvailableStock = bp.AvailableStock - detail.TransferQuantity;
 
                 // Send SignalR update for FromBranch
-                await _hub.Clients.All.SendAsync("UpdateStock", new { BranchId = transfer.FromBranchId, ProductId = detail.ProductId, ActualStock = bp.ActualStock });
+                await _hub.Clients.Group($"Branch_{transfer.FromBranchId}").SendAsync("UpdateStock", new
+                {
+                    BranchId = transfer.FromBranchId,
+                    ProductId = detail.ProductId,
+                    ActualStock = bp.ActualStock
+                });
             }
 
             transfer.Status = InventoryTransferStatus.Shipping;
@@ -190,7 +196,12 @@ public class InventoryTransferController : ControllerBase
 
                 // SignalR update for ToBranch
                 var updated = toBranchProducts[detail.ProductId];
-                await _hub.Clients.All.SendAsync("UpdateStock", new { BranchId = transfer.ToBranchId, ProductId = detail.ProductId, ActualStock = updated.ActualStock });
+                await _hub.Clients.Group($"Branch_{transfer.ToBranchId}").SendAsync("UpdateStock", new
+                {
+                    BranchId = transfer.ToBranchId,
+                    ProductId = detail.ProductId,
+                    ActualStock = updated.ActualStock
+                });
             }
 
             transfer.Status = InventoryTransferStatus.Completed;

@@ -14,6 +14,7 @@ namespace MEP_Management_System.Controllers.SaleController;
 [ApiController]
 [Route("api/pos")]
 [Authorize(Roles = "SalesStaff,Owner")]
+[Tags("Quản lý bán hàng (Sale)")]
 public class PaymentsController : ControllerBase
 {
     private readonly Models.MEPDatabaseContext _context;
