@@ -13,6 +13,7 @@ namespace MEP_Management_System.Controllers.SaleController;
 [ApiController]
 [Route("api/pos/customers/{customerId:guid}/points")]
 [Authorize(Roles = "SalesStaff,Owner")]
+[Tags("Quản lý bán hàng (Sale)")]
 public class LoyaltyController : ControllerBase
 {
     private readonly Models.MEPDatabaseContext _context;

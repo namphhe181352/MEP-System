@@ -19,6 +19,11 @@ public partial class MEPDatabaseContext : DbContext
 
     public virtual DbSet<BranchProduct> BranchProducts { get; set; }
 
+    public virtual DbSet<InventoryCheckTicket> InventoryCheckTickets { get; set; }
+    public virtual DbSet<InventoryCheckDetail> InventoryCheckDetails { get; set; }
+    public virtual DbSet<InventoryTransferTicket> InventoryTransferTickets { get; set; }
+    public virtual DbSet<InventoryTransferDetail> InventoryTransferDetails { get; set; }
+
     public virtual DbSet<Comment> Comments { get; set; }
 
     public virtual DbSet<CommunityCategory> CommunityCategories { get; set; }
@@ -116,12 +121,40 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.BranchId)
                 .HasDefaultValueSql("uuid_generate_v4()")
                 .HasColumnName("branch_id");
+            entity.Property(e => e.BranchCode)
+                .HasMaxLength(50)
+                .HasColumnName("branch_code");
+            entity.Property(e => e.Phone)
+                .HasMaxLength(50)
+                .HasColumnName("phone");
+            entity.Property(e => e.City)
+                .HasMaxLength(100)
+                .HasColumnName("city");
             entity.Property(e => e.Address)
                 .HasMaxLength(255)
                 .HasColumnName("address");
             entity.Property(e => e.BranchName)
                 .HasMaxLength(100)
                 .HasColumnName("branch_name");
+            entity.Property(e => e.Type)
+                .HasMaxLength(50)
+                .HasColumnName("type");
+            entity.Property(e => e.ManagerUserId)
+                .HasColumnName("manager_user_id");
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue((short)1)
+                .HasColumnName("is_active");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("updated_at");
+
+            entity.HasOne(d => d.ManagerUser)
+                .WithMany()
+                .HasForeignKey(d => d.ManagerUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
         modelBuilder.Entity<SupplierPayment>(entity =>
         {
@@ -203,6 +236,103 @@ public partial class MEPDatabaseContext : DbContext
                 .HasForeignKey(d => d.ProductId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("branch_products_product_id_fkey");
+        });
+
+        modelBuilder.Entity<InventoryCheckTicket>(entity =>
+        {
+            entity.HasKey(e => e.TicketId).HasName("inventory_check_tickets_pkey");
+            entity.ToTable("inventory_check_tickets");
+
+            entity.Property(e => e.TicketId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("ticket_id");
+            entity.Property(e => e.TicketCode)
+                .IsRequired()
+                .HasMaxLength(50)
+                .HasColumnName("ticket_code");
+            // Ensure ticket code is unique
+            entity.HasIndex(e => e.TicketCode).IsUnique().HasDatabaseName("uk_inventory_check_ticket_code");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasColumnName("status");
+            entity.Property(e => e.BranchId)
+                .HasColumnName("branch_id");
+            entity.Property(e => e.CreatedByUserId)
+                .HasColumnName("created_by_user_id");
+            entity.Property(e => e.Notes)
+                .HasMaxLength(1000)
+                .HasColumnName("notes");
+
+            entity.HasMany(e => e.Details)
+                .WithOne(d => d.Ticket)
+                .HasForeignKey(d => d.TicketId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InventoryTransferTicket>(entity =>
+        {
+            entity.HasKey(e => e.TransferId).HasName("inventory_transfer_tickets_pkey");
+            entity.ToTable("inventory_transfer_tickets");
+
+            entity.Property(e => e.TransferId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("transfer_id");
+            entity.Property(e => e.TransferCode)
+                .IsRequired()
+                .HasMaxLength(50)
+                .HasColumnName("transfer_code");
+            // unique code
+            entity.HasIndex(e => e.TransferCode).IsUnique().HasDatabaseName("uk_inventory_transfer_code");
+            entity.Property(e => e.FromBranchId).HasColumnName("from_branch_id");
+            entity.Property(e => e.ToBranchId).HasColumnName("to_branch_id");
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(50).HasColumnName("status");
+            entity.Property(e => e.CreatedByUserId).HasColumnName("created_by_user_id");
+            entity.Property(e => e.CreatedAt).HasColumnType("timestamp without time zone").HasColumnName("created_at");
+            entity.Property(e => e.Notes).HasMaxLength(1000).HasColumnName("notes");
+
+            entity.HasMany(e => e.Details).WithOne(d => d.Transfer).HasForeignKey(d => d.TransferId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InventoryTransferDetail>(entity =>
+        {
+            entity.HasKey(e => e.DetailId).HasName("inventory_transfer_details_pkey");
+            entity.ToTable("inventory_transfer_details");
+
+            entity.Property(e => e.DetailId).HasDefaultValueSql("uuid_generate_v4()").HasColumnName("detail_id");
+            entity.Property(e => e.TransferId).HasColumnName("transfer_id");
+            entity.Property(e => e.ProductId).HasColumnName("product_id");
+            entity.Property(e => e.TransferQuantity).HasColumnName("transfer_quantity");
+
+            entity.HasOne(d => d.Product).WithMany().HasForeignKey(d => d.ProductId).OnDelete(DeleteBehavior.ClientSetNull);
+        });
+
+        modelBuilder.Entity<InventoryCheckDetail>(entity =>
+        {
+            entity.HasKey(e => e.DetailId).HasName("inventory_check_details_pkey");
+            entity.ToTable("inventory_check_details");
+
+            entity.Property(e => e.DetailId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("detail_id");
+            entity.Property(e => e.TicketId)
+                .HasColumnName("ticket_id");
+            entity.Property(e => e.ProductId)
+                .HasColumnName("product_id");
+            entity.Property(e => e.SystemQuantity)
+                .HasColumnName("system_quantity");
+            entity.Property(e => e.ActualQuantity)
+                .HasColumnName("actual_quantity");
+            entity.Property(e => e.Discrepancy)
+                .HasColumnName("discrepancy");
+
+            entity.HasOne(d => d.Product)
+                .WithMany()
+                .HasForeignKey(d => d.ProductId)
+                .OnDelete(DeleteBehavior.ClientSetNull);
         });
 
         modelBuilder.Entity<Comment>(entity =>
@@ -352,7 +482,7 @@ public partial class MEPDatabaseContext : DbContext
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("created_at");
 
-                        entity.HasIndex(e => e.PhoneNumber, "customers_phone_unique").IsUnique();
+            entity.HasIndex(e => e.PhoneNumber, "customers_phone_unique").IsUnique();
 
             entity.Property(e => e.Group)
                 .HasMaxLength(50)

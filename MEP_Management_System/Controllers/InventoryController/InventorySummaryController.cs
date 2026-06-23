@@ -9,6 +9,7 @@ namespace MEP_Management_System.Controllers.InventoryController
     [Authorize] // Bảo mật bằng JWT token như mục 9 quy định
     [ApiController]
     [Route("api/inventory")]
+    [Tags("Quản lý Kho (Inventory)")]
     public class InventorySummaryController : ControllerBase
     {
         private readonly IInventoryReportService _reportService;

@@ -16,6 +16,7 @@ namespace MEP_Management_System.Controllers.SaleController;
 [ApiController]
 [Route("api/pos/invoices/{invoiceId:guid}")]
 [Authorize(Roles = "SalesStaff,Owner")]
+[Tags("Quản lý bán hàng (Sale)")]
 public class PrintingController : ControllerBase
 {
     private readonly Models.MEPDatabaseContext _context;

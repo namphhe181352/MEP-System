@@ -13,6 +13,7 @@ namespace MEP_Management_System.Controllers.AdminController;
 [ApiController]
 [Route("api/admin/notifications")]
 [Authorize(Roles = "Admin")]
+[Tags("Admin (Admin)")]
 public class SystemNotificationsController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;

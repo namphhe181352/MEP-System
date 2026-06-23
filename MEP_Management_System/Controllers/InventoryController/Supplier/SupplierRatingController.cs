@@ -11,6 +11,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
     [Authorize]
     [ApiController]
     [Route("api/supplierratings")]
+    [Tags("Quản lý nhà cung cấp (Inventory)")]
     public class SupplierRatingController : ControllerBase
     {
         private readonly MEPDatabaseContext _context;
