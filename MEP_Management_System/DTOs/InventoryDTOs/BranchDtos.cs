@@ -28,7 +28,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? City { get; set; }
         public string? Address { get; set; }
         public string? Type { get; set; }
-        public Guid? ManagerUserId { get; set; }
+        // bỏ ManagerUserId — lấy từ JWT luôn
     }
 
     public class UpdateOwnerBranchRequest

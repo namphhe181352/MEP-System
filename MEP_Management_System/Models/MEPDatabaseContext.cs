@@ -82,6 +82,8 @@ public partial class MEPDatabaseContext : DbContext
 
     public virtual DbSet<User> Users { get; set; }
 
+    public virtual DbSet<UserPermission> UserPermissions { get; set; }
+
     public virtual DbSet<Payment> Payments { get; set; }
 
     public virtual DbSet<Promotion> Promotions { get; set; }
@@ -742,6 +744,36 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.PermissionName)
                 .HasMaxLength(100)
                 .HasColumnName("permission_name");
+
+            entity.HasMany(d => d.UserPermissions)
+                .WithOne(up => up.Permission)
+                .HasForeignKey(up => up.PermissionId)
+                .HasConstraintName("user_permissions_permission_id_fkey");
+        });
+
+        modelBuilder.Entity<UserPermission>(entity =>
+        {
+            entity.HasKey(e => e.UserPermissionId).HasName("user_permissions_pkey");
+
+            entity.ToTable("user_permissions");
+
+            entity.Property(e => e.UserPermissionId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("user_permission_id");
+            entity.Property(e => e.UserId)
+                .HasColumnName("user_id");
+            entity.Property(e => e.PermissionId)
+                .HasColumnName("permission_id");
+
+            entity.HasOne(d => d.User)
+                .WithMany(p => p.UserPermissions)
+                .HasForeignKey(d => d.UserId)
+                .HasConstraintName("user_permissions_user_id_fkey");
+
+            entity.HasOne(d => d.Permission)
+                .WithMany(p => p.UserPermissions)
+                .HasForeignKey(d => d.PermissionId)
+                .HasConstraintName("user_permissions_permission_id_fkey");
         });
 
         modelBuilder.Entity<Product>(entity =>
@@ -1366,6 +1398,15 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.Username)
                 .HasMaxLength(50)
                 .HasColumnName("username");
+            entity.Property(e => e.CreatedBy)
+                .HasColumnName("created_by");
+
+            // Self-referencing foreign key: User created by another User (Owner)
+            entity.HasOne(e => e.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(e => e.CreatedBy)
+                .HasConstraintName("users_created_by_fkey")
+                .OnDelete(DeleteBehavior.SetNull);
 
             entity.HasMany(d => d.Roles).WithMany(p => p.Users)
                 .UsingEntity<Dictionary<string, object>>(
