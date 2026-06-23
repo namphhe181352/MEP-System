@@ -19,6 +19,11 @@ public partial class MEPDatabaseContext : DbContext
 
     public virtual DbSet<BranchProduct> BranchProducts { get; set; }
 
+    public virtual DbSet<InventoryCheckTicket> InventoryCheckTickets { get; set; }
+    public virtual DbSet<InventoryCheckDetail> InventoryCheckDetails { get; set; }
+    public virtual DbSet<InventoryTransferTicket> InventoryTransferTickets { get; set; }
+    public virtual DbSet<InventoryTransferDetail> InventoryTransferDetails { get; set; }
+
     public virtual DbSet<Comment> Comments { get; set; }
 
     public virtual DbSet<CommunityCategory> CommunityCategories { get; set; }
@@ -76,6 +81,22 @@ public partial class MEPDatabaseContext : DbContext
     public virtual DbSet<SystemNotification> SystemNotifications { get; set; }
 
     public virtual DbSet<User> Users { get; set; }
+
+    public virtual DbSet<Payment> Payments { get; set; }
+
+    public virtual DbSet<Promotion> Promotions { get; set; }
+
+    public virtual DbSet<PromotionUsage> PromotionUsages { get; set; }
+
+    public virtual DbSet<Shift> Shifts { get; set; }
+
+    public virtual DbSet<LoyaltyTransaction> LoyaltyTransactions { get; set; }
+
+    public virtual DbSet<RefundRecord> RefundRecords { get; set; }
+
+    public virtual DbSet<Receipt> Receipts { get; set; }
+
+    public virtual DbSet<DailySummary> DailySummaries { get; set; }
 
     public virtual DbSet<ViolationReport> ViolationReports { get; set; }
     public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
@@ -187,6 +208,103 @@ public partial class MEPDatabaseContext : DbContext
                 .HasForeignKey(d => d.ProductId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("branch_products_product_id_fkey");
+        });
+
+        modelBuilder.Entity<InventoryCheckTicket>(entity =>
+        {
+            entity.HasKey(e => e.TicketId).HasName("inventory_check_tickets_pkey");
+            entity.ToTable("inventory_check_tickets");
+
+            entity.Property(e => e.TicketId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("ticket_id");
+            entity.Property(e => e.TicketCode)
+                .IsRequired()
+                .HasMaxLength(50)
+                .HasColumnName("ticket_code");
+            // Ensure ticket code is unique
+            entity.HasIndex(e => e.TicketCode).IsUnique().HasDatabaseName("uk_inventory_check_ticket_code");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasColumnName("status");
+            entity.Property(e => e.BranchId)
+                .HasColumnName("branch_id");
+            entity.Property(e => e.CreatedByUserId)
+                .HasColumnName("created_by_user_id");
+            entity.Property(e => e.Notes)
+                .HasMaxLength(1000)
+                .HasColumnName("notes");
+
+            entity.HasMany(e => e.Details)
+                .WithOne(d => d.Ticket)
+                .HasForeignKey(d => d.TicketId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InventoryTransferTicket>(entity =>
+        {
+            entity.HasKey(e => e.TransferId).HasName("inventory_transfer_tickets_pkey");
+            entity.ToTable("inventory_transfer_tickets");
+
+            entity.Property(e => e.TransferId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("transfer_id");
+            entity.Property(e => e.TransferCode)
+                .IsRequired()
+                .HasMaxLength(50)
+                .HasColumnName("transfer_code");
+            // unique code
+            entity.HasIndex(e => e.TransferCode).IsUnique().HasDatabaseName("uk_inventory_transfer_code");
+            entity.Property(e => e.FromBranchId).HasColumnName("from_branch_id");
+            entity.Property(e => e.ToBranchId).HasColumnName("to_branch_id");
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(50).HasColumnName("status");
+            entity.Property(e => e.CreatedByUserId).HasColumnName("created_by_user_id");
+            entity.Property(e => e.CreatedAt).HasColumnType("timestamp without time zone").HasColumnName("created_at");
+            entity.Property(e => e.Notes).HasMaxLength(1000).HasColumnName("notes");
+
+            entity.HasMany(e => e.Details).WithOne(d => d.Transfer).HasForeignKey(d => d.TransferId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InventoryTransferDetail>(entity =>
+        {
+            entity.HasKey(e => e.DetailId).HasName("inventory_transfer_details_pkey");
+            entity.ToTable("inventory_transfer_details");
+
+            entity.Property(e => e.DetailId).HasDefaultValueSql("uuid_generate_v4()").HasColumnName("detail_id");
+            entity.Property(e => e.TransferId).HasColumnName("transfer_id");
+            entity.Property(e => e.ProductId).HasColumnName("product_id");
+            entity.Property(e => e.TransferQuantity).HasColumnName("transfer_quantity");
+
+            entity.HasOne(d => d.Product).WithMany().HasForeignKey(d => d.ProductId).OnDelete(DeleteBehavior.ClientSetNull);
+        });
+
+        modelBuilder.Entity<InventoryCheckDetail>(entity =>
+        {
+            entity.HasKey(e => e.DetailId).HasName("inventory_check_details_pkey");
+            entity.ToTable("inventory_check_details");
+
+            entity.Property(e => e.DetailId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("detail_id");
+            entity.Property(e => e.TicketId)
+                .HasColumnName("ticket_id");
+            entity.Property(e => e.ProductId)
+                .HasColumnName("product_id");
+            entity.Property(e => e.SystemQuantity)
+                .HasColumnName("system_quantity");
+            entity.Property(e => e.ActualQuantity)
+                .HasColumnName("actual_quantity");
+            entity.Property(e => e.Discrepancy)
+                .HasColumnName("discrepancy");
+
+            entity.HasOne(d => d.Product)
+                .WithMany()
+                .HasForeignKey(d => d.ProductId)
+                .OnDelete(DeleteBehavior.ClientSetNull);
         });
 
         modelBuilder.Entity<Comment>(entity =>
@@ -336,6 +454,28 @@ public partial class MEPDatabaseContext : DbContext
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("created_at");
 
+            entity.HasIndex(e => e.PhoneNumber, "customers_phone_unique").IsUnique();
+
+            entity.Property(e => e.Group)
+                .HasMaxLength(50)
+                .HasColumnName("group");
+            entity.Property(e => e.Notes).HasColumnName("notes");
+            entity.Property(e => e.TotalSpent)
+                .HasPrecision(18, 2)
+                .HasDefaultValue(0m)
+                .HasColumnName("total_spent");
+            entity.Property(e => e.OrderCount)
+                .HasDefaultValue(0)
+                .HasColumnName("order_count");
+            entity.Property(e => e.LastVisit)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("last_visit");
+            entity.Property(e => e.MembershipTier)
+                .HasMaxLength(50)
+                .HasColumnName("membership_tier");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("updated_at");
             entity.HasIndex(e => e.PhoneNumber, "customers_phone_unique").IsUnique();
         });
 
@@ -1363,6 +1503,335 @@ public partial class MEPDatabaseContext : DbContext
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("store_approvals_reviewed_by_fkey");
         });
+
+
+        // Payment fluent API
+        modelBuilder.Entity<Payment>(entity =>
+        {
+            entity.HasKey(e => e.PaymentId).HasName("payments_pkey");
+            entity.ToTable("payments");
+            entity.Property(e => e.PaymentId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("payment_id");
+            entity.Property(e => e.InvoiceId).HasColumnName("invoice_id");
+            entity.Property(e => e.Method)
+                .HasMaxLength(50)
+                .HasColumnName("method");
+            entity.Property(e => e.Amount)
+                .HasPrecision(15, 2)
+                .HasColumnName("amount");
+            entity.Property(e => e.Status)
+                .HasMaxLength(50)
+                .HasDefaultValue("Pending")
+                .HasColumnName("status");
+            entity.Property(e => e.CashReceived)
+                .HasPrecision(15, 2)
+                .HasColumnName("cash_received");
+            entity.Property(e => e.ChangeAmount)
+                .HasPrecision(15, 2)
+                .HasColumnName("change_amount");
+            entity.Property(e => e.VietQRString).HasColumnName("viet_qr_string");
+            entity.Property(e => e.QRExpiredAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("qr_expired_at");
+            entity.Property(e => e.PaidAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("paid_at");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.Property(e => e.BranchId).HasColumnName("branch_id");
+            entity.HasOne(d => d.Invoice).WithMany(p => p.Payments)
+                .HasForeignKey(d => d.InvoiceId)
+                .HasConstraintName("payments_invoice_id_fkey");
+        });
+
+        // Promotion fluent API
+        modelBuilder.Entity<Promotion>(entity =>
+        {
+            entity.HasKey(e => e.PromotionId).HasName("promotions_pkey");
+            entity.ToTable("promotions");
+            entity.Property(e => e.PromotionId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("promotion_id");
+            entity.Property(e => e.PromotionCode)
+                .HasMaxLength(50)
+                .HasColumnName("promotion_code");
+            entity.Property(e => e.Name)
+                .HasMaxLength(100)
+                .HasColumnName("name");
+            entity.Property(e => e.Description).HasColumnName("description");
+            entity.Property(e => e.DiscountType)
+                .HasMaxLength(50)
+                .HasColumnName("discount_type");
+            entity.Property(e => e.DiscountValue)
+                .HasPrecision(15, 2)
+                .HasColumnName("discount_value");
+            entity.Property(e => e.MinOrderAmount)
+                .HasPrecision(15, 2)
+                .HasColumnName("min_order_amount");
+            entity.Property(e => e.MaxDiscountAmount)
+                .HasPrecision(15, 2)
+                .HasColumnName("max_discount_amount");
+            entity.Property(e => e.StartDate)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("start_date");
+            entity.Property(e => e.EndDate)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("end_date");
+            entity.Property(e => e.UsageLimit).HasColumnName("usage_limit");
+            entity.Property(e => e.UsedCount)
+                .HasDefaultValue(0)
+                .HasColumnName("used_count");
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue(true)
+                .HasColumnName("is_active");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.HasIndex(e => e.PromotionCode).IsUnique().HasDatabaseName("ix_promotions_code");
+        });
+
+        // PromotionUsage fluent API
+        modelBuilder.Entity<PromotionUsage>(entity =>
+        {
+            entity.HasKey(e => e.UsageId).HasName("promotion_usages_pkey");
+            entity.ToTable("promotion_usages");
+            entity.Property(e => e.UsageId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("usage_id");
+            entity.Property(e => e.PromotionId).HasColumnName("promotion_id");
+            entity.Property(e => e.InvoiceId).HasColumnName("invoice_id");
+            entity.Property(e => e.CustomerId).HasColumnName("customer_id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.DiscountAmount)
+                .HasPrecision(15, 2)
+                .HasColumnName("discount_amount");
+            entity.Property(e => e.UsedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("used_at");
+            entity.HasOne(d => d.Promotion).WithMany(p => p.PromotionUsages)
+                .HasForeignKey(d => d.PromotionId)
+                .HasConstraintName("promotion_usages_promotion_id_fkey");
+            entity.HasOne(d => d.Invoice).WithMany()
+                .HasForeignKey(d => d.InvoiceId)
+                .HasConstraintName("promotion_usages_invoice_id_fkey");
+            entity.HasOne(d => d.Customer).WithMany()
+                .HasForeignKey(d => d.CustomerId)
+                .HasConstraintName("promotion_usages_customer_id_fkey");
+            entity.HasOne(d => d.User).WithMany()
+                .HasForeignKey(d => d.UserId)
+                .HasConstraintName("promotion_usages_user_id_fkey");
+        });
+
+        // Shift fluent API
+        modelBuilder.Entity<Shift>(entity =>
+        {
+            entity.HasKey(e => e.ShiftId).HasName("shifts_pkey");
+            entity.ToTable("shifts");
+            entity.Property(e => e.ShiftId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("shift_id");
+            entity.Property(e => e.ShiftCode)
+                .HasMaxLength(50)
+                .HasColumnName("shift_code");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.BranchId).HasColumnName("branch_id");
+            entity.Property(e => e.Status)
+                .HasMaxLength(20)
+                .HasDefaultValue("OPEN")
+                .HasColumnName("status");
+            entity.Property(e => e.StartedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("started_at");
+            entity.Property(e => e.EndedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("ended_at");
+            entity.Property(e => e.OpeningBalance)
+                .HasPrecision(15, 2)
+                .HasColumnName("opening_balance");
+            entity.Property(e => e.ExpectedCash)
+                .HasPrecision(15, 2)
+                .HasColumnName("expected_cash");
+            entity.Property(e => e.ActualCash)
+                .HasPrecision(15, 2)
+                .HasColumnName("actual_cash");
+            entity.Property(e => e.Variance)
+                .HasPrecision(15, 2)
+                .HasColumnName("variance");
+            entity.Property(e => e.TotalRevenue)
+                .HasPrecision(15, 2)
+                .HasDefaultValue(0m)
+                .HasColumnName("total_revenue");
+            entity.Property(e => e.TotalOrders)
+                .HasDefaultValue(0)
+                .HasColumnName("total_orders");
+            entity.Property(e => e.Note).HasColumnName("note");
+            entity.HasIndex(e => e.ShiftCode).IsUnique().HasDatabaseName("ix_shifts_code");
+            entity.HasOne(d => d.User).WithMany(p => p.Shifts)
+                .HasForeignKey(d => d.UserId)
+                .HasConstraintName("shifts_user_id_fkey");
+            entity.HasOne(d => d.Branch).WithMany(p => p.Shifts)
+                .HasForeignKey(d => d.BranchId)
+                .HasConstraintName("shifts_branch_id_fkey");
+        });
+
+        // LoyaltyTransaction fluent API
+        modelBuilder.Entity<LoyaltyTransaction>(entity =>
+        {
+            entity.HasKey(e => e.TransactionId).HasName("loyalty_transactions_pkey");
+            entity.ToTable("loyalty_transactions");
+            entity.Property(e => e.TransactionId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("transaction_id");
+            entity.Property(e => e.CustomerId).HasColumnName("customer_id");
+            entity.Property(e => e.Points).HasColumnName("points");
+            entity.Property(e => e.TransactionType)
+                .HasMaxLength(50)
+                .HasColumnName("transaction_type");
+            entity.Property(e => e.ReferenceType)
+                .HasMaxLength(50)
+                .HasColumnName("reference_type");
+            entity.Property(e => e.ReferenceId).HasColumnName("reference_id");
+            entity.Property(e => e.Description).HasColumnName("description");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.HasOne(d => d.Customer).WithMany(p => p.LoyaltyTransactions)
+                .HasForeignKey(d => d.CustomerId)
+                .HasConstraintName("loyalty_transactions_customer_id_fkey");
+        });
+
+        // RefundRecord fluent API
+        modelBuilder.Entity<RefundRecord>(entity =>
+        {
+            entity.HasKey(e => e.RefundId).HasName("refund_records_pkey");
+            entity.ToTable("refund_records");
+            entity.Property(e => e.RefundId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("refund_id");
+            entity.Property(e => e.RefundCode)
+                .HasMaxLength(50)
+                .HasColumnName("refund_code");
+            entity.Property(e => e.OrderId).HasColumnName("order_id");
+            entity.Property(e => e.InvoiceId).HasColumnName("invoice_id");
+            entity.Property(e => e.CustomerId).HasColumnName("customer_id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.RefundAmount)
+                .HasPrecision(15, 2)
+                .HasColumnName("refund_amount");
+            entity.Property(e => e.RefundMethod)
+                .HasMaxLength(50)
+                .HasColumnName("refund_method");
+            entity.Property(e => e.Status)
+                .HasMaxLength(50)
+                .HasDefaultValue("PENDING")
+                .HasColumnName("status");
+            entity.Property(e => e.Reason).HasColumnName("reason");
+            entity.Property(e => e.ProcessedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("processed_at");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.HasIndex(e => e.RefundCode).IsUnique().HasDatabaseName("ix_refund_records_code");
+            entity.HasOne(d => d.Order).WithMany()
+                .HasForeignKey(d => d.OrderId)
+                .HasConstraintName("refund_records_order_id_fkey");
+            entity.HasOne(d => d.Invoice).WithMany()
+                .HasForeignKey(d => d.InvoiceId)
+                .HasConstraintName("refund_records_invoice_id_fkey");
+            entity.HasOne(d => d.Customer).WithMany()
+                .HasForeignKey(d => d.CustomerId)
+                .HasConstraintName("refund_records_customer_id_fkey");
+            entity.HasOne(d => d.User).WithMany()
+                .HasForeignKey(d => d.UserId)
+                .HasConstraintName("refund_records_user_id_fkey");
+        });
+
+        // Receipt fluent API
+        modelBuilder.Entity<Receipt>(entity =>
+        {
+            entity.HasKey(e => e.ReceiptId).HasName("receipts_pkey");
+            entity.ToTable("receipts");
+            entity.Property(e => e.ReceiptId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("receipt_id");
+            entity.Property(e => e.ReceiptCode)
+                .HasMaxLength(50)
+                .HasColumnName("receipt_code");
+            entity.Property(e => e.InvoiceId).HasColumnName("invoice_id");
+            entity.Property(e => e.HtmlContent).HasColumnName("html_content");
+            entity.Property(e => e.PrintedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("printed_at");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.HasIndex(e => e.ReceiptCode).IsUnique().HasDatabaseName("ix_receipts_code");
+            entity.HasOne(d => d.Invoice).WithMany(p => p.Receipts)
+                .HasForeignKey(d => d.InvoiceId)
+                .HasConstraintName("receipts_invoice_id_fkey");
+        });
+
+        // DailySummary fluent API
+        modelBuilder.Entity<DailySummary>(entity =>
+        {
+            entity.HasKey(e => e.SummaryId).HasName("daily_summaries_pkey");
+            entity.ToTable("daily_summaries");
+            entity.Property(e => e.SummaryId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("summary_id");
+            entity.Property(e => e.BranchId).HasColumnName("branch_id");
+            entity.Property(e => e.SummaryDate)
+                .HasColumnType("date")
+                .HasColumnName("summary_date");
+            entity.Property(e => e.TotalRevenue)
+                .HasPrecision(15, 2)
+                .HasDefaultValue(0m)
+                .HasColumnName("total_revenue");
+            entity.Property(e => e.TotalOrders)
+                .HasDefaultValue(0)
+                .HasColumnName("total_orders");
+            entity.Property(e => e.TotalRefunds)
+                .HasPrecision(15, 2)
+                .HasDefaultValue(0m)
+                .HasColumnName("total_refunds");
+            entity.Property(e => e.TotalCash)
+                .HasPrecision(15, 2)
+                .HasDefaultValue(0m)
+                .HasColumnName("total_cash");
+            entity.Property(e => e.TotalTransfer)
+                .HasPrecision(15, 2)
+                .HasDefaultValue(0m)
+                .HasColumnName("total_transfer");
+            entity.Property(e => e.TotalDebt)
+                .HasPrecision(15, 2)
+                .HasDefaultValue(0m)
+                .HasColumnName("total_debt");
+            entity.Property(e => e.OpeningCash)
+                .HasPrecision(15, 2)
+                .HasDefaultValue(0m)
+                .HasColumnName("opening_cash");
+            entity.Property(e => e.ClosingCash)
+                .HasPrecision(15, 2)
+                .HasDefaultValue(0m)
+                .HasColumnName("closing_cash");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.HasOne(d => d.Branch).WithMany(p => p.DailySummaries)
+                .HasForeignKey(d => d.BranchId)
+                .HasConstraintName("daily_summaries_branch_id_fkey");
+        });
+
 
         OnModelCreatingPartial(modelBuilder);
     }
