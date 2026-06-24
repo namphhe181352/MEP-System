@@ -2,6 +2,7 @@ using AutoMapper;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.AdminDTOs;
 using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -12,14 +13,17 @@ namespace MEP_Management_System.Controllers.AdminController;
 [ApiController]
 [Route("api/admin/store-approvals")]
 [Authorize(Roles = "Admin")]
-[Tags("Admin (Admin)")]
 public class StoreApprovalsController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
+    private readonly IMapper _mapper;
+    private readonly MepNotificationService _notifications;
 
-    public StoreApprovalsController(MEPDatabaseContext context)
+    public StoreApprovalsController(MEPDatabaseContext context, IMapper mapper, MepNotificationService notifications)
     {
         _context = context;
+        _mapper = mapper;
+        _notifications = notifications;
     }
 
     [HttpGet]
@@ -111,7 +115,6 @@ public class StoreApprovalsController : ControllerBase
         approval.Status = "APPROVED";
         approval.ReviewedBy = adminId;
         approval.ReviewedAt = now;
-
         approval.User.IsVerified = true;
 
         var newBranch = new Branch
@@ -144,6 +147,11 @@ public class StoreApprovalsController : ControllerBase
         });
 
         await _context.SaveChangesAsync();
+
+        // Real-time: notify the owner that their store was approved
+        _ = _notifications.NotifyOwnerApprovalDecision(approval.UserId, "APPROVED",
+            $"Cửa hàng '{approval.StoreName}' đã được duyệt. Bạn có thể bắt đầu sử dụng hệ thống.");
+
         return Ok(new { message = "Đã duyệt cửa hàng." });
     }
 
@@ -175,6 +183,11 @@ public class StoreApprovalsController : ControllerBase
         });
 
         await _context.SaveChangesAsync();
+
+        // Real-time: notify the owner that their store was rejected
+        _ = _notifications.NotifyOwnerApprovalDecision(approval.UserId, "REJECTED",
+            $"Cửa hàng '{approval.StoreName}' đã bị từ chối. Lý do: {req.Reason}");
+
         return Ok(new { message = "Đã từ chối cửa hàng." });
     }
 }
