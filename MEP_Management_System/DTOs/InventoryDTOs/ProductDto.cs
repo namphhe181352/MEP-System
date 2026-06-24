@@ -126,6 +126,105 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? Status { get; set; }
         public Guid? SupplierId { get; set; }
     }
+    #endregion Product Search DTOs
+    /// <summary>
+    /// Kảt quả trả về cho autocomplete tìm sản phẩm trong form nhập hàng.
+    /// </summary>
+    public class ProductSearchResultDto
+    {
+        public Guid ProductId { get; set; }
+        public Guid BranchProductId { get; set; }
+        public string ProductCode { get; set; } = null!;
+        public string ProductName { get; set; } = null!;
+        public string? BrandName { get; set; }
+        public string? CategoryName { get; set; }
+        public string? Barcode { get; set; }
+        public string? Unit { get; set; }
+        public string? ImageUrl { get; set; }
+        public decimal CurrentStock { get; set; }
+        public decimal CostPrice { get; set; }
+        public decimal SalePrice { get; set; }
+    }
+
+    /// <summary>
+    /// Gợi ý thông tin khi user muốn tạo sản phẩm mới ngay trong form nhập hàng.
+    /// </summary>
+    public class NewProductSuggestionDto
+    {
+        public string SuggestedCode { get; set; } = null!;
+        public string ProductName { get; set; } = null!;
+        public string DefaultUnit { get; set; } = "Cái";
+        public List<string> BrandSuggestions { get; set; } = new();
+        public List<string> CategorySuggestions { get; set; } = new();
+    }
+
+
+
+    #region Quick Inward DTOs
+    /// <summary>
+    /// Request tạo phiếu nhập kho "1 bước" giống KiotViet:
+    /// Hỗ trợ cả sản phẩm đã có (chọn từ dropdown) lẩn tạo mới inline.
+    /// </summary>
+    public class QuickInwardCreateDto
+    {
+        public Guid? SupplierId { get; set; }
+        public string? SupplierName { get; set; }
+        public string? Reason { get; set; }
+        public string? Note { get; set; }
+
+        /// <summary>Nếu null hoặc rỗng → hệ thống tự generate mã.</summary>
+        public string? TicketCode { get; set; }
+
+        public InwardInventoryType InwardType { get; set; } = InwardInventoryType.Purchase;
+
+        public List<QuickInwardItemDto> Items { get; set; } = new();
+    }
+
+    public class QuickInwardItemDto
+    {
+        /// <summary>Sản phẩm đã có sẵn trong hệ thống (chọn từ dropdown).</summary>
+        public Guid? ProductId { get; set; }
+
+        /// <summary>Thông tin sản phẩm mới (nếeu không tìm thấy trong dropdown).</summary>
+        public NewProductInQuickInwardDto? NewProduct { get; set; }
+
+        public decimal Quantity { get; set; }
+        public decimal CostPrice { get; set; }
+        public decimal? SalePrice { get; set; }
+        public string? Note { get; set; }
+    }
+
+    public class NewProductInQuickInwardDto
+    {
+        public string ProductCode { get; set; } = null!;
+        public string ProductName { get; set; } = null!;
+        public string Unit { get; set; } = "Cái";
+        public string? BrandName { get; set; }
+        public string? CategoryName { get; set; }
+        public string? Barcode { get; set; }
+        public decimal SalePrice { get; set; }
+    }
+
+    /// <summary>Response trả về sau khi tạo phiếu nhập thành công.</summary>
+    public class QuickInwardResponseDto
+    {
+        public Guid TicketId { get; set; }
+        public string TicketCode { get; set; } = null!;
+        public string TicketType { get; set; } = null!;
+        public Guid BranchId { get; set; }
+        public int TotalItems { get; set; }
+        public List<QuickInwardItemResultDto> Results { get; set; } = new();
+    }
+
+    public class QuickInwardItemResultDto
+    {
+        public Guid ProductId { get; set; }
+        public string ProductCode { get; set; } = null!;
+        public string ProductName { get; set; } = null!;
+        public bool WasNewProduct { get; set; }
+        public decimal Quantity { get; set; }
+        public decimal NewStock { get; set; }
+    }
     #endregion
 
     #region Outward Inventory DTOs

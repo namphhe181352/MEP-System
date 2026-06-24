@@ -152,6 +152,350 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         /// <summary>
+        /// <summary>
+        /// 1a. GET /api/products/search - Autocomplete tìm sản phẩm (dùng trong form nhập hàng).
+        /// Hỗ trợ tìm theo productCode, productName, barcode.
+        /// </summary>
+        [HttpGet("search")]
+        public async Task<IActionResult> SearchProducts(
+        [FromQuery] string term,
+        [FromQuery] int limit = 10,
+        [FromQuery] Guid? branchId = null)
+        {
+            try
+            {
+                var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
+                if (resolvedBranchId == null)
+                {
+                    return Unauthorized(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "JWT token is missing or invalid",
+                        Errors = new() { "Authorization header required" }
+                    });
+                }
+
+                if (string.IsNullOrWhiteSpace(term))
+                {
+                    return Ok(new ApiResponse<object>
+                    {
+                        Success = true,
+                        Message = "Empty term",
+                        Data = new { items = new List<ProductSearchResultDto>() }
+                    });
+                }
+
+                if (limit < 1) limit = 10;
+                if (limit > 50) limit = 50;
+
+                var trimmedTerm = term.Trim().ToLower();
+
+                var results = await _context.BranchProducts
+                .Include(bp => bp.Product).ThenInclude(p => p.MediaResources)
+                .Where(bp => bp.BranchId == resolvedBranchId.Value
+                && bp.IsActive == 1
+                && bp.Product.Status == 1)
+                .Where(bp =>
+                bp.Product.ProductCode.ToLower().Contains(trimmedTerm)
+                || bp.Product.ProductName.ToLower().Contains(trimmedTerm)
+                || (bp.Product.Barcode != null && bp.Product.Barcode.ToLower().Contains(trimmedTerm))
+                )
+                .OrderBy(bp => bp.Product.ProductName)
+                .Take(limit)
+                .Select(bp => new ProductSearchResultDto
+                {
+                    ProductId = bp.Product.ProductId,
+                    BranchProductId = bp.BranchProductId,
+                    ProductCode = bp.Product.ProductCode,
+                    ProductName = bp.Product.ProductName,
+                    BrandName = bp.Product.BrandName,
+                    CategoryName = bp.Product.CategoryName,
+                    Barcode = bp.Product.Barcode,
+                    Unit = bp.Product.BaseUnit,
+                    ImageUrl = bp.Product.MediaResources
+                .Where(m => m.IsPrimary == 1)
+                .Select(m => m.MediaUrl)
+                .FirstOrDefault() ?? bp.Product.MediaResources.Select(m => m.MediaUrl).FirstOrDefault(),
+                    CurrentStock = bp.AvailableStock,
+                    CostPrice = bp.CostPrice,
+                    SalePrice = bp.SellPrice
+                })
+                .ToListAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = $"Found {results.Count} product(s)",
+                    Data = new { items = results, total = results.Count }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Internal server error",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
+        /// 1b. GET /api/products/suggest-new-product - Gợi ý thông tin khi user muốn tạo sp mới inline
+        /// trong form nhập hàng (không cần rời trang).
+        /// </summary>
+        [HttpGet("suggest-new-product")]
+        public async Task<IActionResult> SuggestNewProduct([FromQuery] string term)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(term) || term.Trim().Length < 2)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Term phải có ít nhất 2 ký tự"
+                    });
+                }
+
+                var namePart = term.Trim();
+
+                // Sinh mã gợi ý không trùng
+                string baseCode = new string(namePart
+                .ToUpper()
+                .Replace(' ', '_')
+                .Where(c => char.IsLetterOrDigit(c) || c == '_')
+                .ToArray());
+
+                if (baseCode.Length > 12) baseCode = baseCode.Substring(0, 12);
+                if (string.IsNullOrEmpty(baseCode)) baseCode = "SP";
+
+                var existingCodes = await _context.Products
+                .Where(p => p.ProductCode.StartsWith(baseCode))
+                .Select(p => p.ProductCode)
+                .ToListAsync();
+
+                string suggestedCode = baseCode;
+                int suffix = 1;
+                while (existingCodes.Contains(suggestedCode))
+                {
+                    suffix++;
+                    suggestedCode = $"{baseCode}{suffix:000}";
+                }
+
+                // Gợi ý brand/category có sẵn
+                var brandSuggestions = await _context.Products
+                .Where(p => p.BrandName != null && p.BrandName != "")
+                .GroupBy(p => p.BrandName)
+                .Select(g => g.Key!)
+                .OrderBy(b => b)
+                .Take(10)
+                .ToListAsync();
+
+                var categorySuggestions = await _context.Products
+                .Where(p => p.CategoryName != null && p.CategoryName != "")
+                .GroupBy(p => p.CategoryName)
+                .Select(g => g.Key!)
+                .OrderBy(c => c)
+                .Take(10)
+                .ToListAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Data = new NewProductSuggestionDto
+                    {
+                        SuggestedCode = suggestedCode,
+                        ProductName = namePart,
+                        DefaultUnit = "Cái",
+                        BrandSuggestions = brandSuggestions,
+                        CategorySuggestions = categorySuggestions
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Internal server error",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
+        /// 1a. GET /api/products/search - Autocomplete tìm sản phẩm (dùng trong form nhập hàng).
+        /// Hỗ trợ tìm theo productCode, productName, barcode.
+        /// </summary>
+        // [HttpGet("search")]
+        // public async Task<IActionResult> SearchProducts(
+        // [FromQuery] string term,
+        // [FromQuery] int limit = 10,
+        // [FromQuery] Guid? branchId = null)
+        // {
+        //     try
+        //     {
+        //         var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
+        //         if (resolvedBranchId == null)
+        //         {
+        //             return Unauthorized(new ApiResponse<object>
+        //             {
+        //                 Success = false,
+        //                 Message = "JWT token is missing or invalid",
+        //                 Errors = new() { "Authorization header required" }
+        //             });
+        //         }
+
+        //         if (string.IsNullOrWhiteSpace(term))
+        //         {
+        //             return Ok(new ApiResponse<object>
+        //             {
+        //                 Success = true,
+        //                 Message = "Empty term",
+        //                 Data = new { items = new List<ProductSearchResultDto>() }
+        //             });
+        //         }
+
+        //         if (limit < 1) limit = 10;
+        //         if (limit > 50) limit = 50;
+
+        //         var trimmedTerm = term.Trim().ToLower();
+
+        //         var results = await _context.BranchProducts
+        //         .Include(bp => bp.Product).ThenInclude(p => p.MediaResources)
+        //         .Where(bp => bp.BranchId == resolvedBranchId.Value
+        //         && bp.IsActive == 1
+        //         && bp.Product.Status == 1)
+        //         .Where(bp =>
+        //         bp.Product.ProductCode.ToLower().Contains(trimmedTerm)
+        //         || bp.Product.ProductName.ToLower().Contains(trimmedTerm)
+        //         || (bp.Product.Barcode != null && bp.Product.Barcode.ToLower().Contains(trimmedTerm))
+        //         )
+        //         .OrderBy(bp => bp.Product.ProductName)
+        //         .Take(limit)
+        //         .Select(bp => new ProductSearchResultDto
+        //         {
+        //             ProductId = bp.Product.ProductId,
+        //             BranchProductId = bp.BranchProductId,
+        //             ProductCode = bp.Product.ProductCode,
+        //             ProductName = bp.Product.ProductName,
+        //             BrandName = bp.Product.BrandName,
+        //             CategoryName = bp.Product.CategoryName,
+        //             Barcode = bp.Product.Barcode,
+        //             Unit = bp.Product.BaseUnit,
+        //             ImageUrl = bp.Product.MediaResources
+        //         .Where(m => m.IsPrimary == 1)
+        //         .Select(m => m.MediaUrl)
+        //         .FirstOrDefault() ?? bp.Product.MediaResources.Select(m => m.MediaUrl).FirstOrDefault(),
+        //             CurrentStock = bp.AvailableStock,
+        //             CostPrice = bp.CostPrice,
+        //             SalePrice = bp.SellPrice
+        //         })
+        //         .ToListAsync();
+
+        //         return Ok(new ApiResponse<object>
+        //         {
+        //             Success = true,
+        //             Message = $"Found {results.Count} product(s)",
+        //             Data = new { items = results, total = results.Count }
+        //         });
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         return StatusCode(500, new ApiResponse<object>
+        //         {
+        //             Success = false,
+        //             Message = "Internal server error",
+        //             Errors = new() { ex.Message }
+        //         });
+        //     }
+        // }
+
+        /// <summary>
+        /// 1b. GET /api/products/suggest-new-product - Gợi ý thông tin khi user muốn tạo sp mới inline
+        /// trong form nhập hàng (không cần rời trang).
+        /// </summary>
+        //  [HttpGet("suggest-new-product")]
+        //  public async Task<IActionResult> SuggestNewProduct([FromQuery] string term)
+        //  {
+        //  try
+        //  {
+        //  if (string.IsNullOrWhiteSpace(term) || term.Trim().Length < 2)
+        //  {
+        //  return BadRequest(new ApiResponse<object>
+        //  {
+        //  Success = false,
+        //  Message = "Term phải có ít nhất 2 ký tự"
+        //  });
+        //  }
+
+        //  var namePart = term.Trim();
+
+        //  // Sinh mã gợi ý không trùng
+        //  string baseCode = new string(namePart
+        //  .ToUpper()
+        //  .Replace(' ', '_')
+        //  .Where(c => char.IsLetterOrDigit(c) || c == '_')
+        //  .ToArray());
+
+        //  if (baseCode.Length > 12) baseCode = baseCode.Substring(0, 12);
+        //  if (string.IsNullOrEmpty(baseCode)) baseCode = "SP";
+
+        //  var existingCodes = await _context.Products
+        //  .Where(p => p.ProductCode.StartsWith(baseCode))
+        //  .Select(p => p.ProductCode)
+        //  .ToListAsync();
+
+        //  string suggestedCode = baseCode;
+        //  int suffix = 1;
+        //  while (existingCodes.Contains(suggestedCode))
+        //  {
+        //  suffix++;
+        //  suggestedCode = $"{baseCode}{suffix:000}";
+        //  }
+
+        //  // Gợi ý brand/category có sẵn
+        //  var brandSuggestions = await _context.Products
+        //  .Where(p => p.BrandName != null && p.BrandName != "")
+        //  .GroupBy(p => p.BrandName)
+        //  .Select(g => g.Key!)
+        //  .OrderBy(b => b)
+        //  .Take(10)
+        //  .ToListAsync();
+
+        //  var categorySuggestions = await _context.Products
+        //  .Where(p => p.CategoryName != null && p.CategoryName != "")
+        //  .GroupBy(p => p.CategoryName)
+        //  .Select(g => g.Key!)
+        //  .OrderBy(c => c)
+        //  .Take(10)
+        //  .ToListAsync();
+
+        //  return Ok(new ApiResponse<object>
+        //  {
+        //  Success = true,
+        //  Data = new NewProductSuggestionDto
+        //  {
+        //  SuggestedCode = suggestedCode,
+        //  ProductName = namePart,
+        //  DefaultUnit = "Cái",
+        //  BrandSuggestions = brandSuggestions,
+        //  CategorySuggestions = categorySuggestions
+        //  }
+        //  });
+        //  }
+        //  catch (Exception ex)
+        //  {
+        //  return StatusCode(500, new ApiResponse<object>
+        //  {
+        //  Success = false,
+        //  Message = "Internal server error",
+        //  Errors = new() { ex.Message }
+        //  });
+        //  }
+        //  }
+
         /// 2. GET /api/products/{id} - Get product details by ID
         /// For Owner role: provide branchId via query param (?branchId=guid) or X-Branch-Id header
         /// </summary>
