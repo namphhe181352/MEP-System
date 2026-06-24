@@ -59,4 +59,9 @@ public partial class Supplier
     public virtual ICollection<PurchaseOrder> PurchaseOrders { get; set; } = new List<PurchaseOrder>();
 
     public virtual ICollection<SupplierRating> SupplierRatings { get; set; } = new List<SupplierRating>();
+
+ /// <summary>Owner (user_id) đã tạo NCC này — dùng để tenant-isolation.</summary>
+ public Guid? CreatedBy { get; set; }
+
+ public virtual User? CreatedByUser { get; set; }
 }

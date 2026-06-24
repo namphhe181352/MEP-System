@@ -41,11 +41,19 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public List<ProductAttributeDto> Attributes { get; set; } = new();
         public List<ConversionUnitDto> ConversionUnits { get; set; } = new();
         public DateTime? EstimatedOutAt { get; set; }
+
+        // --- CÁC TRƯỜNG CŨ CỦA BẠN ĐÃ CÓ ---
         public DateTime? CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
         public string? Status { get; set; }
         public string? StatusTone { get; set; }
         public string? ProductStatus { get; set; }
+
+        // 🎯 THÊM MỚI 4 TRƯỜNG NÀY VÀO ĐÂY:
+        public Guid? CreatedBy { get; set; }
+        public string? CreatedByName { get; set; } // Tên người tạo sản phẩm hiển thị trên giao diện
+        public Guid? UpdatedBy { get; set; }
+        public string? UpdatedByName { get; set; } // Tên người sửa sản phẩm hiển thị trên giao diện
     }
 
     public class ProductAttributeDto

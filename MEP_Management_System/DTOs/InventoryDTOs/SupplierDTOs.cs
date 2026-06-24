@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace MEP_Management_System.DTOs.InventoryDTOs
 {
@@ -62,6 +63,9 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
 
         /// <summary>1 = Active, 0 = Inactive. Mặc định 1.</summary>
         public short Status { get; set; } = 1;
+
+        [JsonIgnore]
+        public Guid? CreatedBy { get; set; }
     }
 
     // ============================================================

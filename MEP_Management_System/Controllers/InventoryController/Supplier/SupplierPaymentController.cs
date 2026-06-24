@@ -21,6 +21,14 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
             _context = context;
         }
 
+        private async Task<Guid> GetOwnerIdAsync()
+        {
+            var ownerId = await HttpContext.GetOwnerIdAsync(_context);
+            if (ownerId == Guid.Empty)
+                throw new UnauthorizedAccessException("Cannot determine Owner from token.");
+            return ownerId;
+        }
+
         private (Guid UserId, string Role, List<string> Permissions) GetUserInfo()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -43,10 +51,12 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         [HttpGet]
         public async Task<IActionResult> GetAll([FromQuery] Guid? supplierId, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 20)
         {
+            var ownerId = await GetOwnerIdAsync();
             var query = _context.SupplierPayments
                 .Include(p => p.Supplier)
                 .Include(p => p.PurchaseOrder)
                 .Include(p => p.RecordedByUser)
+                .Where(p => p.CreatedBy == ownerId)
                 .AsQueryable();
 
             if (supplierId.HasValue)
@@ -106,7 +116,8 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                 Note = dto.Note,
                 RecordedBy = user.UserId,
                 CreatedAt = DateTime.UtcNow,
-                IsDeleted = 0
+                IsDeleted = 0,
+                CreatedBy = await GetOwnerIdAsync()
             };
 
             _context.SupplierPayments.Add(payment);

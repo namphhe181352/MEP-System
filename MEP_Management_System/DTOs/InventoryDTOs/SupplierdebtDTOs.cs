@@ -130,5 +130,6 @@
         public string? Note { get; set; }
         public string RecordedByName { get; set; } = null!;
         public string Status { get; set; } = null!; // "ACTIVE" | "CANCELLED"
+        public Guid? CreatedBy { get; set; }
     }
 }

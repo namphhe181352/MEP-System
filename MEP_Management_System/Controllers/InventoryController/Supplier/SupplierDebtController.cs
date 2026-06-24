@@ -24,6 +24,14 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
             _currentBranch = currentBranch;
         }
 
+        private async Task<Guid> GetOwnerIdAsync()
+        {
+            var ownerId = await HttpContext.GetOwnerIdAsync(_context);
+            if (ownerId == Guid.Empty)
+                throw new UnauthorizedAccessException("Cannot determine Owner from token.");
+            return ownerId;
+        }
+
         // ============================================================
         // GET /api/supplierdebt
         // Trả về danh sách công nợ nhà cung cấp theo chi nhánh.
@@ -54,11 +62,13 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     .Select(sa => sa.UserId)
                     .ToListAsync();
 
+                var ownerId = await GetOwnerIdAsync();
+
                 // Tổng hợp theo Supplier: lấy các PO COMPLETED
                 var supplierQuery = _context.Suppliers
                     .Include(s => s.PurchaseOrders)
                         .ThenInclude(po => po.PurchaseOrderItems)
-                    .Where(s => s.Status == 1)
+                    .Where(s => s.Status == 1 && s.CreatedBy == ownerId)
                     .AsQueryable();
 
                 // Lọc theo search
@@ -210,11 +220,12 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         {
             try
             {
+                var ownerId = await GetOwnerIdAsync();
                 var supplier = await _context.Suppliers
                     .Include(s => s.PurchaseOrders)
                         .ThenInclude(po => po.PurchaseOrderItems)
                             .ThenInclude(poi => poi.Product)
-                    .FirstOrDefaultAsync(s => s.SupplierId == supplierId && s.Status == 1);
+                    .FirstOrDefaultAsync(s => s.SupplierId == supplierId && s.Status == 1 && s.CreatedBy == ownerId);
 
                 if (supplier == null)
                     return NotFound(new ApiResponse<object>
