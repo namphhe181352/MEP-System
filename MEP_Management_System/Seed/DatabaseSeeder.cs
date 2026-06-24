@@ -170,6 +170,7 @@ public static class DatabaseSeeder
             new { Id = Guid.Parse("60000000-0000-0000-0000-000000000005"), Name = "Rạng Đông (Đèn LED)", Phone = "02439995555", Email = "info@rangdong.com.vn", Address = "KCN Hà Bình Phương, Hà Nội" },
             new { Id = Guid.Parse("60000000-0000-0000-0000-000000000006"), Name = "Tolsen Tools (Dụng cụ cầm tay)", Phone = "02439996666", Email = "sales@tolsen.vn", Address = "KCN Sài Đồng B, Hà Nội" }
         };
+        var ownerDefaultId = Guid.Parse("20000000-0000-0000-0000-000000000002");
         foreach (var s in suppliers)
         {
             await context.Suppliers.AddAsync(new Supplier
@@ -180,7 +181,8 @@ public static class DatabaseSeeder
                 ContactEmail = s.Email,
                 Address = s.Address,
                 Status = 1,
-                CreatedAt = SeedTime
+                CreatedAt = SeedTime,
+                CreatedBy = ownerDefaultId
             });
         }
         await context.SaveChangesAsync();

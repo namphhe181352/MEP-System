@@ -1192,6 +1192,10 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
                     b.Property<decimal?>("Height")
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)")
@@ -1244,6 +1248,14 @@ namespace MEP_Management_System.Migrations
                     b.Property<Guid?>("SupplierId")
                         .HasColumnType("uuid")
                         .HasColumnName("supplier_id");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
 
                     b.Property<decimal?>("Weight")
                         .HasPrecision(10, 2)
@@ -2183,6 +2195,10 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
                     b.Property<string>("GroupName")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
@@ -2227,6 +2243,8 @@ namespace MEP_Management_System.Migrations
                     b.HasKey("SupplierId")
                         .HasName("suppliers_pkey");
 
+                    b.HasIndex("CreatedBy");
+
                     b.ToTable("suppliers", (string)null);
                 });
 
@@ -2241,6 +2259,10 @@ namespace MEP_Management_System.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
 
                     b.Property<short>("IsDeleted")
                         .ValueGeneratedOnAdd()
@@ -2274,6 +2296,8 @@ namespace MEP_Management_System.Migrations
 
                     b.HasKey("PaymentId");
 
+                    b.HasIndex("CreatedBy");
+
                     b.HasIndex("PurchaseOrderId");
 
                     b.HasIndex("RecordedBy");
@@ -2294,6 +2318,10 @@ namespace MEP_Management_System.Migrations
                     b.Property<string>("Comment")
                         .HasColumnType("text")
                         .HasColumnName("comment");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
 
                     b.Property<short>("DeliveryScore")
                         .HasColumnType("smallint")
@@ -2336,6 +2364,8 @@ namespace MEP_Management_System.Migrations
 
                     b.HasKey("RatingId")
                         .HasName("supplier_ratings_pkey");
+
+                    b.HasIndex("CreatedBy");
 
                     b.HasIndex("PurchaseOrderId");
 
@@ -2529,6 +2559,13 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid?>("DefaultBranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(150)
@@ -2587,6 +2624,8 @@ namespace MEP_Management_System.Migrations
                     b.HasKey("UserId")
                         .HasName("users_pkey");
 
+                    b.HasIndex("CreatedBy");
+
                     b.HasIndex(new[] { "Email" }, "users_email_unique")
                         .IsUnique();
 
@@ -2597,6 +2636,32 @@ namespace MEP_Management_System.Migrations
                         .IsUnique();
 
                     b.ToTable("users", (string)null);
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.UserPermission", b =>
+                {
+                    b.Property<Guid>("UserPermissionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_permission_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<Guid>("PermissionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("permission_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("UserPermissionId")
+                        .HasName("user_permissions_pkey");
+
+                    b.HasIndex("PermissionId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("user_permissions", (string)null);
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.ViolationReport", b =>
@@ -3253,8 +3318,25 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.Supplier", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("suppliers_created_by_fkey");
+
+                    b.Navigation("CreatedByUser");
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.SupplierPayment", b =>
                 {
+                    b.HasOne("MEP_Management_System.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("supplier_payments_created_by_fkey");
+
                     b.HasOne("MEP_Management_System.Models.PurchaseOrder", "PurchaseOrder")
                         .WithMany()
                         .HasForeignKey("PurchaseOrderId")
@@ -3271,6 +3353,8 @@ namespace MEP_Management_System.Migrations
                         .HasForeignKey("SupplierId")
                         .IsRequired();
 
+                    b.Navigation("CreatedByUser");
+
                     b.Navigation("PurchaseOrder");
 
                     b.Navigation("RecordedByUser");
@@ -3280,6 +3364,12 @@ namespace MEP_Management_System.Migrations
 
             modelBuilder.Entity("MEP_Management_System.Models.SupplierRating", b =>
                 {
+                    b.HasOne("MEP_Management_System.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("supplier_ratings_created_by_fkey");
+
                     b.HasOne("MEP_Management_System.Models.PurchaseOrder", "PurchaseOrder")
                         .WithMany()
                         .HasForeignKey("PurchaseOrderId")
@@ -3298,6 +3388,8 @@ namespace MEP_Management_System.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("supplier_ratings_supplier_id_fkey");
+
+                    b.Navigation("CreatedByUser");
 
                     b.Navigation("PurchaseOrder");
 
@@ -3337,6 +3429,38 @@ namespace MEP_Management_System.Migrations
                         .HasConstraintName("system_notifications_created_by_fkey");
 
                     b.Navigation("CreatedByUser");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.User", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("users_created_by_fkey");
+
+                    b.Navigation("CreatedByUser");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.UserPermission", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.Permission", "Permission")
+                        .WithMany("UserPermissions")
+                        .HasForeignKey("PermissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("user_permissions_permission_id_fkey");
+
+                    b.HasOne("MEP_Management_System.Models.User", "User")
+                        .WithMany("UserPermissions")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("user_permissions_user_id_fkey");
+
+                    b.Navigation("Permission");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.ViolationReport", b =>
@@ -3489,6 +3613,11 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("ReturnOrders");
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.Permission", b =>
+                {
+                    b.Navigation("UserPermissions");
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.Product", b =>
                 {
                     b.Navigation("BranchProducts");
@@ -3556,6 +3685,8 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("SystemLogs");
 
                     b.Navigation("SystemNotifications");
+
+                    b.Navigation("UserPermissions");
 
                     b.Navigation("ViolationReports");
                 });

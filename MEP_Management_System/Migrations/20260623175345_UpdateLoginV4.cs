@@ -5,7 +5,7 @@
 namespace MEP_Management_System.Migrations
 {
     /// <inheritdoc />
-    public partial class ManagerBranch : Migration
+    public partial class UpdateLoginV4 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

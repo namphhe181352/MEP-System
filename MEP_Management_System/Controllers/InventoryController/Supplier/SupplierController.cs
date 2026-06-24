@@ -20,6 +20,14 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
             _context = context;
         }
 
+        private async Task<Guid> GetOwnerIdAsync()
+        {
+            var ownerId = await HttpContext.GetOwnerIdAsync(_context);
+            if (ownerId == Guid.Empty)
+                throw new UnauthorizedAccessException("Cannot determine Owner from token.");
+            return ownerId;
+        }
+
         // Helper: chuyển mã hiển thị từ GUID (8 ký tự đầu)
         private static string ToCode(Guid id) => id.ToString()[..8].ToUpper();
 
@@ -39,8 +47,10 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         {
             try
             {
+                var ownerId = await GetOwnerIdAsync();
                 var query = _context.Suppliers
                     .Include(s => s.PurchaseOrders)
+                    .Where(s => s.CreatedBy == ownerId)
                     .AsQueryable();
 
                 // Filter search
@@ -69,7 +79,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
 
                 // Distinct groups
                 var distinctGroups = await _context.Suppliers
-                    .Where(s => s.GroupName != null)
+                    .Where(s => s.CreatedBy == ownerId && s.GroupName != null)
                     .Select(s => s.GroupName!)
                     .Distinct()
                     .OrderBy(g => g)
@@ -143,8 +153,9 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         {
             try
             {
+                var ownerId = await GetOwnerIdAsync();
                 var s = await _context.Suppliers
-                    .FirstOrDefaultAsync(x => x.SupplierId == id);
+                    .FirstOrDefaultAsync(x => x.SupplierId == id && x.CreatedBy == ownerId);
 
                 if (s == null)
                     return NotFound(new DTOs.ApiResponse<object>
@@ -225,6 +236,8 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         Errors = new() { $"Nhà cung cấp '{req.SupplierName}' đã tồn tại." }
                     });
 
+                var ownerId = await GetOwnerIdAsync();
+
                 var s = new Models.Supplier
                 {
                     SupplierId = Guid.NewGuid(),
@@ -240,8 +253,9 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     Address = req.Address?.Trim(),
                     Notes = req.Notes?.Trim(),
                     Status = req.Status,
-                    CreatedAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified),
                     RatingCount = 0,
+                    CreatedBy = ownerId,
                 };
 
                 _context.Suppliers.Add(s);
@@ -304,7 +318,9 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     });
                 }
 
-                var s = await _context.Suppliers.FirstOrDefaultAsync(x => x.SupplierId == id);
+                // Check trùng tên với NCC khác
+                var ownerId = await GetOwnerIdAsync();
+                var s = await _context.Suppliers.FirstOrDefaultAsync(x => x.SupplierId == id && x.CreatedBy == ownerId);
                 if (s == null)
                     return NotFound(new ApiResponse<object>
                     {
@@ -313,7 +329,6 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         Errors = new() { $"No supplier with ID: {id}" }
                     });
 
-                // Check trùng tên với NCC khác
                 var nameExists = await _context.Suppliers
                     .AnyAsync(x => x.SupplierId != id
                                 && x.SupplierName.ToLower() == req.SupplierName.ToLower());
@@ -386,7 +401,8 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         {
             try
             {
-                var s = await _context.Suppliers.FirstOrDefaultAsync(x => x.SupplierId == id);
+                var ownerId = await GetOwnerIdAsync();
+                var s = await _context.Suppliers.FirstOrDefaultAsync(x => x.SupplierId == id && x.CreatedBy == ownerId);
                 if (s == null)
                     return NotFound(new ApiResponse<object>
                     {

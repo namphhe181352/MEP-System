@@ -9,38 +9,43 @@ namespace MEP_Management_System.Models;
 /// </summary>
 public partial class SupplierRating
 {
-    public Guid RatingId { get; set; }
+ public Guid RatingId { get; set; }
 
-    public Guid SupplierId { get; set; }
+ public Guid SupplierId { get; set; }
 
-    /// <summary>PO liên quan đến lượt đánh giá (nullable - cho phép đánh giá tổng quát).</summary>
-    public Guid? PurchaseOrderId { get; set; }
+ /// <summary>PO liên quan đến lượt đánh giá (nullable - cho phép đánh giá tổng quát).</summary>
+ public Guid? PurchaseOrderId { get; set; }
 
-    /// <summary>Chất lượng sản phẩm (đúng quy cách, không lỗi). 1-5.</summary>
-    public short QualityScore { get; set; }
+ /// <summary>Chất lượng sản phẩm (đúng quy cách, không lỗi). 1-5.</summary>
+ public short QualityScore { get; set; }
 
-    /// <summary>Giao hàng đúng hạn. 1-5.</summary>
-    public short DeliveryScore { get; set; }
+ /// <summary>Giao hàng đúng hạn. 1-5.</summary>
+ public short DeliveryScore { get; set; }
 
-    /// <summary>Giá cả cạnh tranh. 1-5.</summary>
-    public short PriceScore { get; set; }
+ /// <summary>Giá cả cạnh tranh. 1-5.</summary>
+ public short PriceScore { get; set; }
 
-    /// <summary>Thái độ phục vụ, hỗ trợ kỹ thuật. 1-5.</summary>
-    public short ServiceScore { get; set; }
+ /// <summary>Thái độ phục vụ, hỗ trợ kỹ thuật. 1-5.</summary>
+ public short ServiceScore { get; set; }
 
-    /// <summary>Điểm tổng = trung bình 4 tiêu chí, lưu để query nhanh.</summary>
-    public decimal OverallRating { get; set; }
+ /// <summary>Điểm tổng = trung bình 4 tiêu chí, lưu để query nhanh.</summary>
+ public decimal OverallRating { get; set; }
 
-    public string? Comment { get; set; }
+ public string? Comment { get; set; }
 
-    public Guid? RatedBy { get; set; }
+ public Guid? RatedBy { get; set; }
 
-    public DateTime? RatedAt { get; set; }
+ public DateTime? RatedAt { get; set; }
 
-    // ======= Navigation =======
-    public virtual Supplier? Supplier { get; set; }
+ /// <summary>Owner (user_id) sở hữu lượt đánh giá này — dùng để tenant-isolation.</summary>
+ public Guid? CreatedBy { get; set; }
 
-    public virtual PurchaseOrder? PurchaseOrder { get; set; }
+ // ======= Navigation =======
+ public virtual Supplier? Supplier { get; set; }
 
-    public virtual User? RatedByUser { get; set; }
+ public virtual PurchaseOrder? PurchaseOrder { get; set; }
+
+ public virtual User? RatedByUser { get; set; }
+
+ public virtual User? CreatedByUser { get; set; }
 }

@@ -76,9 +76,7 @@ namespace MEP_Management_System.Controllers
                                        && x.ExpiredAt > DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified));
 
             if (otp == null)
-            {
                 return BadRequest(new { message = "Mã OTP không chính xác hoặc đã hết hạn." });
-            }
 
             var ownerRole = await _context.Roles.FirstOrDefaultAsync(r => r.RoleName == "Owner");
             if (ownerRole == null)
@@ -93,6 +91,9 @@ namespace MEP_Management_System.Controllers
                 _context.Roles.Add(ownerRole);
             }
 
+            var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+
+            // Tạo Owner
             var newUser = new User
             {
                 UserId = Guid.NewGuid(),
@@ -101,30 +102,40 @@ namespace MEP_Management_System.Controllers
                 FullName = dto.FullName,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                 IsActive = 1,
-                IsVerified = false, // Must be approved by Admin
-                CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
+                IsVerified = true, // kích hoạt luôn
+                CreatedAt = now
             };
-
             newUser.Roles.Add(ownerRole);
             _context.Users.Add(newUser);
 
-            var storeApproval = new StoreApproval
+            // Tạo Branch đầu tiên
+            var branch = new Branch
             {
-                ApprovalId = Guid.NewGuid(),
-                UserId = newUser.UserId,
-                StoreName = dto.BranchName,
-                Status = "PENDING",
-                CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
+                BranchId = Guid.NewGuid(),
+                BranchName = dto.BranchName,
+                ManagerUserId = newUser.UserId,
+                IsActive = 1,
+                CreatedAt = now,
+                UpdatedAt = now
             };
-            _context.StoreApprovals.Add(storeApproval);
+            _context.Branches.Add(branch);
+
+            // 🎯 Gán DefaultBranchId cho user khi tạo
+            newUser.DefaultBranchId = branch.BranchId;
+
+            // Gán Owner vào Branch luôn
+            _context.StaffAssignments.Add(new StaffAssignment
+            {
+                AssignmentId = Guid.NewGuid(),
+                UserId = newUser.UserId,
+                BranchId = branch.BranchId,
+                AssignedAt = now
+            });
 
             otp.IsUsed = 1;
             await _context.SaveChangesAsync();
 
-            return Ok(new
-            {
-                message = "Đăng ký thành công! Đơn xin mở cửa hàng của bạn đang chờ Admin duyệt. Vui lòng quay lại sau.",
-            });
+            return Ok(new { message = "Đăng ký thành công! Bạn có thể đăng nhập ngay." });
         }
 
         // ==========================================
@@ -141,87 +152,88 @@ namespace MEP_Management_System.Controllers
             if (!isCorrectPassword) return BadRequest(new { message = "Mật khẩu không chính xác." });
 
             if (user.IsActive != 1) return BadRequest(new { message = "Tài khoản của bạn hiện đang bị khóa." });
-            if (!user.IsVerified) return BadRequest(new { message = "Tài khoản của bạn đang chờ Admin duyệt mở cửa hàng." });
+            if (!user.IsVerified) return BadRequest(new { message = "Tài khoản của bạn chưa được xác thực." });
 
-            // 🎯 LẤY DANH SÁCH ROLE THỰC TẾ (Sẽ ra "Owner" hoặc "Staff" tùy tài khoản)
             var userRoles = await _context.Roles
                 .Where(r => r.Users.Any(u => u.UserId == user.UserId))
                 .Select(r => r.RoleName)
                 .ToListAsync();
 
-            // Lấy chi nhánh làm việc
-            var assignment = await _context.StaffAssignments
-                .FirstOrDefaultAsync(sa => sa.UserId == user.UserId);
+            var isOwner = userRoles.Contains("Owner");
 
-            if (assignment == null)
+            string? branchIdForToken = null;
+            object? branchesForResponse = null;
+
+            if (isOwner)
             {
-                return BadRequest(new { message = "Tài khoản này chưa được phân công vào chi nhánh nào." });
+                // Owner: lấy tất cả branches
+                var branches = await _context.StaffAssignments
+                    .Where(sa => sa.UserId == user.UserId)
+                    .Include(sa => sa.Branch)
+                    .Select(sa => new
+                    {
+                        sa.Branch.BranchId,
+                        sa.Branch.BranchName,
+                        sa.Branch.Address,
+                        sa.Branch.City,
+                        sa.Branch.Phone,
+                        sa.Branch.IsActive
+                    })
+                    .ToListAsync();
+
+                branchesForResponse = branches;
+
+                // 🎯 Dùng DefaultBranchId từ DB
+                if (user.DefaultBranchId != null)
+                {
+                    branchIdForToken = user.DefaultBranchId.ToString();
+                }
+            }
+            else
+            {
+                // Staff: lấy 1 branch duy nhất, gán vào JWT
+                var assignment = await _context.StaffAssignments
+                    .FirstOrDefaultAsync(sa => sa.UserId == user.UserId);
+
+                if (assignment == null)
+                    return BadRequest(new { message = "Tài khoản chưa được phân công chi nhánh." });
+
+                branchIdForToken = assignment.BranchId.ToString();
             }
 
-            // 🎯 ĐÚC TOKEN: Nhét cả danh sách Role thực tế + BranchId vào trong ruột Token
-            var jwtToken = _jwtHelper.GenerateToken(user.UserId, user.Username, user.FullName, userRoles, assignment.BranchId.ToString());
+            var jwtToken = _jwtHelper.GenerateToken(
+                user.UserId,
+                user.Username,
+                user.FullName,
+                userRoles,
+                branchId: branchIdForToken  // null nếu Owner, có giá trị nếu Staff
+            );
 
             var responseDto = _mapper.Map<UserResponseDto>(user);
             responseDto.Token = jwtToken;
             responseDto.Roles = userRoles;
 
+            // Determine defaultBranchId
+            Guid? defaultBranchId = user.DefaultBranchId;
+            if (defaultBranchId == null && isOwner)
+            {
+                // If Owner has no default branch set, use first available branch
+                if (branchesForResponse is List<dynamic> branchList && branchList.Count > 0)
+                {
+                    defaultBranchId = branchList[0].BranchId;
+                }
+            }
+
             return Ok(new
             {
                 message = "Đăng nhập thành công!",
-                branchId = assignment.BranchId,
-                roles = userRoles, // Trả hẳn mảng danh sách vai trò về cho Front-end đọc trực tiếp không cần giải mã token
+                roles = userRoles,
+                branches = branchesForResponse, // Owner nhận list branches, Staff nhận null
+                defaultBranchId = defaultBranchId, // Add this
                 data = responseDto
             });
         }
 
-        // ==========================================
-        // 4. CREATE STAFF: OWNER TẠO NHÂN VIÊN TRỰC TIẾP
-        // ==========================================
-        [Authorize(Roles = "Owner")]
-        [HttpPost("create-staff")]
-        public async Task<IActionResult> CreateStaffByOwner([FromBody] CreateStaffDto dto)
-        {
-            // 1. Đọc mã chi nhánh của chính Owner đang ra lệnh tạo staff này
-            var branchIdClaim = User.FindFirst("branchId")?.Value;
-            if (string.IsNullOrEmpty(branchIdClaim) || !Guid.TryParse(branchIdClaim, out Guid ownerBranchId))
-            {
-                return Unauthorized(new { Message = "Không tìm thấy thông tin chi nhánh của Owner." });
-            }
-
-            var isEmailExist = await _context.Users.AnyAsync(u => u.Email == dto.Email.Trim().ToLower());
-            if (isEmailExist) return BadRequest(new { Message = "Email nhân viên này đã được sử dụng." });
-
-            var staffRole = await _context.Roles.FirstOrDefaultAsync(r => r.RoleName == "Staff");
-            if (staffRole == null)
-            {
-                staffRole = new Role { RoleId = Guid.NewGuid(), RoleName = "Staff", Description = "Nhên viên cửa hàng" };
-                _context.Roles.Add(staffRole);
-            }
-
-            var newStaff = new User
-            {
-                UserId = Guid.NewGuid(),
-                Username = dto.Email.Trim().ToLower(),
-                Email = dto.Email.Trim().ToLower(),
-                FullName = dto.FullName.Trim(),
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
-                IsActive = 1,
-                CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
-            };
-            newStaff.Roles.Add(staffRole);
-            _context.Users.Add(newStaff);
-
-            var staffAssignment = new StaffAssignment
-            {
-                AssignmentId = Guid.NewGuid(),
-                UserId = newStaff.UserId,
-                BranchId = ownerBranchId, // Nhân viên thừa hưởng luôn chi nhánh của Owner quản lý
-                AssignedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
-            };
-            _context.StaffAssignments.Add(staffAssignment);
-
-            await _context.SaveChangesAsync();
-            return Ok(new { Message = $"Đã tạo thành công nhân viên {newStaff.FullName} thuộc chi nhánh của bạn!" });
-        }
+       
     }
 }

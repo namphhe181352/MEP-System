@@ -42,7 +42,13 @@ public partial class Product
     /// <summary>Trạng thái sản phẩm: 1=Active, 0=Inactive. Mặc định 1 (theo SRS).</summary>
     public short? Status { get; set; }
 
+    public Guid? CreatedBy { get; set; }
+
+    public Guid? UpdatedBy { get; set; }
+
     public DateTime? CreatedAt { get; set; }
+
+    public DateTime? UpdatedAt { get; set; }
 
     public virtual ICollection<BranchProduct> BranchProducts { get; set; } = new List<BranchProduct>();
 

@@ -25,6 +25,10 @@ public partial class User
     public string? Status { get; set; } // ACTIVE / SUSPENDED / BANNED
     public DateTime? SuspendedUntil { get; set; } // suspension end date
     public string? SubscriptionPlan { get; set; } // BASIC / PREMIUM / ENTERPRISE
+    public Guid? CreatedBy { get; set; } // NEW: Self-referencing foreign key to track which Owner created this User
+    public Guid? DefaultBranchId { get; set; } // NEW: User's default branch
+
+    public virtual User? CreatedByUser { get; set; } // Navigation property: User who created this User
 
     public virtual ICollection<Comment> Comments { get; set; } = new List<Comment>();
 
@@ -43,6 +47,8 @@ public partial class User
     public virtual ICollection<StockTicket> StockTickets { get; set; } = new List<StockTicket>();
 
     public virtual ICollection<SystemLog> SystemLogs { get; set; } = new List<SystemLog>();
+
+    public virtual ICollection<UserPermission> UserPermissions { get; set; } = new List<UserPermission>();
 
     public virtual ICollection<ViolationReport> ViolationReports { get; set; } = new List<ViolationReport>();
 

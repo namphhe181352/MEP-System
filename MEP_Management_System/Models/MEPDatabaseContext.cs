@@ -82,6 +82,8 @@ public partial class MEPDatabaseContext : DbContext
 
     public virtual DbSet<User> Users { get; set; }
 
+    public virtual DbSet<UserPermission> UserPermissions { get; set; }
+
     public virtual DbSet<Payment> Payments { get; set; }
 
     public virtual DbSet<Promotion> Promotions { get; set; }
@@ -174,6 +176,14 @@ public partial class MEPDatabaseContext : DbContext
                 .WithMany()
                 .HasForeignKey(d => d.PurchaseOrderId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+
+            entity.HasOne(d => d.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.CreatedBy)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("supplier_payments_created_by_fkey");
         });
         modelBuilder.Entity<BranchProduct>(entity =>
         {
@@ -742,6 +752,36 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.PermissionName)
                 .HasMaxLength(100)
                 .HasColumnName("permission_name");
+
+            entity.HasMany(d => d.UserPermissions)
+                .WithOne(up => up.Permission)
+                .HasForeignKey(up => up.PermissionId)
+                .HasConstraintName("user_permissions_permission_id_fkey");
+        });
+
+        modelBuilder.Entity<UserPermission>(entity =>
+        {
+            entity.HasKey(e => e.UserPermissionId).HasName("user_permissions_pkey");
+
+            entity.ToTable("user_permissions");
+
+            entity.Property(e => e.UserPermissionId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("user_permission_id");
+            entity.Property(e => e.UserId)
+                .HasColumnName("user_id");
+            entity.Property(e => e.PermissionId)
+                .HasColumnName("permission_id");
+
+            entity.HasOne(d => d.User)
+                .WithMany(p => p.UserPermissions)
+                .HasForeignKey(d => d.UserId)
+                .HasConstraintName("user_permissions_user_id_fkey");
+
+            entity.HasOne(d => d.Permission)
+                .WithMany(p => p.UserPermissions)
+                .HasForeignKey(d => d.PermissionId)
+                .HasConstraintName("user_permissions_permission_id_fkey");
         });
 
         modelBuilder.Entity<Product>(entity =>
@@ -771,6 +811,13 @@ public partial class MEPDatabaseContext : DbContext
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("created_at");
+            entity.Property(e => e.CreatedBy)
+                .HasColumnName("created_by");
+            entity.Property(e => e.UpdatedBy)
+                .HasColumnName("updated_by");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("updated_at");
             entity.Property(e => e.Height)
                 .HasPrecision(10, 2)
                 .HasColumnName("height");
@@ -1207,6 +1254,14 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.LastRatedAt)
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("last_rated_at");
+
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+
+            entity.HasOne(d => d.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.CreatedBy)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("suppliers_created_by_fkey");
         });
 
         modelBuilder.Entity<SupplierRating>(entity =>
@@ -1250,6 +1305,14 @@ public partial class MEPDatabaseContext : DbContext
                 .HasForeignKey(d => d.RatedBy)
                 .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("supplier_ratings_rated_by_fkey");
+
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+
+            entity.HasOne(d => d.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.CreatedBy)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("supplier_ratings_created_by_fkey");
         });
 
         modelBuilder.Entity<SystemConfig>(entity =>
@@ -1366,6 +1429,15 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.Username)
                 .HasMaxLength(50)
                 .HasColumnName("username");
+            entity.Property(e => e.CreatedBy)
+                .HasColumnName("created_by");
+
+            // Self-referencing foreign key: User created by another User (Owner)
+            entity.HasOne(e => e.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(e => e.CreatedBy)
+                .HasConstraintName("users_created_by_fkey")
+                .OnDelete(DeleteBehavior.SetNull);
 
             entity.HasMany(d => d.Roles).WithMany(p => p.Users)
                 .UsingEntity<Dictionary<string, object>>(
