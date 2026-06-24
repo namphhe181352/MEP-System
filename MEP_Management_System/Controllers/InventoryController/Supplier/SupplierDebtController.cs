@@ -1,6 +1,7 @@
 ﻿using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -15,16 +16,20 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
     public class SupplierDebtController : ControllerBase
     {
         private readonly MEPDatabaseContext _context;
+        private readonly ICurrentBranchAccessor _currentBranch;
 
-        public SupplierDebtController(MEPDatabaseContext context)
+        public SupplierDebtController(MEPDatabaseContext context, ICurrentBranchAccessor currentBranch)
         {
             _context = context;
+            _currentBranch = currentBranch;
         }
 
-        private Guid? GetUserBranchId()
+        private async Task<Guid> GetOwnerIdAsync()
         {
-            var branchIdClaim = User.FindFirst("branchId")?.Value ?? User.FindFirst(ClaimTypes.GroupSid)?.Value;
-            return Guid.TryParse(branchIdClaim, out Guid branchId) ? branchId : null;
+            var ownerId = await HttpContext.GetOwnerIdAsync(_context);
+            if (ownerId == Guid.Empty)
+                throw new UnauthorizedAccessException("Cannot determine Owner from token.");
+            return ownerId;
         }
 
         // ============================================================
@@ -37,12 +42,12 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         //   pageSize     – mặc định 20
         // ============================================================
         [HttpGet]
-        public async Task<IActionResult> GetSupplierDebts([FromQuery] SupplierDebtParameters @params)
+        public async Task<IActionResult> GetSupplierDebts([FromQuery] SupplierDebtParameters @params, [FromQuery] Guid? branchId = null)
         {
             try
             {
-                var branchId = GetUserBranchId();
-                if (branchId == null)
+                var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
+                if (resolvedBranchId == null)
                     return Unauthorized(new ApiResponse<object>
                     {
                         Success = false,
@@ -53,15 +58,17 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                 // ----- Lấy tất cả PO của chi nhánh (thông qua user thuộc branch) -----
                 // Lấy danh sách userId thuộc branch hiện tại
                 var branchUserIds = await _context.StaffAssignments
-                    .Where(sa => sa.BranchId == branchId.Value)
+                    .Where(sa => sa.BranchId == resolvedBranchId.Value)
                     .Select(sa => sa.UserId)
                     .ToListAsync();
+
+                var ownerId = await GetOwnerIdAsync();
 
                 // Tổng hợp theo Supplier: lấy các PO COMPLETED
                 var supplierQuery = _context.Suppliers
                     .Include(s => s.PurchaseOrders)
                         .ThenInclude(po => po.PurchaseOrderItems)
-                    .Where(s => s.Status == 1)
+                    .Where(s => s.Status == 1 && s.CreatedBy == ownerId)
                     .AsQueryable();
 
                 // Lọc theo search
@@ -213,11 +220,12 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         {
             try
             {
+                var ownerId = await GetOwnerIdAsync();
                 var supplier = await _context.Suppliers
                     .Include(s => s.PurchaseOrders)
                         .ThenInclude(po => po.PurchaseOrderItems)
                             .ThenInclude(poi => poi.Product)
-                    .FirstOrDefaultAsync(s => s.SupplierId == supplierId && s.Status == 1);
+                    .FirstOrDefaultAsync(s => s.SupplierId == supplierId && s.Status == 1 && s.CreatedBy == ownerId);
 
                 if (supplier == null)
                     return NotFound(new ApiResponse<object>

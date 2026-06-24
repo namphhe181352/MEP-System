@@ -26,6 +26,8 @@ builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
 // Services
 builder.Services.AddSingleton<JwtHelper>();
 builder.Services.AddScoped<INotificationSender, LogNotificationSender>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentBranchAccessor, CurrentBranchAccessor>();
 
 // OData
 var odataBuilder = new ODataConventionModelBuilder();
@@ -146,7 +148,7 @@ app.UseSwaggerUI(c =>
             window.addEventListener('load', function() {
                 setTimeout(function() {
                     
-                    var token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6Ijk4NmM0NWQwLWFhMjctNDdkMi1iNzdmLWFiN2ZkZTc4ZTZiOCIsImh0dHA6Ly9zY2hlbWFzLnhtbHNvYXAub3JnL3dzLzIwMDUvMDUvaWRlbnRpdHkvY2xhaW1zL25hbWUiOiIxMjNAZ21haWwuY29tIiwiaHR0cDovL3NjaGVtYXMueG1sc29hcC5vcmcvd3MvMjAwNS8wNS9pZGVudGl0eS9jbGFpbXMvZ2l2ZW5uYW1lIjoiMTIzNDU2IiwiYnJhbmNoSWQiOiI1MWUyMWZjYy0xYjM2LTRkZTktODkxZC0xY2QxMjdlNGRmYjQiLCJodHRwOi8vc2NoZW1hcy5taWNyb3NvZnQuY29tL3dzLzIwMDgvMDYvaWRlbnRpdHkvY2xhaW1zL3JvbGUiOiJPd25lciIsImV4cCI6MTgxMzY2MzA3OSwiaXNzIjoiSW52ZW50b3J5U2VydmljZUFQSSIsImF1ZCI6IkludmVudG9yeVNlcnZpY2VVc2VycyJ9.27NE92OeBSsRhjWZcqrrxGPEjvsyUP3NtH9gmTHf-wE';
+                    var token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6Ijk4NmM0NWQwLWFhMjctNDdkMi1iNzdmLWFiN2ZkZTc4ZTZiOCIsImh0dHA6Ly9zY2hlbWFzLnhtbHNvYXAub3JnL3dzLzIwMDUvMDUvaWRlbnRpdHkvY2xhaW1zL25hbWUiOiIxMjNAZ21haWwuY29tIiwiaHR0cDovL3NjaGVtYXMueG1sc29hcC5vcmcvd3MvMjAwNS8wNS9pZGVudGl0eS9jbGFpbXMvZ2l2ZW5uYW1lIjoiMTIzNDU2IiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiT3duZXIiLCJleHAiOjE4MTM3MzgxNzQsImlzcyI6IkludmVudG9yeVNlcnZpY2VBUEkiLCJhdWQiOiJJbnZlbnRvcnlTZXJ2aWNlVXNlcnMifQ.0UatgtjG4s4lVXG7s4_74ujWWXbQZDw7ZlwsCY8LG6g';
                     if (token) {
                         ui.preauthorizeApiKey('Bearer', token);
                         console.log('--- Swagger đã tự động Đăng nhập tài khoản Owner thành công! ---');

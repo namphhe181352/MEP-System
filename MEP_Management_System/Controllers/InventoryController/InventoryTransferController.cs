@@ -56,7 +56,7 @@ public class InventoryTransferController : ControllerBase
                 ToBranchId = dto.ToBranchId,
                 Status = InventoryTransferStatus.Pending,
                 CreatedByUserId = userId.Value,
-                CreatedAt = DateTime.UtcNow,
+                CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified),
                 Notes = dto.Notes
             };
 
