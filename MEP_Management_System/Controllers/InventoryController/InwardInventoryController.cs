@@ -10,7 +10,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace MEP_Management_System.Controllers.InventoryController
 {
@@ -35,6 +34,8 @@ namespace MEP_Management_System.Controllers.InventoryController
             return Guid.TryParse(userIdClaim, out Guid userId) ? userId : null;
         }
 
+        private bool IsOwner() => User.IsInRole("Owner");
+
         private static string GetTicketTypeName(InwardInventoryType type)
         {
             return type switch
@@ -46,6 +47,12 @@ namespace MEP_Management_System.Controllers.InventoryController
             };
         }
 
+        // ============================================================
+        // GET /api/inwardinventory
+        // Owner: truyền ?branchId=guid để lọc theo chi nhánh cụ thể,
+        //        hoặc không truyền để xem tất cả chi nhánh của mình.
+        // Staff: chỉ xem được chi nhánh được gán trong JWT.
+        // ============================================================
         [HttpGet]
         public async Task<IActionResult> GetInwardInventories(
             [FromQuery] string? status,
@@ -58,17 +65,6 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
-                if (resolvedBranchId == null)
-                {
-                    return Unauthorized(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "JWT token is missing or invalid",
-                        Errors = new() { "Authorization header required" }
-                    });
-                }
-
                 if (pageNumber < 1) pageNumber = 1;
                 if (pageSize < 1 || pageSize > 100) pageSize = 10;
 
@@ -77,29 +73,45 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Include(st => st.StockTicketItems)
                         .ThenInclude(item => item.BranchProduct)
                             .ThenInclude(bp => bp.Product)
-                    .Where(st => st.BranchId == resolvedBranchId.Value)
                     .Where(st => st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST")
                     .AsQueryable();
 
-                if (!string.IsNullOrWhiteSpace(status))
+                if (IsOwner())
                 {
-                    query = query.Where(st => st.Status != null && st.Status.ToLower() == status.Trim().ToLower());
+                    // Owner: lọc theo branchId nếu có truyền, không thì xem tất cả
+                    if (branchId.HasValue)
+                    {
+                        query = query.Where(st => st.BranchId == branchId.Value);
+                    }
+                    // Không có branchId → Owner xem tất cả chi nhánh, không filter thêm
                 }
+                else
+                {
+                    // Staff: chỉ xem chi nhánh của mình từ JWT
+                    var staffBranchId = _currentBranch.GetBranchId();
+                    if (staffBranchId == null)
+                    {
+                        return Unauthorized(new ApiResponse<object>
+                        {
+                            Success = false,
+                            Message = "JWT token is missing or invalid",
+                            Errors = new() { "Authorization header required" }
+                        });
+                    }
+                    query = query.Where(st => st.BranchId == staffBranchId.Value);
+                }
+
+                if (!string.IsNullOrWhiteSpace(status))
+                    query = query.Where(st => st.Status != null && st.Status.ToLower() == status.Trim().ToLower());
 
                 if (!string.IsNullOrWhiteSpace(ticketType))
-                {
                     query = query.Where(st => st.TicketType != null && st.TicketType.ToLower() == ticketType.Trim().ToLower());
-                }
 
                 if (fromDate.HasValue)
-                {
                     query = query.Where(st => st.CreatedAt >= fromDate.Value);
-                }
 
                 if (toDate.HasValue)
-                {
                     query = query.Where(st => st.CreatedAt <= toDate.Value.AddDays(1));
-                }
 
                 query = query.OrderByDescending(st => st.CreatedAt);
 
@@ -111,15 +123,13 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Take(pageSize)
                     .ToListAsync();
 
-                var responseItems = items.Select(MapToInwardInventoryResponse).ToList();
-
                 return Ok(new ApiResponse<PaginatedResponse<InwardInventoryResponseDto>>
                 {
                     Success = true,
                     Message = "Inward inventory history retrieved successfully",
                     Data = new PaginatedResponse<InwardInventoryResponseDto>
                     {
-                        Items = responseItems,
+                        Items = items.Select(MapToInwardInventoryResponse).ToList(),
                         TotalCount = totalCount,
                         PageNumber = pageNumber,
                         PageSize = pageSize,
@@ -140,29 +150,42 @@ namespace MEP_Management_System.Controllers.InventoryController
             }
         }
 
+        // ============================================================
+        // GET /api/inwardinventory/{id}
+        // Owner: có thể xem ticket của bất kỳ chi nhánh nào.
+        // Staff: chỉ xem được ticket thuộc chi nhánh của mình.
+        // ============================================================
         [HttpGet("{id:guid}")]
         public async Task<IActionResult> GetInwardInventoryById(Guid id)
         {
             try
             {
-                var branchId = _currentBranch.GetBranchId();
-                if (branchId == null)
-                {
-                    return Unauthorized(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "JWT token is missing or invalid",
-                        Errors = new() { "Authorization header required" }
-                    });
-                }
-
-                var stockTicket = await _context.StockTickets
+                var stockTicketQuery = _context.StockTickets
                     .Include(st => st.User)
                     .Include(st => st.StockTicketItems)
                         .ThenInclude(item => item.BranchProduct)
                             .ThenInclude(bp => bp.Product)
-                    .FirstOrDefaultAsync(st => st.StockTicketId == id && st.BranchId == branchId.Value &&
+                    .Where(st => st.StockTicketId == id &&
                         (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST"));
+
+                if (!IsOwner())
+                {
+                    // Staff: giới hạn theo chi nhánh trong JWT
+                    var staffBranchId = _currentBranch.GetBranchId();
+                    if (staffBranchId == null)
+                    {
+                        return Unauthorized(new ApiResponse<object>
+                        {
+                            Success = false,
+                            Message = "JWT token is missing or invalid",
+                            Errors = new() { "Authorization header required" }
+                        });
+                    }
+                    stockTicketQuery = stockTicketQuery.Where(st => st.BranchId == staffBranchId.Value);
+                }
+                // Owner: không filter theo branch → xem được tất cả
+
+                var stockTicket = await stockTicketQuery.FirstOrDefaultAsync();
 
                 if (stockTicket == null)
                 {
@@ -192,11 +215,19 @@ namespace MEP_Management_System.Controllers.InventoryController
             }
         }
 
+        // ============================================================
+        // POST /api/inwardinventory
+        // Owner: truyền ?branchId=guid để tạo phiếu cho chi nhánh cụ thể.
+        // Staff: tạo phiếu cho chi nhánh của mình trong JWT.
+        // ============================================================
         [HttpPost]
-        public async Task<IActionResult> CreateInwardInventory([FromBody] InwardInventoryCreateDto dto)
+        public async Task<IActionResult> CreateInwardInventory(
+            [FromBody] InwardInventoryCreateDto dto,
+            [FromQuery] Guid? branchId = null)
         {
-            var branchId = _currentBranch.GetBranchId();
-            if (branchId == null)
+            // Resolve branchId: Owner dùng query param, Staff dùng JWT
+            var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
+            if (resolvedBranchId == null)
             {
                 return Unauthorized(new ApiResponse<object>
                 {
@@ -205,16 +236,6 @@ namespace MEP_Management_System.Controllers.InventoryController
                     Errors = new() { "Authorization header required" }
                 });
             }
-
-            //if (dto.BranchId != branchId.Value)
-            //{
-            //    return BadRequest(new ApiResponse<object>
-            //    {
-            //        Success = false,
-            //        Message = "Invalid branch",
-            //        Errors = new() { "BranchId does not match the current user branch." }
-            //    });
-            //}
 
             if (dto.Items == null || dto.Items.Count == 0)
             {
@@ -226,14 +247,11 @@ namespace MEP_Management_System.Controllers.InventoryController
                 });
             }
 
-            // Thực hiện validate số lượng đầu vào
             var itemValidationErrors = new List<string>();
             foreach (var item in dto.Items)
             {
                 if (item.Quantity <= 0)
-                {
                     itemValidationErrors.Add($"Quantity must be greater than 0 for Id {item.Id}.");
-                }
             }
 
             if (itemValidationErrors.Any())
@@ -267,6 +285,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 {
                     StockTicketId = Guid.NewGuid(),
                     TicketCode = ticketCode,
+                    BranchId = resolvedBranchId.Value,
                     UserId = currentUserId.Value,
                     TicketType = GetTicketTypeName(dto.InwardType),
                     Status = "COMPLETED",
@@ -278,15 +297,16 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 foreach (var item in dto.Items)
                 {
-                    // Tìm kiếm linh hoạt: Check xem ID truyền lên là BranchProductId hay ProductId gốc
+                    // Tìm linh hoạt: BranchProductId hoặc ProductId gốc
                     var branchProduct = await _context.BranchProducts
-                        .FirstOrDefaultAsync(bp => (bp.BranchProductId == item.Id || bp.ProductId == item.Id) && bp.BranchId == branchId.Value);
+                        .FirstOrDefaultAsync(bp =>
+                            (bp.BranchProductId == item.Id || bp.ProductId == item.Id)
+                            && bp.BranchId == resolvedBranchId.Value);
 
                     if (branchProduct == null)
                     {
-                        // Trường hợp chưa có dòng ở chi nhánh này -> Tìm từ bảng Product gốc
+                        // Sản phẩm chưa có ở chi nhánh này → tạo mới BranchProduct
                         var product = await _context.Products.FirstOrDefaultAsync(p => p.ProductId == item.Id);
-
                         if (product == null)
                         {
                             throw new InvalidOperationException($"Product/BranchProduct with ID {item.Id} was not found in system.");
@@ -295,9 +315,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                         branchProduct = new BranchProduct
                         {
                             BranchProductId = Guid.NewGuid(),
-                            BranchId = branchId.Value,
+                            BranchId = resolvedBranchId.Value,
                             ProductId = product.ProductId,
-                            CostPrice = item.CostPrice > 0 ? item.CostPrice : 0, // Cập nhật giá nhập nếu có
+                            CostPrice = item.CostPrice > 0 ? item.CostPrice : 0,
                             SellPrice = 0,
                             ActualStock = 0,
                             ReservedStock = 0,
@@ -307,28 +327,25 @@ namespace MEP_Management_System.Controllers.InventoryController
                         };
 
                         _context.BranchProducts.Add(branchProduct);
+                        await _context.SaveChangesAsync(); // flush để có BranchProductId
                     }
                     else if (item.CostPrice > 0)
                     {
-                        // Nếu đã tồn tại sản phẩm, cập nhật lại giá vốn mới nhất theo đợt nhập
                         branchProduct.CostPrice = item.CostPrice;
                     }
 
                     var beforeQuantity = branchProduct.ActualStock;
-                    var newActualQuantity = beforeQuantity + item.Quantity;
-                    var newAvailableQuantity = branchProduct.AvailableStock + item.Quantity;
-
-                    branchProduct.ActualStock = newActualQuantity;
-                    branchProduct.AvailableStock = newAvailableQuantity;
+                    branchProduct.ActualStock += item.Quantity;
+                    branchProduct.AvailableStock += item.Quantity;
 
                     var ticketItem = new StockTicketItem
                     {
                         TicketItemId = Guid.NewGuid(),
                         StockTicketId = stockTicket.StockTicketId,
-                        BranchProductId = branchId.Value,
+                        BranchProductId = branchProduct.BranchProductId, // FIX: dùng BranchProductId thực, không phải branchId
                         SystemQuantity = beforeQuantity,
-                        ActualQuantity = newActualQuantity,
-                        Discrepancy = item.Quantity // Lưu giá trị tuyệt đối lượng biến động nhập kho
+                        ActualQuantity = branchProduct.ActualStock,
+                        Discrepancy = item.Quantity
                     };
 
                     _context.StockTicketItems.Add(ticketItem);
@@ -362,25 +379,36 @@ namespace MEP_Management_System.Controllers.InventoryController
             }
         }
 
+        // ============================================================
+        // PUT /api/inwardinventory/{id}
+        // Owner: chỉnh sửa được ticket ở bất kỳ chi nhánh nào.
+        // Staff: chỉ chỉnh sửa được ticket thuộc chi nhánh của mình.
+        // ============================================================
         [HttpPut("{id:guid}")]
         public async Task<IActionResult> UpdateInwardInventory(Guid id, [FromBody] InwardInventoryUpdateDto dto)
         {
             try
             {
-                var branchId = _currentBranch.GetBranchId();
-                if (branchId == null)
+                var stockTicketQuery = _context.StockTickets
+                    .Where(st => st.StockTicketId == id &&
+                        (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST"));
+
+                if (!IsOwner())
                 {
-                    return Unauthorized(new ApiResponse<object>
+                    var staffBranchId = _currentBranch.GetBranchId();
+                    if (staffBranchId == null)
                     {
-                        Success = false,
-                        Message = "JWT token is missing or invalid",
-                        Errors = new() { "Authorization header required" }
-                    });
+                        return Unauthorized(new ApiResponse<object>
+                        {
+                            Success = false,
+                            Message = "JWT token is missing or invalid",
+                            Errors = new() { "Authorization header required" }
+                        });
+                    }
+                    stockTicketQuery = stockTicketQuery.Where(st => st.BranchId == staffBranchId.Value);
                 }
 
-                var stockTicket = await _context.StockTickets
-                    .FirstOrDefaultAsync(st => st.StockTicketId == id && st.BranchId == branchId.Value &&
-                        (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST"));
+                var stockTicket = await stockTicketQuery.FirstOrDefaultAsync();
 
                 if (stockTicket == null)
                 {
@@ -392,23 +420,16 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                if (!string.IsNullOrWhiteSpace(dto.Reason))
-                {
-                    stockTicket.Notes = dto.Reason;
-                }
-
                 if (!string.IsNullOrWhiteSpace(dto.Note))
-                {
                     stockTicket.Notes = dto.Note;
-                }
+                else if (!string.IsNullOrWhiteSpace(dto.Reason))
+                    stockTicket.Notes = dto.Reason;
 
                 if (!string.IsNullOrWhiteSpace(dto.Status))
                 {
                     var normalized = dto.Status.Trim().ToUpperInvariant();
                     if (normalized is "PENDING" or "COMPLETED" or "CANCELLED")
-                    {
                         stockTicket.Status = normalized;
-                    }
                 }
 
                 await _context.SaveChangesAsync();
@@ -431,27 +452,38 @@ namespace MEP_Management_System.Controllers.InventoryController
             }
         }
 
+        // ============================================================
+        // DELETE /api/inwardinventory/{id}  (soft cancel)
+        // Owner: huỷ được ticket ở bất kỳ chi nhánh nào.
+        // Staff: chỉ huỷ được ticket thuộc chi nhánh của mình.
+        // ============================================================
         [HttpDelete("{id:guid}")]
         public async Task<IActionResult> DeleteInwardInventory(Guid id)
         {
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                var branchId = _currentBranch.GetBranchId();
-                if (branchId == null)
+                var stockTicketQuery = _context.StockTickets
+                    .Include(st => st.StockTicketItems)
+                    .Where(st => st.StockTicketId == id &&
+                        (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST"));
+
+                if (!IsOwner())
                 {
-                    return Unauthorized(new ApiResponse<object>
+                    var staffBranchId = _currentBranch.GetBranchId();
+                    if (staffBranchId == null)
                     {
-                        Success = false,
-                        Message = "JWT token is missing or invalid",
-                        Errors = new() { "Authorization header required" }
-                    });
+                        return Unauthorized(new ApiResponse<object>
+                        {
+                            Success = false,
+                            Message = "JWT token is missing or invalid",
+                            Errors = new() { "Authorization header required" }
+                        });
+                    }
+                    stockTicketQuery = stockTicketQuery.Where(st => st.BranchId == staffBranchId.Value);
                 }
 
-                var stockTicket = await _context.StockTickets
-                    .Include(st => st.StockTicketItems)
-                    .FirstOrDefaultAsync(st => st.StockTicketId == id && st.BranchId == branchId.Value &&
-                        (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST"));
+                var stockTicket = await stockTicketQuery.FirstOrDefaultAsync();
 
                 if (stockTicket == null)
                 {
@@ -477,11 +509,10 @@ namespace MEP_Management_System.Controllers.InventoryController
                     foreach (var item in stockTicket.StockTicketItems)
                     {
                         var branchProduct = await _context.BranchProducts
-                            .FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId && bp.BranchId == branchId.Value);
+                            .FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
 
                         if (branchProduct != null)
                         {
-                            // Trừ trả lại lượng hàng đã cộng vào trước đó khi nhập kho
                             branchProduct.ActualStock -= item.Discrepancy;
                             branchProduct.AvailableStock -= item.Discrepancy;
                         }
@@ -510,6 +541,8 @@ namespace MEP_Management_System.Controllers.InventoryController
             }
         }
 
+        // ========== HELPER METHODS ==========
+
         private static string GenerateTicketCode(InwardInventoryType type, DateTime currentTime)
         {
             var typePrefix = type switch
@@ -537,7 +570,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 Reason = stockTicket.Notes,
                 Note = stockTicket.Notes,
                 CreatedAt = stockTicket.CreatedAt,
-                Items = stockTicket.StockTicketItems.Select(item => new InwardInventoryItemResponseDto
+                Items = stockTicket.StockTicketItems?.Select(item => new InwardInventoryItemResponseDto
                 {
                     TicketItemId = item.TicketItemId,
                     BranchProductId = item.BranchProductId,
@@ -547,7 +580,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     SystemQuantity = item.SystemQuantity,
                     Quantity = item.Discrepancy,
                     ActualQuantity = item.ActualQuantity
-                }).ToList()
+                }).ToList() ?? new()
             };
         }
     }
