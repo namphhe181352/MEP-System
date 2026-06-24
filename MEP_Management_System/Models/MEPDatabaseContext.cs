@@ -176,6 +176,14 @@ public partial class MEPDatabaseContext : DbContext
                 .WithMany()
                 .HasForeignKey(d => d.PurchaseOrderId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+
+            entity.HasOne(d => d.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.CreatedBy)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("supplier_payments_created_by_fkey");
         });
         modelBuilder.Entity<BranchProduct>(entity =>
         {
@@ -803,6 +811,13 @@ public partial class MEPDatabaseContext : DbContext
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("created_at");
+            entity.Property(e => e.CreatedBy)
+                .HasColumnName("created_by");
+            entity.Property(e => e.UpdatedBy)
+                .HasColumnName("updated_by");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("updated_at");
             entity.Property(e => e.Height)
                 .HasPrecision(10, 2)
                 .HasColumnName("height");
@@ -1239,6 +1254,14 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.LastRatedAt)
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("last_rated_at");
+
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+
+            entity.HasOne(d => d.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.CreatedBy)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("suppliers_created_by_fkey");
         });
 
         modelBuilder.Entity<SupplierRating>(entity =>
@@ -1282,6 +1305,14 @@ public partial class MEPDatabaseContext : DbContext
                 .HasForeignKey(d => d.RatedBy)
                 .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("supplier_ratings_rated_by_fkey");
+
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+
+            entity.HasOne(d => d.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.CreatedBy)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("supplier_ratings_created_by_fkey");
         });
 
         modelBuilder.Entity<SystemConfig>(entity =>
