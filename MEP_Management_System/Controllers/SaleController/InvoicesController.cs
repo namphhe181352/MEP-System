@@ -4,7 +4,7 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using AutoMapper;
-using Microsoft.AspNetCore.Authorization;
+using MEP_Management_System.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MEP_Management_System.Models;
@@ -15,7 +15,7 @@ namespace MEP_Management_System.Controllers.SaleController;
 
 [ApiController]
 [Route("api/pos/invoices")]
-[Authorize(Roles = "SalesStaff,Owner")]
+[HasPermission(PermissionConstants.SALE_VIEW)]
 [Tags("Quản lý bán hàng (Sale)")]
 public class InvoicesController : ControllerBase
 {

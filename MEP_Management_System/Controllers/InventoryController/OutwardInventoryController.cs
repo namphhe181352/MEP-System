@@ -1,8 +1,9 @@
+using AutoMapper;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
-using Microsoft.AspNetCore.Authorization;
+using MEP_Management_System.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -13,7 +14,6 @@ using System.Threading.Tasks;
 
 namespace MEP_Management_System.Controllers.InventoryController
 {
-    [Authorize]
     [ApiController]
     [Route("api/[controller]")]
     [Tags("Xuất nhập kho (Inventory)")]
@@ -34,7 +34,18 @@ namespace MEP_Management_System.Controllers.InventoryController
             return Guid.TryParse(userIdClaim, out Guid userId) ? userId : null;
         }
 
-        private bool IsOwner() => User.IsInRole("Owner");
+        /// <summary>
+        /// Kiểm tra xem User hiện tại có quyền xem/thao tác toàn hệ thống (tất cả chi nhánh) hay không.
+        /// Thường là các Role: Owner, Admin, TechSupport,... hoặc có Quyền (Permission) cụ thể.
+        /// </summary>
+        private bool HasGlobalAccess()
+        {
+            // RBAC cách 1: Check theo vai trò quản trị tối cao
+            return User.IsInRole("Owner") || User.IsInRole("Admin");
+
+            // RBAC cách 2 (Chuẩn nhất): Check theo claim Permission nếu hệ thống của bạn lưu Permission trong JWT
+            // return User.HasClaim(c => c.Type == "Permission" && c.Value == "Inventory.Outward.ViewAll");
+        }
 
         private static string GetTicketTypeName(OutwardInventoryType type)
         {
@@ -49,11 +60,11 @@ namespace MEP_Management_System.Controllers.InventoryController
 
         // ============================================================
         // GET /api/outwardinventory
-        // Owner: không truyền branchId → xem tất cả chi nhánh;
-        //        truyền ?branchId=guid → lọc chi nhánh cụ thể.
-        // Staff: chỉ xem chi nhánh của mình trong JWT.
+        // Quyền tối thiểu: Phải có vai trò Nhân viên (Staff) trở lên hoặc có quyền xem.
+        // Tầm vực dữ liệu: GlobalAccess (Owner/Admin) xem tất cả; Staff chỉ xem chi nhánh được phân quyền.
         // ============================================================
         [HttpGet]
+        [HasPermission(PermissionConstants.STOCK_VIEW)]
         public async Task<IActionResult> GetOutwardInventories(
             [FromQuery] string? status,
             [FromQuery] string? ticketType,
@@ -76,28 +87,30 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Where(st => st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER")
                     .AsQueryable();
 
-                if (IsOwner())
+                // Áp dụng Phân quyền RBAC về phạm vi dữ liệu (Data Scope)
+                if (HasGlobalAccess())
                 {
-                    // Owner: lọc theo branchId nếu có truyền, không thì xem tất cả
+                    // Người dùng cấp cao: có quyền xem tất cả, hoặc lọc theo chi nhánh bất kỳ nếu truyền lên
                     if (branchId.HasValue)
                         query = query.Where(st => st.BranchId == branchId.Value);
                 }
                 else
                 {
-                    // Staff: chỉ xem chi nhánh của mình từ JWT
+                    // Người dùng cấp cơ sở (Staff/WarehouseKeeper): Bị giới hạn nghiêm ngặt theo Chi nhánh trong JWT
                     var staffBranchId = _currentBranch.GetBranchId();
                     if (staffBranchId == null)
                     {
                         return Unauthorized(new ApiResponse<object>
                         {
                             Success = false,
-                            Message = "JWT token is missing or invalid",
-                            Errors = new() { "Authorization header required" }
+                            Message = "Tài khoản của bạn chưa được cấu hình chi nhánh hợp lệ.",
+                            Errors = new() { "Branch context is missing in token." }
                         });
                     }
                     query = query.Where(st => st.BranchId == staffBranchId.Value);
                 }
 
+                // Các bộ lọc dữ liệu thông thường
                 if (!string.IsNullOrWhiteSpace(status))
                     query = query.Where(st => st.Status != null && st.Status.ToLower() == status.Trim().ToLower());
 
@@ -123,7 +136,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return Ok(new ApiResponse<PaginatedResponse<OutwardInventoryResponseDto>>
                 {
                     Success = true,
-                    Message = "Outward inventory history retrieved successfully",
+                    Message = "Lấy lịch sử xuất kho thành công.",
                     Data = new PaginatedResponse<OutwardInventoryResponseDto>
                     {
                         Items = items.Select(MapToOutwardInventoryResponse).ToList(),
@@ -141,7 +154,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return StatusCode(500, new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Error retrieving outward inventory",
+                    Message = "Lỗi khi lấy dữ liệu xuất kho.",
                     Errors = new() { ex.Message }
                 });
             }
@@ -149,10 +162,9 @@ namespace MEP_Management_System.Controllers.InventoryController
 
         // ============================================================
         // GET /api/outwardinventory/{id}
-        // Owner: xem được ticket ở bất kỳ chi nhánh nào.
-        // Staff: chỉ xem ticket thuộc chi nhánh của mình.
         // ============================================================
         [HttpGet("{id:guid}")]
+        [HasPermission(PermissionConstants.STOCK_VIEW)]
         public async Task<IActionResult> GetOutwardInventoryById(Guid id)
         {
             try
@@ -165,7 +177,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Where(st => st.StockTicketId == id &&
                         (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER"));
 
-                if (!IsOwner())
+                // Kiểm tra quyền hạn phạm vi dữ liệu
+                if (!HasGlobalAccess())
                 {
                     var staffBranchId = _currentBranch.GetBranchId();
                     if (staffBranchId == null)
@@ -173,13 +186,12 @@ namespace MEP_Management_System.Controllers.InventoryController
                         return Unauthorized(new ApiResponse<object>
                         {
                             Success = false,
-                            Message = "JWT token is missing or invalid",
+                            Message = "JWT token không hợp lệ hoặc thiếu thông tin chi nhánh.",
                             Errors = new() { "Authorization header required" }
                         });
                     }
                     stockTicketQuery = stockTicketQuery.Where(st => st.BranchId == staffBranchId.Value);
                 }
-                // Owner: không filter theo branch → xem được tất cả
 
                 var stockTicket = await stockTicketQuery.FirstOrDefaultAsync();
 
@@ -188,7 +200,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return NotFound(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Outward inventory not found",
+                        Message = "Không tìm thấy phiếu xuất kho hoặc bạn không có quyền xem phiếu này.",
                         Errors = new() { $"No outward inventory with ID: {id}" }
                     });
                 }
@@ -196,7 +208,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return Ok(new ApiResponse<OutwardInventoryResponseDto>
                 {
                     Success = true,
-                    Message = "Outward inventory retrieved successfully",
+                    Message = "Lấy chi tiết phiếu xuất kho thành công.",
                     Data = MapToOutwardInventoryResponse(stockTicket)
                 });
             }
@@ -205,7 +217,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return StatusCode(500, new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Error retrieving outward inventory",
+                    Message = "Lỗi hệ thống khi lấy chi tiết phiếu.",
                     Errors = new() { ex.Message }
                 });
             }
@@ -213,24 +225,27 @@ namespace MEP_Management_System.Controllers.InventoryController
 
         // ============================================================
         // POST /api/outwardinventory
-        // Owner: truyền ?branchId=guid để tạo phiếu cho chi nhánh cụ thể.
-        // Staff: tạo phiếu cho chi nhánh của mình trong JWT.
+        // Quyền: Cần quyền tạo mới phiếu xuất kho
         // ============================================================
         [HttpPost]
+        // [Authorize(Policy = "Inventory.Outward.Create")]
         public async Task<IActionResult> CreateOutwardInventory(
             [FromBody] OutwardInventoryCreateDto dto,
             [FromQuery] Guid? branchId = null)
         {
             try
             {
-                var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
+                // RBAC logic giải quyết Chi nhánh thao tác: 
+                // Nếu là GlobalAccess được phép truyền chi nhánh khác, Staff luôn bị ép dùng chi nhánh của mình.
+                Guid? resolvedBranchId = HasGlobalAccess() ? (branchId ?? _currentBranch.GetBranchId()) : _currentBranch.GetBranchId();
+
                 if (resolvedBranchId == null)
                 {
                     return Unauthorized(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "JWT token is missing or invalid",
-                        Errors = new() { "Authorization header required" }
+                        Message = "Không xác định được chi nhánh để tạo phiếu.",
+                        Errors = new() { "Branch context required." }
                     });
                 }
 
@@ -239,8 +254,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Validation failed",
-                        Errors = new() { "At least one item is required." }
+                        Message = "Dữ liệu không hợp lệ",
+                        Errors = new() { "Yêu cầu có ít nhất 1 mặt hàng để xuất kho." }
                     });
                 }
 
@@ -250,12 +265,11 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return Unauthorized(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "JWT token is missing or invalid",
+                        Message = "Không xác định được định danh người dùng từ Token.",
                         Errors = new() { "User identity missing." }
                     });
                 }
 
-                // FIX: tìm đúng theo BranchProductId (không phải ProductId)
                 var branchProductIds = dto.Items.Select(i => i.BranchProductId).Distinct().ToList();
                 var branchProducts = await _context.BranchProducts
                     .Where(bp => bp.BranchId == resolvedBranchId.Value && branchProductIds.Contains(bp.BranchProductId))
@@ -267,8 +281,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Validation failed",
-                        Errors = new() { "One or more products do not belong to this branch." }
+                        Message = "Yêu cầu không hợp lệ",
+                        Errors = new() { "Một hoặc nhiều sản phẩm không thuộc về chi nhánh đang chọn." }
                     });
                 }
 
@@ -278,14 +292,14 @@ namespace MEP_Management_System.Controllers.InventoryController
                 {
                     if (item.Quantity <= 0)
                     {
-                        validationErrors.Add($"Quantity must be greater than 0.");
+                        validationErrors.Add($"Số lượng xuất của sản phẩm phải lớn hơn 0.");
                         continue;
                     }
 
                     var bp = branchProducts.FirstOrDefault(x => x.BranchProductId == item.BranchProductId);
                     if (bp != null && item.Quantity > bp.AvailableStock)
                     {
-                        validationErrors.Add($"Insufficient stock for product '{bp.Product?.ProductName ?? item.BranchProductId.ToString()}'.");
+                        validationErrors.Add($"Sản phẩm '{bp.Product?.ProductName ?? item.BranchProductId.ToString()}' không đủ số lượng tồn kho khả dụng để xuất.");
                     }
                 }
 
@@ -294,7 +308,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Inventory validation failed",
+                        Message = "Kiểm tra tồn kho không đạt yêu cầu.",
                         Errors = validationErrors
                     });
                 }
@@ -323,7 +337,6 @@ namespace MEP_Management_System.Controllers.InventoryController
                     {
                         var bp = branchProducts.First(x => x.BranchProductId == item.BranchProductId);
 
-                        // FIX: ghi đúng SystemQuantity (trước khi trừ) và ActualQuantity (sau khi trừ)
                         var systemQtyBefore = bp.ActualStock;
                         bp.ActualStock -= item.Quantity;
                         bp.AvailableStock -= item.Quantity;
@@ -333,9 +346,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                             TicketItemId = Guid.NewGuid(),
                             StockTicketId = stockTicket.StockTicketId,
                             BranchProductId = bp.BranchProductId,
-                            SystemQuantity = systemQtyBefore,           // tồn kho TRƯỚC khi xuất
-                            ActualQuantity = bp.ActualStock,            // tồn kho SAU khi xuất
-                            Discrepancy = item.Quantity                 // số lượng xuất
+                            SystemQuantity = systemQtyBefore,           // Tồn trước khi xuất
+                            ActualQuantity = bp.ActualStock,            // Tồn sau khi xuất
+                            Discrepancy = item.Quantity                 // Số lượng xuất đi
                         };
 
                         _context.StockTicketItems.Add(ticketItem);
@@ -347,7 +360,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return Ok(new ApiResponse<object>
                     {
                         Success = true,
-                        Message = "Outward inventory created successfully",
+                        Message = "Tạo phiếu xuất kho thành công.",
                         Data = new { TicketId = stockTicket.StockTicketId, TicketCode = stockTicket.TicketCode }
                     });
                 }
@@ -362,7 +375,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return StatusCode(500, new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Error creating outward inventory",
+                    Message = "Gặp lỗi khi tạo phiếu xuất kho.",
                     Errors = new() { ex.Message }
                 });
             }
@@ -370,10 +383,9 @@ namespace MEP_Management_System.Controllers.InventoryController
 
         // ============================================================
         // PUT /api/outwardinventory/{id}
-        // Owner: sửa được ticket ở bất kỳ chi nhánh nào.
-        // Staff: chỉ sửa ticket thuộc chi nhánh của mình.
         // ============================================================
         [HttpPut("{id:guid}")]
+        [HasPermission(PermissionConstants.STOCK_OUTWARD_UPDATE)]
         public async Task<IActionResult> UpdateOutwardInventory(Guid id, [FromBody] OutwardInventoryUpdateDto dto)
         {
             try
@@ -382,7 +394,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Where(st => st.StockTicketId == id &&
                         (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER"));
 
-                if (!IsOwner())
+                if (!HasGlobalAccess())
                 {
                     var staffBranchId = _currentBranch.GetBranchId();
                     if (staffBranchId == null)
@@ -390,8 +402,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                         return Unauthorized(new ApiResponse<object>
                         {
                             Success = false,
-                            Message = "JWT token is missing or invalid",
-                            Errors = new() { "Authorization header required" }
+                            Message = "Không có quyền thực hiện hành động này.",
+                            Errors = new() { "Branch context missing" }
                         });
                     }
                     stockTicketQuery = stockTicketQuery.Where(st => st.BranchId == staffBranchId.Value);
@@ -404,7 +416,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return NotFound(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Outward inventory not found",
+                        Message = "Không tìm thấy phiếu cần cập nhật hoặc bạn không có quyền sửa đổi phiếu này.",
                         Errors = new() { $"No outward inventory with ID: {id}" }
                     });
                 }
@@ -424,7 +436,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return Ok(new ApiResponse<OutwardInventoryResponseDto>
                 {
                     Success = true,
-                    Message = "Outward inventory updated successfully",
+                    Message = "Cập nhật thông tin phiếu thành công.",
                     Data = MapToOutwardInventoryResponse(stockTicket)
                 });
             }
@@ -433,18 +445,17 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return StatusCode(500, new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Error updating outward inventory",
+                    Message = "Lỗi khi cập nhật phiếu xuất kho.",
                     Errors = new() { ex.Message }
                 });
             }
         }
 
         // ============================================================
-        // DELETE /api/outwardinventory/{id}  (soft cancel)
-        // Owner: huỷ được ticket ở bất kỳ chi nhánh nào.
-        // Staff: chỉ huỷ ticket thuộc chi nhánh của mình.
+        // DELETE /api/outwardinventory/{id}  (Soft cancel)
         // ============================================================
         [HttpDelete("{id:guid}")]
+        [HasPermission(PermissionConstants.STOCK_OUTWARD_DELETE)]
         public async Task<IActionResult> DeleteOutwardInventory(Guid id)
         {
             using var transaction = await _context.Database.BeginTransactionAsync();
@@ -455,7 +466,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Where(st => st.StockTicketId == id &&
                         (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER"));
 
-                if (!IsOwner())
+                if (!HasGlobalAccess())
                 {
                     var staffBranchId = _currentBranch.GetBranchId();
                     if (staffBranchId == null)
@@ -463,8 +474,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                         return Unauthorized(new ApiResponse<object>
                         {
                             Success = false,
-                            Message = "JWT token is missing or invalid",
-                            Errors = new() { "Authorization header required" }
+                            Message = "Xác thực không hợp lệ.",
+                            Errors = new() { "Branch id missing" }
                         });
                     }
                     stockTicketQuery = stockTicketQuery.Where(st => st.BranchId == staffBranchId.Value);
@@ -477,7 +488,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return NotFound(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Outward inventory not found",
+                        Message = "Không tìm thấy phiếu xuất kho để hủy hoặc bạn không có quyền hạn.",
                         Errors = new() { $"No outward inventory with ID: {id}" }
                     });
                 }
@@ -487,7 +498,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return Ok(new ApiResponse<object>
                     {
                         Success = true,
-                        Message = "Outward inventory is already cancelled"
+                        Message = "Phiếu này đã được hủy trước đó."
                     });
                 }
 
@@ -495,13 +506,12 @@ namespace MEP_Management_System.Controllers.InventoryController
                 {
                     foreach (var item in stockTicket.StockTicketItems)
                     {
-                        // FIX: không cần filter thêm BranchId vì BranchProductId đã đủ định danh
                         var branchProduct = await _context.BranchProducts
                             .FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
 
                         if (branchProduct != null)
                         {
-                            // Cộng trả lại số lượng đã xuất trước đó
+                            // Hoàn lại số lượng đã trừ vào kho khi hủy phiếu thành công
                             branchProduct.ActualStock += item.Discrepancy;
                             branchProduct.AvailableStock += item.Discrepancy;
                         }
@@ -515,7 +525,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = "Outward inventory cancelled successfully"
+                    Message = "Hủy phiếu xuất kho và hoàn lại số lượng sản phẩm thành công."
                 });
             }
             catch (Exception ex)
@@ -524,7 +534,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return StatusCode(500, new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Error cancelling outward inventory",
+                    Message = "Lỗi khi thực hiện hủy phiếu xuất kho.",
                     Errors = new() { ex.Message }
                 });
             }

@@ -278,6 +278,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? UserName { get; set; }
         public string? Reason { get; set; }
         public DateTime? CreatedAt { get; set; }
+
         public List<OutwardInventoryItemResponseDto> Items { get; set; } = new();
     }
     #endregion

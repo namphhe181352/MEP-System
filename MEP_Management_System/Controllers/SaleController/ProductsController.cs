@@ -1,7 +1,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Authorization;
+using MEP_Management_System.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MEP_Management_System.Models;
@@ -11,7 +11,7 @@ namespace MEP_Management_System.Controllers.SaleController;
 
 [ApiController]
 [Route("api/pos/products")]
-[Authorize(Roles = "SalesStaff,Owner")]
+[HasPermission(PermissionConstants.PRODUCT_VIEW)]
 [Tags("Quản lý bán hàng (Sale)")]
 public class ProductsController : ControllerBase
 {

@@ -2,7 +2,7 @@ using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
-using Microsoft.AspNetCore.Authorization;
+using MEP_Management_System.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -13,7 +13,6 @@ using System.Threading.Tasks;
 
 namespace MEP_Management_System.Controllers.InventoryController
 {
-    [Authorize]
     [ApiController]
     [Route("api/[controller]")]
     [Tags("Xuất nhập kho (Inventory)")]
@@ -54,6 +53,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         // Staff: chỉ xem được chi nhánh được gán trong JWT.
         // ============================================================
         [HttpGet]
+        [HasPermission(PermissionConstants.STOCK_VIEW)]
         public async Task<IActionResult> GetInwardInventories(
             [FromQuery] string? status,
             [FromQuery] string? ticketType,
@@ -156,6 +156,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         // Staff: chỉ xem được ticket thuộc chi nhánh của mình.
         // ============================================================
         [HttpGet("{id:guid}")]
+        [HasPermission(PermissionConstants.STOCK_VIEW)]
         public async Task<IActionResult> GetInwardInventoryById(Guid id)
         {
             try
@@ -385,6 +386,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         // Staff: chỉ chỉnh sửa được ticket thuộc chi nhánh của mình.
         // ============================================================
         [HttpPut("{id:guid}")]
+        [HasPermission(PermissionConstants.STOCK_INWARD_UPDATE)]
         public async Task<IActionResult> UpdateInwardInventory(Guid id, [FromBody] InwardInventoryUpdateDto dto)
         {
             try
@@ -458,6 +460,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         // Staff: chỉ huỷ được ticket thuộc chi nhánh của mình.
         // ============================================================
         [HttpDelete("{id:guid}")]
+        [HasPermission(PermissionConstants.STOCK_INWARD_DELETE)]
         public async Task<IActionResult> DeleteInwardInventory(Guid id)
         {
             using var transaction = await _context.Database.BeginTransactionAsync();

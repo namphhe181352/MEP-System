@@ -160,30 +160,48 @@ public partial class MEPDatabaseContext : DbContext
         });
         modelBuilder.Entity<SupplierPayment>(entity =>
         {
-            entity.HasKey(e => e.PaymentId);
+            // 1. Định nghĩa Khóa chính (Đã xóa dòng HasKey bị trùng)
+            entity.HasKey(e => e.PaymentId).HasName("supplier_payments_pkey");
+
+            // 2. Ánh xạ tên bảng dưới DB (Nếu Postgres thường viết thường snake_case: "supplier_payments")
             entity.ToTable("SupplierPayments");
+
+            // 3. Cấu hình kiểu dữ liệu các cột
             entity.Property(e => e.Amount).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.PaymentMethod).HasMaxLength(50);
             entity.Property(e => e.ReferenceCode).HasMaxLength(100);
             entity.Property(e => e.IsDeleted).HasDefaultValue((short)0);
-
-            entity.HasOne(d => d.Supplier)
-                .WithMany()
-                .HasForeignKey(d => d.SupplierId)
-                .OnDelete(DeleteBehavior.ClientSetNull);
-
-            entity.HasOne(d => d.PurchaseOrder)
-                .WithMany()
-                .HasForeignKey(d => d.PurchaseOrderId)
-                .OnDelete(DeleteBehavior.SetNull);
-
             entity.Property(e => e.CreatedBy).HasColumnName("created_by");
 
+            // 🌟 4. CẤU HÌNH KHÓA NGOẠI NỐI SANG SUPPLIER (QUAN TRỌNG NHẤT)
+            // Thay vì .WithMany() để trống, bạn phải điền p => p.SupplierPayments
+            entity.HasOne(d => d.Supplier)
+                .WithMany(p => p.SupplierPayments) // 👈 Khớp chính xác với ICollection trong file Supplier.cs
+                .HasForeignKey(d => d.SupplierId)
+                .OnDelete(DeleteBehavior.Restrict) // Đổi từ ClientSetNull sang Restrict/Cascade tùy logic (thường là Restrict để tránh xóa NCC khi đã có phiếu chi)
+                .HasConstraintName("FK_SupplierPayments_Suppliers");
+
+            // 5. Cấu hình khóa ngoại nối sang PurchaseOrder
+            entity.HasOne(d => d.PurchaseOrder)
+                .WithMany() // Nếu bên PurchaseOrder không tạo ICollection<SupplierPayment> thì để trống như này là đúng
+                .HasForeignKey(d => d.PurchaseOrderId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("FK_SupplierPayments_PurchaseOrders");
+
+            // 6. Cấu hình khóa ngoại nối sang User (Người tạo phiếu)
             entity.HasOne(d => d.CreatedByUser)
                 .WithMany()
                 .HasForeignKey(d => d.CreatedBy)
                 .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("supplier_payments_created_by_fkey");
+
+            // 7. Cấu hình khóa ngoại cho cột RecordedBy nối sang User (Người ghi nhận)
+            // Dựa vào thuộc tính [ForeignKey("RecordedBy")] trong Model của bạn, cấu hình thêm ở đây cho tường minh:
+            entity.HasOne(d => d.RecordedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.RecordedBy)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_SupplierPayments_Users_RecordedBy");
         });
         modelBuilder.Entity<BranchProduct>(entity =>
         {
@@ -811,10 +829,15 @@ public partial class MEPDatabaseContext : DbContext
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("created_at");
-            entity.Property(e => e.CreatedBy)
-                .HasColumnName("created_by");
-            entity.Property(e => e.UpdatedBy)
-                .HasColumnName("updated_by");
+            entity.HasOne(d => d.CreatedByUser)
+        .WithMany() // Nếu bảng User không cần quan hệ ngược lại, để trống WithMany()
+        .HasForeignKey(d => d.CreatedBy)
+        .HasConstraintName("FK_Product_User_CreatedBy");
+
+            entity.HasOne(d => d.UpdatedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.UpdatedBy)
+                .HasConstraintName("FK_Product_User_UpdatedBy");
             entity.Property(e => e.UpdatedAt)
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("updated_at");
@@ -1207,61 +1230,84 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.SupplierId)
                 .HasDefaultValueSql("uuid_generate_v4()")
                 .HasColumnName("supplier_id");
-            entity.Property(e => e.ContactPhone)
-                .HasMaxLength(20)
-                .HasColumnName("contact_phone");
+
             entity.Property(e => e.SupplierName)
                 .HasMaxLength(150)
                 .HasColumnName("supplier_name");
+
+            entity.Property(e => e.ContactPhone)
+                .HasMaxLength(20)
+                .HasColumnName("contact_phone");
+
             entity.Property(e => e.ContactEmail)
                 .HasMaxLength(150)
                 .HasColumnName("contact_email");
+
             entity.Property(e => e.ContactPerson)
                 .HasMaxLength(100)
                 .HasColumnName("contact_person");
+
             entity.Property(e => e.TaxCode)
                 .HasMaxLength(50)
                 .HasColumnName("tax_code");
+
             entity.Property(e => e.GroupName)
                 .HasMaxLength(50)
                 .HasColumnName("group_name");
+
             entity.Property(e => e.BankAccount)
                 .HasMaxLength(50)
                 .HasColumnName("bank_account");
+
             entity.Property(e => e.BankName)
                 .HasMaxLength(100)
                 .HasColumnName("bank_name");
+
             entity.Property(e => e.Website)
                 .HasMaxLength(255)
                 .HasColumnName("website");
+
             entity.Property(e => e.Notes).HasColumnName("notes");
+
             entity.Property(e => e.Address)
                 .HasMaxLength(255)
                 .HasColumnName("address");
+
             entity.Property(e => e.Status)
                 .HasDefaultValue((short)1)
                 .HasColumnName("status");
+
+            // ======= AUDIT PROPERTIES (Đã dọn dẹp trùng lặp) =======
+            entity.Property(e => e.CreatedBy)
+                .HasColumnName("created_by");
+
+            entity.Property(e => e.UpdatedBy)
+                .HasColumnName("updated_by"); // 🌟 Cần chỉ định tên cột dưới DB cho trường mới
+
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("created_at");
-            entity.Property(e => e.AverageRating)
-                .HasPrecision(3, 2)
-                .HasColumnName("average_rating");
-            entity.Property(e => e.RatingCount)
-                .HasDefaultValue(0)
-                .HasColumnName("rating_count");
-            entity.Property(e => e.LastRatedAt)
+
+            entity.Property(e => e.UpdatedAt)
                 .HasColumnType("timestamp without time zone")
-                .HasColumnName("last_rated_at");
+                .HasColumnName("updated_at"); // 🌟 Cần chỉ định tên cột dưới DB cho trường mới
 
-            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+            // ======= RELATIONSHIPS (KHÓA NGOẠI NỐI SANG USER) =======
 
+            // 1. Khóa ngoại cho Người Tạo (CreatedBy)
             entity.HasOne(d => d.CreatedByUser)
                 .WithMany()
                 .HasForeignKey(d => d.CreatedBy)
-                .OnDelete(DeleteBehavior.SetNull)
+                .OnDelete(DeleteBehavior.SetNull) // Hoặc Restrict tùy bạn, giữ SetNull giống như fkey cũ dưới DB của bạn
                 .HasConstraintName("suppliers_created_by_fkey");
+
+            // 2. Khóa ngoại cho Người Cập Nhật (UpdatedBy)
+            entity.HasOne(d => d.UpdatedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.UpdatedBy)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("suppliers_updated_by_fkey");
         });
 
         modelBuilder.Entity<SupplierRating>(entity =>
@@ -1292,9 +1338,9 @@ public partial class MEPDatabaseContext : DbContext
             entity.HasIndex(e => e.SupplierId, "ix_supplier_ratings_supplier_id");
             entity.HasIndex(e => e.RatedAt, "ix_supplier_ratings_rated_at");
 
-            entity.HasOne(d => d.Supplier).WithMany(p => p.SupplierRatings)
-                .HasForeignKey(d => d.SupplierId)
-                .HasConstraintName("supplier_ratings_supplier_id_fkey");
+            //entity.HasOne(d => d.Supplier).WithMany(p => p.SupplierRatings)
+            //    .HasForeignKey(d => d.SupplierId)
+            //    .HasConstraintName("supplier_ratings_supplier_id_fkey");
 
             entity.HasOne(d => d.PurchaseOrder).WithMany()
                 .HasForeignKey(d => d.PurchaseOrderId)

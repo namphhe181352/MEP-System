@@ -40,28 +40,36 @@ public partial class Supplier
 
     /// <summary>Trạng thái NCC: 1=Active, 0=Inactive. Mặc định 1.</summary>
     public short? Status { get; set; }
+    public Guid? CreatedBy { get; set; }
+
+    public Guid? UpdatedBy { get; set; }
 
     public DateTime? CreatedAt { get; set; }
 
-    // ======= ĐÁNH GIÁ (cache từ bảng supplier_ratings) =======
-    /// <summary>Điểm trung bình 1-5, snapshot từ bảng SupplierRatings. Null nếu chưa có đánh giá.</summary>
-    public decimal? AverageRating { get; set; }
-
-    /// <summary>Số lượt đã đánh giá.</summary>
-    public int? RatingCount { get; set; }
-
-    /// <summary>Ngày đánh giá gần nhất.</summary>
-    public DateTime? LastRatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
 
     // ======= Navigation =======
     public virtual ICollection<Product> Products { get; set; } = new List<Product>();
 
     public virtual ICollection<PurchaseOrder> PurchaseOrders { get; set; } = new List<PurchaseOrder>();
 
-    public virtual ICollection<SupplierRating> SupplierRatings { get; set; } = new List<SupplierRating>();
+    //public virtual ICollection<SupplierRating> SupplierRatings { get; set; } = new List<SupplierRating>();
+    public virtual ICollection<SupplierPayment> SupplierPayments { get; set; } = new List<SupplierPayment>();
+    public virtual User? CreatedByUser { get; set; }
 
- /// <summary>Owner (user_id) đã tạo NCC này — dùng để tenant-isolation.</summary>
- public Guid? CreatedBy { get; set; }
+    public virtual User? UpdatedByUser { get; set; }
 
- public virtual User? CreatedByUser { get; set; }
+    /// <summary>Owner (user_id) đã tạo NCC này — dùng để tenant-isolation.</summary>
+    /// 
+        //// ======= ĐÁNH GIÁ (cache từ bảng supplier_ratings) =======
+    ///// <summary>Điểm trung bình 1-5, snapshot từ bảng SupplierRatings. Null nếu chưa có đánh giá.</summary>
+    //public decimal? AverageRating { get; set; }
+
+    ///// <summary>Số lượt đã đánh giá.</summary>
+    //public int? RatingCount { get; set; }
+
+    ///// <summary>Ngày đánh giá gần nhất.</summary>
+    //public DateTime? LastRatedAt { get; set; }
+
+
 }

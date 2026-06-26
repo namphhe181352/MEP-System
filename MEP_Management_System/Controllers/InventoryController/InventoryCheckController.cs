@@ -9,14 +9,13 @@ using MEP_Management_System.Hubs;
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.AspNetCore.Authorization;
+using MEP_Management_System.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 //test comment check account uppdate
 namespace MEP_Management_System.Controllers.InventoryController;
 //test comment check account uppdate
 //test comment check account uppdate
-[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 [Tags("Quản lý Kho (Inventory)")]
@@ -40,6 +39,7 @@ public class InventoryCheckController : ControllerBase
     }
 
     [HttpGet]
+    [HasPermission(PermissionConstants.STOCK_CHECK_VIEW)]
     public async Task<IActionResult> GetInventoryChecks(
         [FromQuery] string? status,
         [FromQuery] DateTime? startDate,
@@ -152,6 +152,7 @@ public class InventoryCheckController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [HasPermission(PermissionConstants.STOCK_CHECK_VIEW)]
     public async Task<IActionResult> GetInventoryCheckById(Guid id)
     {
         try
@@ -201,6 +202,7 @@ public class InventoryCheckController : ControllerBase
     }
 
     [HttpPost]
+    [HasPermission(PermissionConstants.STOCK_CHECK_CREATE)]
     public async Task<IActionResult> CreateInventoryCheck([FromBody] CreateInventoryCheckDto dto)
     {
         try

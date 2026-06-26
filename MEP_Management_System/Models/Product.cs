@@ -50,6 +50,9 @@ public partial class Product
 
     public DateTime? UpdatedAt { get; set; }
 
+    public virtual User? CreatedByUser { get; set; }
+    public virtual User? UpdatedByUser { get; set; }
+
     public virtual ICollection<BranchProduct> BranchProducts { get; set; } = new List<BranchProduct>();
 
     public virtual ICollection<MediaResource> MediaResources { get; set; } = new List<MediaResource>();
