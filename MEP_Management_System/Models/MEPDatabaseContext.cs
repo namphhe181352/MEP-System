@@ -545,6 +545,8 @@ public partial class MEPDatabaseContext : DbContext
                 .HasMaxLength(50)
                 .HasColumnName("status");
             entity.Property(e => e.Note).HasColumnName("note");
+            entity.Property(e => e.HoldNote).HasMaxLength(500).HasColumnName("hold_note");
+            entity.Property(e => e.HeldAt).HasColumnType("timestamp without time zone").HasColumnName("held_at");
 
             entity.HasIndex(e => e.InvoiceCode, "invoices_invoice_code_key").IsUnique();
 
@@ -815,6 +817,17 @@ public partial class MEPDatabaseContext : DbContext
                 .HasColumnName("created_by");
             entity.Property(e => e.UpdatedBy)
                 .HasColumnName("updated_by");
+
+            entity.HasOne(d => d.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.CreatedBy)
+                .HasConstraintName("products_created_by_fkey")
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(d => d.UpdatedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.UpdatedBy)
+                .HasConstraintName("products_updated_by_fkey")
+                .OnDelete(DeleteBehavior.SetNull);
             entity.Property(e => e.UpdatedAt)
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("updated_at");
@@ -859,6 +872,16 @@ public partial class MEPDatabaseContext : DbContext
             entity.HasOne(d => d.Supplier).WithMany(p => p.Products)
                 .HasForeignKey(d => d.SupplierId)
                 .HasConstraintName("products_supplier_id_fkey");
+
+            entity.HasOne(d => d.CreatedByUser).WithMany()
+                .HasForeignKey(d => d.CreatedBy)
+                .HasConstraintName("products_created_by_fkey")
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(d => d.UpdatedByUser).WithMany()
+                .HasForeignKey(d => d.UpdatedBy)
+                .HasConstraintName("products_updated_by_fkey")
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<ProductAttribute>(entity =>

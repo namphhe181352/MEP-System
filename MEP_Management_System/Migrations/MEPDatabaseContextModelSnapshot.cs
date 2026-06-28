@@ -711,6 +711,15 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<DateTime?>("HeldAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("held_at");
+
+                    b.Property<string>("HoldNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("hold_note");
+
                     b.Property<string>("InvoiceCode")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
@@ -1275,7 +1284,11 @@ namespace MEP_Management_System.Migrations
                     b.HasKey("ProductId")
                         .HasName("products_pkey");
 
+                    b.HasIndex("CreatedBy");
+
                     b.HasIndex("SupplierId");
+
+                    b.HasIndex("UpdatedBy");
 
                     b.HasIndex(new[] { "ProductCode" }, "products_product_code_key")
                         .IsUnique();
@@ -3020,12 +3033,28 @@ namespace MEP_Management_System.Migrations
 
             modelBuilder.Entity("MEP_Management_System.Models.Product", b =>
                 {
+                    b.HasOne("MEP_Management_System.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("products_created_by_fkey");
+
                     b.HasOne("MEP_Management_System.Models.Supplier", "Supplier")
                         .WithMany("Products")
                         .HasForeignKey("SupplierId")
                         .HasConstraintName("products_supplier_id_fkey");
 
+                    b.HasOne("MEP_Management_System.Models.User", "UpdatedByUser")
+                        .WithMany()
+                        .HasForeignKey("UpdatedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("products_updated_by_fkey");
+
+                    b.Navigation("CreatedByUser");
+
                     b.Navigation("Supplier");
+
+                    b.Navigation("UpdatedByUser");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.ProductAttribute", b =>

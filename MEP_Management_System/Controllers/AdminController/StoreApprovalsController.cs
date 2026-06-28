@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using AutoMapper;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.AdminDTOs;
@@ -6,7 +7,6 @@ using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
 
 namespace MEP_Management_System.Controllers.AdminController;
 
@@ -35,7 +35,7 @@ public class StoreApprovalsController : ControllerBase
         var query = _context.StoreApprovals
             .Include(s => s.User)
             .Include(s => s.ReviewedByUser)
-            .Where(s => s.Status == status.ToUpper());
+            .Where(s => s.Status.Equals(status, StringComparison.OrdinalIgnoreCase));
 
         var total = await query.CountAsync();
         var items = await query

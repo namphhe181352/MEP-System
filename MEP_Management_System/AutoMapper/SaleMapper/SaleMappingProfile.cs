@@ -11,6 +11,8 @@ public class SaleMappingProfile : Profile
     {
         // Invoice
         CreateMap<Invoice, DTOs.SaleDTOs.InvoiceDto>()
+            .ForMember(d => d.HoldNote, o => o.MapFrom(s => s.HoldNote))
+            .ForMember(d => d.HeldAt, o => o.MapFrom(s => s.HeldAt))
             .ForMember(d => d.Subtotal, o => o.MapFrom(s => s.InvoiceItems.Sum(i => i.Quantity * i.SellPrice)))
             .ForMember(d => d.TaxAmount, o => o.MapFrom(s => Math.Round(s.InvoiceItems.Sum(i => i.Quantity * i.SellPrice) * 0.08m, 2)))
             .ForMember(d => d.DiscountAmount, o => o.MapFrom(s => s.Order != null ? s.Order.DiscountAmount ?? 0 : 0))
@@ -69,6 +71,21 @@ public class SaleMappingProfile : Profile
 
         // Receipt
         CreateMap<Receipt, DTOs.SaleDTOs.ReceiptDto>();
+
+        // ReturnOrder
+        CreateMap<ReturnOrder, DTOs.SaleDTOs.ReturnOrderDto>()
+            .ForMember(d => d.InvoiceCode, o => o.MapFrom(s => s.Order != null ? s.Order.OrderCode : null))
+            .ForMember(d => d.StaffName, o => o.MapFrom(s => s.User != null ? s.User.FullName : null))
+            .ForMember(d => d.Items, o => o.MapFrom(s => s.ReturnItems));
+
+        CreateMap<ReturnItem, DTOs.SaleDTOs.ReturnItemDto>()
+            .ForMember(d => d.ProductId, o => o.MapFrom(s => s.BranchProduct != null ? s.BranchProduct.ProductId : Guid.Empty))
+            .ForMember(d => d.ProductName, o => o.MapFrom(s =>
+                s.BranchProduct != null && s.BranchProduct.Product != null
+                    ? s.BranchProduct.Product.ProductName : null))
+            .ForMember(d => d.ProductCode, o => o.MapFrom(s =>
+                s.BranchProduct != null && s.BranchProduct.Product != null
+                    ? s.BranchProduct.Product.ProductCode : null));
     }
 
     private static string? CalculateTier(decimal? totalSpent)

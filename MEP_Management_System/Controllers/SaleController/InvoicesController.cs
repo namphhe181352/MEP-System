@@ -4,12 +4,12 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using AutoMapper;
+using MEP_Management_System.DTOs.SaleDTOs;
+using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using MEP_Management_System.Models;
-using MEP_Management_System.DTOs.SaleDTOs;
-using MEP_Management_System.Services;
 
 namespace MEP_Management_System.Controllers.SaleController;
 
@@ -275,7 +275,8 @@ public class InvoicesController : ControllerBase
             .FirstOrDefaultAsync(i => i.InvoiceId == invoiceId && i.Order.BranchId == branchId);
 
         if (invoice == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Invoice not found"));
-        if (invoice.Status != "Draft") return BadRequest(ApiErrorResponse.Create("MSG-78", "Only draft invoices can be cancelled"));
+        if (invoice.Status != "Draft" && invoice.Status != "OnHold")
+            return BadRequest(ApiErrorResponse.Create("MSG-78", "Only draft or on-hold invoices can be cancelled"));
 
         invoice.Status = "Cancelled";
         invoice.Order.Status = "Cancelled";
@@ -297,6 +298,18 @@ public class InvoicesController : ControllerBase
         if (invoice == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Invoice not found"));
         if (invoice.Status != "Draft") return BadRequest(ApiErrorResponse.Create("MSG-78", "Invoice already finalized"));
         if (!invoice.InvoiceItems.Any()) return BadRequest(ApiErrorResponse.Create("MSG-61", "Invoice must have at least 1 item"));
+
+        // BR-90: Block finalize if any product is in a pending StockCheckTicket
+        var productIds = invoice.InvoiceItems.Select(ii => ii.BranchProduct.ProductId).ToList();
+        var hasPendingStockCheck = await _context.InventoryCheckTickets
+            .Where(t => t.BranchId == branchId &&
+                        (t.Status == InventoryCheckTicketStatus.Draft ||
+                         t.Status == InventoryCheckTicketStatus.WaitingForApproval) &&
+                        t.Details.Any(d => productIds.Contains(d.ProductId)))
+            .AnyAsync();
+
+        if (hasPendingStockCheck)
+            return BadRequest(ApiErrorResponse.Create("MSG-80", "Một số sản phẩm đang nằm trong phiếu kiểm kho chưa hoàn tất. Không thể thanh toán."));
 
         // Validate stock
         foreach (var item in invoice.InvoiceItems)
@@ -363,6 +376,124 @@ public class InvoicesController : ControllerBase
             .ToListAsync();
 
         return Ok(_mapper.Map<List<InvoiceItemDto>>(items));
+    }
+
+    // POST /api/pos/invoices/{invoiceId}/hold
+    /// <summary>Treo hóa đơn (Hold Invoice) - lưu trạng thái giỏ hàng hiện tại.</summary>
+    [HttpPost("{invoiceId:guid}/hold")]
+    public async Task<ActionResult<InvoiceDto>> HoldInvoice(Guid invoiceId, [FromBody] HoldInvoiceRequest request)
+    {
+        var branchId = GetBranchId();
+        var invoice = await _context.Invoices
+            .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct).ThenInclude(bp => bp.Product)
+            .Include(i => i.Order).ThenInclude(o => o.Customer)
+            .Include(i => i.Order).ThenInclude(o => o.User)
+            .FirstOrDefaultAsync(i => i.InvoiceId == invoiceId && i.Order.BranchId == branchId);
+
+        if (invoice == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Invoice not found"));
+        if (invoice.Status != "Draft") return BadRequest(ApiErrorResponse.Create("MSG-78", "Only draft invoices can be held"));
+
+        // BR-87: Max 10 held invoices per branch
+        var heldCount = await _context.Invoices
+            .Where(i => i.Order.BranchId == branchId && i.Status == "OnHold")
+            .CountAsync();
+
+        if (heldCount >= 10)
+            return BadRequest(ApiErrorResponse.Create("MSG-71", "Đã đạt tối đa 10 đơn treo. Không thể treo thêm."));
+
+        // BR-86: Save current cart state, change status to "OnHold"
+        var now = DateTime.UtcNow;
+        invoice.Status = "OnHold";
+        invoice.HoldNote = request?.HoldNote;
+        invoice.HeldAt = now;
+        invoice.Order.Status = "OnHold";
+
+        await _context.SaveChangesAsync();
+
+        var dto = _mapper.Map<InvoiceDto>(invoice);
+        dto.OrderId = invoice.OrderId;
+        return Ok(dto);
+    }
+
+    // POST /api/pos/invoices/{invoiceId}/resume
+    /// <summary>Khôi phục hóa đơn đang treo (Resume Invoice) - chuyển về Draft.</summary>
+    [HttpPost("{invoiceId:guid}/resume")]
+    public async Task<ActionResult<InvoiceDto>> ResumeInvoice(Guid invoiceId)
+    {
+        var branchId = GetBranchId();
+        var invoice = await _context.Invoices
+            .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct).ThenInclude(bp => bp.Product)
+            .Include(i => i.Order).ThenInclude(o => o.Customer)
+            .Include(i => i.Order).ThenInclude(o => o.User)
+            .FirstOrDefaultAsync(i => i.InvoiceId == invoiceId && i.Order.BranchId == branchId);
+
+        if (invoice == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Invoice not found"));
+        if (invoice.Status != "OnHold") return BadRequest(ApiErrorResponse.Create("MSG-78", "Only on-hold invoices can be resumed"));
+
+        // BR-88: Check not expired (24h)
+        if (invoice.HeldAt.HasValue && invoice.HeldAt.Value.AddHours(24) < DateTime.UtcNow)
+            return BadRequest(ApiErrorResponse.Create("MSG-78", "Hóa đơn treo đã quá 24 giờ và tự động hủy."));
+
+        // BR-89: Validate real-time stock for all items when resuming
+        foreach (var item in invoice.InvoiceItems)
+        {
+            if (item.BranchProduct.AvailableStock < item.Quantity)
+                return BadRequest(ApiErrorResponse.Create("MSG-59",
+                    $"Sản phẩm '{item.BranchProduct.Product?.ProductName}' không đủ tồn kho khi khôi phục. Hiện có: {item.BranchProduct.AvailableStock}"));
+        }
+
+        invoice.Status = "Draft";
+        invoice.Order.Status = "Draft";
+        // Clear hold metadata
+        invoice.HoldNote = null;
+        invoice.HeldAt = null;
+
+        await _context.SaveChangesAsync();
+
+        var dto = _mapper.Map<InvoiceDto>(invoice);
+        dto.OrderId = invoice.OrderId;
+        return Ok(dto);
+    }
+
+    // GET /api/pos/invoices/on-hold
+    /// <summary>Lấy danh sách hóa đơn đang treo (chưa hết hạn 24h).</summary>
+    [HttpGet("on-hold")]
+    public async Task<ActionResult<PageResultDto<InvoiceDto>>> GetOnHoldInvoices(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    {
+        var branchId = GetBranchId();
+        var cutoff = DateTime.UtcNow.AddHours(-24);
+
+        var query = _context.Invoices
+            .Where(i => i.Order.BranchId == branchId &&
+                        i.Status == "OnHold" &&
+                        i.HeldAt != null && i.HeldAt > cutoff)
+            .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct).ThenInclude(bp => bp.Product)
+            .Include(i => i.Order).ThenInclude(o => o.Customer)
+            .Include(i => i.Order).ThenInclude(o => o.User)
+            .AsQueryable();
+
+        var total = await query.CountAsync();
+        var invoices = await query
+            .OrderByDescending(i => i.HeldAt)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .ToListAsync();
+
+        var dtos = invoices.Select(inv =>
+        {
+            var dto = _mapper.Map<InvoiceDto>(inv);
+            dto.OrderId = inv.OrderId;
+            dto.UserId = inv.UserId;
+            return dto;
+        }).ToList();
+
+        return Ok(new PageResultDto<InvoiceDto>
+        {
+            Items = dtos,
+            PageNumber = page,
+            PageSize = pageSize,
+            TotalCount = total
+        });
     }
 }
 

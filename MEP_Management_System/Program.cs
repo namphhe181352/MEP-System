@@ -160,7 +160,7 @@ app.UseSwaggerUI(c =>
 });
 
 app.UseCors("AllowFrontend");
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection(); // Bỏ comment khi deploy lên server thật có SSL/TLS
 app.UseAuthentication();
 app.UseAuthorization();
 
