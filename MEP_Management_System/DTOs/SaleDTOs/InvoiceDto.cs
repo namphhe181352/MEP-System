@@ -19,6 +19,8 @@ public class InvoiceDto
     public string? PaymentMethod { get; set; }
     public string Status { get; set; } = null!;
     public string? Note { get; set; }
+    public string? HoldNote { get; set; }
+    public DateTime? HeldAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<InvoiceItemDto> Items { get; set; } = new();
 }

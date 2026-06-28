@@ -18,10 +18,16 @@ public partial class Invoice
 
     public string? PaymentMethod { get; set; }
 
-    /// <summary>Trạng thái: COMPLETED / CANCELLED / REFUNDED.</summary>
+    /// <summary>Trạng thái: COMPLETED / CANCELLED / REFUNDED / ONHOLD.</summary>
     public string? Status { get; set; }
 
     public string? Note { get; set; }
+
+    /// <summary>Ghi chú khi treo hóa đơn (Hold Invoice).</summary>
+    public string? HoldNote { get; set; }
+
+    /// <summary>Thời điểm hóa đơn được treo.</summary>
+    public DateTime? HeldAt { get; set; }
 
     public DateTime? CreatedAt { get; set; }
 

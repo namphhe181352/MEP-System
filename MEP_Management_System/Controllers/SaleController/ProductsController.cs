@@ -22,12 +22,14 @@ public class ProductsController : ControllerBase
         _context = context;
     }
 
+    private Guid GetBranchId() =>
+        Guid.Parse(User.FindFirst("branchId")?.Value ?? throw new Exception("branchId not found in token"));
 
     // GET /api/pos/products
     [HttpGet]
     public async Task<ActionResult<List<ProductPriceDto>>> GetProducts()
     {
-        var branchId = Guid.Parse(User.FindFirst("branchId")?.Value ?? throw new Exception("branchId not found"));
+        var branchId = GetBranchId();
         var products = await _context.BranchProducts
             .Include(b => b.Product)
             .Where(b => b.BranchId == branchId && b.IsActive == 1)
@@ -45,11 +47,12 @@ public class ProductsController : ControllerBase
             Unit = b.Product?.BaseUnit
         }).ToList());
     }
+
     // GET /api/pos/products/{productId}/price
     [HttpGet("{productId:guid}/price")]
     public async Task<ActionResult<ProductPriceDto>> GetPrice(Guid productId)
     {
-        var branchId = Guid.Parse(User.FindFirst("branchId")?.Value ?? throw new Exception("branchId not found"));
+        var branchId = GetBranchId();
         var bp = await _context.BranchProducts
             .Include(b => b.Product)
             .FirstOrDefaultAsync(b => b.BranchId == branchId && b.ProductId == productId && b.IsActive == 1);
@@ -72,11 +75,10 @@ public class ProductsController : ControllerBase
     [HttpGet("{productId:guid}/stock")]
     public async Task<ActionResult<ProductStockDto>> GetStock(Guid productId)
     {
-        var branchId = Guid.Parse(User.FindFirst("branchId")?.Value ?? throw new Exception("branchId not found"));
         var product = await _context.Products.FindAsync(productId);
         if (product == null) return NotFound(ApiErrorResponse.Create("MSG-59", "Product not found"));
 
-        // Cross-branch stock lookup (BR-79)
+        // Cross-branch stock lookup (BR-79) — all active branches
         var allBp = await _context.BranchProducts
             .Include(b => b.Branch)
             .Where(b => b.ProductId == productId && b.IsActive == 1)
