@@ -11,4 +11,5 @@ public class ProductPriceDto
     public decimal RetailPrice { get; set; }
     public decimal? FloorPrice { get; set; }
     public string? Unit { get; set; }
+    public decimal? AvailableStock { get; set; }
 }

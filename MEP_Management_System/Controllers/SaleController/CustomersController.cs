@@ -29,12 +29,21 @@ public class CustomersController : ControllerBase
 
     private static readonly Regex PhoneRegex = new(@"^0[3|5|7|8|9][0-9]{8}$", RegexOptions.Compiled);
 
+    private Guid GetBranchId() =>
+        Guid.Parse(User.FindFirst("branchId")?.Value ?? throw new Exception("branchId not found in token"));
+
+    private Guid GetUserId() =>
+        Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value ?? throw new Exception("userId not found"));
+
     // GET /api/pos/customers
     [HttpGet]
     public async Task<ActionResult<PageResultDto<CustomerDto>>> GetCustomers(
         [FromQuery] string? search, [FromQuery] string? group,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
+        var branchId = GetBranchId();
+        Console.WriteLine($"[DEBUG] GetCustomers - BranchId: {branchId}, search: '{search}', group: '{group}', totalInDB: {await _context.Customers.CountAsync()}");
+
         var query = _context.Customers.AsQueryable();
 
         if (!string.IsNullOrEmpty(search))
@@ -70,12 +79,16 @@ public class CustomersController : ControllerBase
         {
             if (!PhoneRegex.IsMatch(request.PhoneNumber))
                 return BadRequest(ApiErrorResponse.Create("MSG-67", "Invalid phone number format. Expected: 0x-xxxx-xxxx (x = digit)"));
-            var exists = await _context.Customers.AnyAsync(c => c.PhoneNumber == request.PhoneNumber);
-            if (exists) return Conflict(ApiErrorResponse.Create("MSG-68", "Phone number already registered"));
+            var branchId = GetBranchId();
+            var exists = await _context.Customers.AnyAsync(c => c.PhoneNumber == request.PhoneNumber && c.BranchId == branchId);
+            if (exists) return Conflict(ApiErrorResponse.Create("MSG-68", "Phone number already registered in this store"));
         }
 
         var customer = _mapper.Map<Customer>(request);
         customer.CustomerId = Guid.NewGuid();
+        customer.CreatedBy = GetUserId();
+        customer.BranchId = GetBranchId();
+        Console.WriteLine($"[DEBUG] CreateCustomer - BranchId: {customer.BranchId}, CreatedBy: {customer.CreatedBy}");
 
         _context.Customers.Add(customer);
         await _context.SaveChangesAsync();
@@ -87,15 +100,16 @@ public class CustomersController : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<CustomerDto>> UpdateCustomer(Guid id, [FromBody] UpdateCustomerRequest request)
     {
-        var customer = await _context.Customers.FindAsync(id);
+        var branchId = GetBranchId();
+        var customer = await _context.Customers.FirstOrDefaultAsync(c => c.CustomerId == id && c.BranchId == branchId);
         if (customer == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Customer not found"));
 
         if (!string.IsNullOrEmpty(request.PhoneNumber) && request.PhoneNumber != customer.PhoneNumber)
         {
             if (!PhoneRegex.IsMatch(request.PhoneNumber))
                 return BadRequest(ApiErrorResponse.Create("MSG-67", "Invalid phone number format"));
-            var exists = await _context.Customers.AnyAsync(c => c.PhoneNumber == request.PhoneNumber && c.CustomerId != id);
-            if (exists) return Conflict(ApiErrorResponse.Create("MSG-68", "Phone number already registered"));
+            var exists = await _context.Customers.AnyAsync(c => c.PhoneNumber == request.PhoneNumber && c.CustomerId != id && c.BranchId == branchId);
+            if (exists) return Conflict(ApiErrorResponse.Create("MSG-68", "Phone number already registered in this store"));
         }
 
         _mapper.Map(request, customer);
@@ -108,7 +122,8 @@ public class CustomersController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<CustomerDto>> GetCustomer(Guid id)
     {
-        var customer = await _context.Customers.FindAsync(id);
+        var branchId = GetBranchId();
+        var customer = await _context.Customers.FirstOrDefaultAsync(c => c.CustomerId == id && c.BranchId == branchId);
         if (customer == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Customer not found"));
         return Ok(_mapper.Map<CustomerDto>(customer));
     }
@@ -118,7 +133,8 @@ public class CustomersController : ControllerBase
     public async Task<ActionResult<PageResultDto<CustomerOrderDto>>> GetCustomerOrders(
         Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
-        var customer = await _context.Customers.FindAsync(id);
+        var branchId = GetBranchId();
+        var customer = await _context.Customers.FirstOrDefaultAsync(c => c.CustomerId == id && c.BranchId == branchId);
         if (customer == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Customer not found"));
 
         var query = _context.Invoices

@@ -18,3 +18,4 @@ obj/
 appsettings.Development.json
 appsettings.local.json
 patch_seeder.py
+test_pos_flow.sh

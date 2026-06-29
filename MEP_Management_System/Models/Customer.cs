@@ -48,6 +48,14 @@ public partial class Customer
 
     public DateTime? UpdatedAt { get; set; }
 
+    /// <summary>Người tạo khách hàng</summary>
+    public Guid? CreatedBy { get; set; }
+
+    /// <summary>Cửa hàng mà khách hàng thuộc về</summary>
+    public Guid? BranchId { get; set; }
+
+    public virtual User? CreatedByUser { get; set; }
+    public virtual Branch? Branch { get; set; }
 
     public virtual ICollection<Order> Orders { get; set; } = new List<Order>();
     public virtual ICollection<LoyaltyTransaction> LoyaltyTransactions { get; set; } = new List<LoyaltyTransaction>();

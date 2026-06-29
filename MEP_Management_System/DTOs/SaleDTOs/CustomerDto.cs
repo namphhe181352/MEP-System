@@ -21,4 +21,6 @@ public class CustomerDto
     public short Status { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    public Guid? BranchId { get; set; }
+    public Guid? CreatedBy { get; set; }
 }
