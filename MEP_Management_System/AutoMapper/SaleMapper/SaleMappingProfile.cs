@@ -16,6 +16,11 @@ public class SaleMappingProfile : Profile
             .ForMember(d => d.Subtotal, o => o.MapFrom(s => s.InvoiceItems.Sum(i => i.Quantity * i.SellPrice)))
             .ForMember(d => d.TaxAmount, o => o.MapFrom(s => Math.Round(s.InvoiceItems.Sum(i => i.Quantity * i.SellPrice) * 0.08m, 2)))
             .ForMember(d => d.DiscountAmount, o => o.MapFrom(s => s.Order != null ? s.Order.DiscountAmount ?? 0 : 0))
+            // TotalAmount = subtotal + VAT(8%) - discount — phải nhất quán với CreatePayment validation
+            .ForMember(d => d.TotalAmount, o => o.MapFrom(s =>
+                s.InvoiceItems.Sum(i => i.Quantity * i.SellPrice)
+                + Math.Round(s.InvoiceItems.Sum(i => i.Quantity * i.SellPrice) * 0.08m, 2)
+                - (s.Order != null ? s.Order.DiscountAmount ?? 0 : 0)))
             .ForMember(d => d.CustomerName, o => o.MapFrom(s => s.Order != null && s.Order.Customer != null ? s.Order.Customer.CustomerName : null))
             .ForMember(d => d.CustomerId, o => o.MapFrom(s => s.Order != null ? s.Order.CustomerId : (Guid?)null))
             .ForMember(d => d.PromotionCode, o => o.MapFrom(s => s.Order != null ? s.Order.PromotionCode : null))

@@ -44,7 +44,8 @@ public class ProductsController : ControllerBase
             Barcode = b.Product?.Barcode,
             RetailPrice = b.SellPrice,
             FloorPrice = b.CostPrice,
-            Unit = b.Product?.BaseUnit
+            Unit = b.Product?.BaseUnit,
+            AvailableStock = b.AvailableStock
         }).ToList());
     }
 

@@ -354,11 +354,20 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("address");
 
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime?>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CreatedByUserUserId")
+                        .HasColumnType("uuid");
 
                     b.Property<decimal?>("CurrentDebt")
                         .ValueGeneratedOnAdd()
@@ -439,6 +448,10 @@ namespace MEP_Management_System.Migrations
 
                     b.HasKey("CustomerId")
                         .HasName("customers_pkey");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("CreatedByUserUserId");
 
                     b.HasIndex(new[] { "PhoneNumber" }, "customers_phone_unique")
                         .IsUnique();
@@ -2855,6 +2868,21 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Category");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.Customer", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId");
+
+                    b.HasOne("MEP_Management_System.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserUserId");
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("CreatedByUser");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.DailySummary", b =>

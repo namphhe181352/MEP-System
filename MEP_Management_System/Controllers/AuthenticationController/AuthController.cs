@@ -191,14 +191,24 @@ namespace MEP_Management_System.Controllers
             }
             else
             {
-                // Staff: lấy 1 branch duy nhất, gán vào JWT
-                var assignment = await _context.StaffAssignments
-                    .FirstOrDefaultAsync(sa => sa.UserId == user.UserId);
+                // Staff: Ưu tiên DefaultBranchId, fallback sang StaffAssignments với ORDER BY deterministic
+                if (user.DefaultBranchId.HasValue)
+                {
+                    branchIdForToken = user.DefaultBranchId.Value.ToString();
+                }
+                else
+                {
+                    // Fallback: lấy từ StaffAssignments với ORDER BY AssignedAt (deterministic)
+                    var assignment = await _context.StaffAssignments
+                        .Where(sa => sa.UserId == user.UserId)
+                        .OrderBy(sa => sa.AssignedAt)
+                        .FirstOrDefaultAsync();
 
-                if (assignment == null)
-                    return BadRequest(new { message = "Tài khoản chưa được phân công chi nhánh." });
+                    if (assignment == null)
+                        return BadRequest(new { message = "Tài khoản chưa được phân công chi nhánh." });
 
-                branchIdForToken = assignment.BranchId.ToString();
+                    branchIdForToken = assignment.BranchId.ToString();
+                }
             }
 
             var jwtToken = _jwtHelper.GenerateToken(
