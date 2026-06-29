@@ -44,7 +44,7 @@ public class CustomersController : ControllerBase
         var branchId = GetBranchId();
         Console.WriteLine($"[DEBUG] GetCustomers - BranchId: {branchId}, search: '{search}', group: '{group}', totalInDB: {await _context.Customers.CountAsync()}");
 
-        var query = _context.Customers.AsQueryable();
+        var query = _context.Customers.Where(c => c.BranchId == branchId).AsQueryable();
 
         if (!string.IsNullOrEmpty(search))
             query = query.Where(c =>
