@@ -393,9 +393,6 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (string.IsNullOrWhiteSpace(dto.ProductCode)) errors.Add("productCode is required");
                 if (string.IsNullOrWhiteSpace(dto.ProductName)) errors.Add("productName is required");
                 if (string.IsNullOrWhiteSpace(dto.Unit)) errors.Add("unit is required");
-                if (dto.CostPrice <= 0) errors.Add("costPrice must be greater than 0");
-                if (dto.SalePrice <= 0) errors.Add("salePrice must be greater than 0");
-                if (dto.SalePrice < dto.CostPrice) errors.Add("salePrice should be >= costPrice");
 
                 if (errors.Any())
                 {
@@ -472,6 +469,14 @@ namespace MEP_Management_System.Controllers.InventoryController
                         }
                     }
 
+                    // Chuẩn hoá ShelfLocation: ưu tiên ShelfLocation đầu tiên trong ShelfLocations
+                    var primaryShelfLocation =
+                        !string.IsNullOrWhiteSpace(dto.ShelfLocation)
+                            ? dto.ShelfLocation
+                            : (dto.ShelfLocations != null && dto.ShelfLocations.Count > 0
+                                ? dto.ShelfLocations[0]
+                                : null);
+
                     var branchProduct = new BranchProduct
                     {
                         BranchProductId = Guid.NewGuid(),
@@ -480,9 +485,12 @@ namespace MEP_Management_System.Controllers.InventoryController
                         ActualStock = dto.ActualStock,
                         AvailableStock = dto.AvailableStock,
                         ReservedStock = dto.ReservedStock,
-                        ShelfLocation = dto.ShelfLocation ?? "Chưa xếp vị trí",
+                        ShelfLocation = primaryShelfLocation ?? "Chưa xếp vị trí",
+                        MinimumStock = dto.MinimumStock ?? 0,
+                        MaximumStock = dto.MaximumStock ?? 0,
                         CostPrice = dto.CostPrice,
                         SellPrice = dto.SalePrice,
+                        DirectSale = (short?)(dto.DirectSale ? 1 : 0),
                         Product = null!
                     };
                     _context.BranchProducts.Add(branchProduct);
@@ -536,9 +544,6 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (string.IsNullOrWhiteSpace(dto.ProductCode)) errors.Add("productCode is required");
                 if (string.IsNullOrWhiteSpace(dto.ProductName)) errors.Add("productName is required");
                 if (string.IsNullOrWhiteSpace(dto.Unit)) errors.Add("unit is required");
-                if (dto.CostPrice <= 0) errors.Add("costPrice must be greater than 0");
-                if (dto.SalePrice <= 0) errors.Add("salePrice must be greater than 0");
-                if (dto.SalePrice < dto.CostPrice) errors.Add("salePrice should be >= costPrice");
 
                 if (errors.Any())
                 {
@@ -565,14 +570,32 @@ namespace MEP_Management_System.Controllers.InventoryController
                     bp.Product.UpdatedAt = currentLocalTime;
                     bp.Product.UpdatedBy = currentUserId;
 
+                    // Đảm bảo SizeUnit được lưu (DTO có, Product có, AutoMapper xử lý đúng)
+                    if (!string.IsNullOrWhiteSpace(dto.SizeUnit))
+                        bp.Product.SizeUnit = dto.SizeUnit;
+
                     _context.Products.Update(bp.Product);
 
                     bp.ActualStock = dto.ActualStock;
                     bp.AvailableStock = dto.AvailableStock;
                     bp.ReservedStock = dto.ReservedStock;
-                    bp.ShelfLocation = dto.ShelfLocation ?? "Chưa xếp vị trí";
+
+                    // Chuẩn hoá ShelfLocation: ưu tiên ShelfLocation đầu tiên trong ShelfLocations
+                    var primaryShelfLocation =
+                        !string.IsNullOrWhiteSpace(dto.ShelfLocation)
+                            ? dto.ShelfLocation
+                            : (dto.ShelfLocations != null && dto.ShelfLocations.Count > 0
+                                ? dto.ShelfLocations[0]
+                                : null);
+                    bp.ShelfLocation = primaryShelfLocation ?? bp.ShelfLocation ?? "Chưa xếp vị trí";
+
+                    // Lưu MinimumStock / MaximumStock vào BranchProduct (vì Product model không có 2 field này)
+                    bp.MinimumStock = dto.MinimumStock ?? bp.MinimumStock ?? 0;
+                    bp.MaximumStock = dto.MaximumStock ?? bp.MaximumStock ?? 0;
+
                     bp.CostPrice = dto.CostPrice;
                     bp.SellPrice = dto.SalePrice;
+                    bp.DirectSale = (short?)(dto.DirectSale ? 1 : 0);
 
                     _context.BranchProducts.Update(bp);
 
@@ -878,9 +901,9 @@ namespace MEP_Management_System.Controllers.InventoryController
             // Determine product status
             string productStatus = p.Status == 0 ? "inactive" : "active";
 
-            // Determine stock status
+            // Determine stock status (so sánh với MinimumStock thay vì Weight)
             string stockStatus = bp.ActualStock > 0
-                ? (bp.ActualStock > (p.Weight ?? 0) ? "Sẵn hàng" : "Sắp hết")
+                ? (bp.ActualStock > (bp.MinimumStock ?? 0) ? "Sẵn hàng" : "Sắp hết")
                 : "Hết hàng";
 
             string statusTone = stockStatus switch
@@ -917,8 +940,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                 AvailableStock = bp.AvailableStock,
                 ReservedStock = bp.ReservedStock,
 
-                MinimumStock = p.Weight.HasValue ? (int)p.Weight.Value : 0,
-                MaximumStock = 9999,
+                // Lấy MinimumStock / MaximumStock từ BranchProduct (không phải Weight)
+                MinimumStock = bp.MinimumStock ?? 0,
+                MaximumStock = bp.MaximumStock ?? 0,
 
                 // Location & Dimensions
                 ShelfLocation = bp.ShelfLocation,
@@ -928,6 +952,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 Width = p.Width,
                 Length = p.Length,
                 Height = p.Height,
+                SizeUnit = p.SizeUnit,
                 Specification = p.Specification,
                 SpecificationDetail = $"{p.Width ?? 0}x{p.Length ?? 0}x{p.Height ?? 0}",
 
@@ -937,7 +962,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 Images = p.MediaResources.Select(m => m.MediaUrl).ToList(),
 
                 // Sales & Status
-                DirectSale = true,
+                DirectSale = bp.DirectSale == 1 || bp.DirectSale == null,
                 SalesChannelLinked = p.SalesChannelLinked == 1,
                 IsActive = p.Status == 1,
 

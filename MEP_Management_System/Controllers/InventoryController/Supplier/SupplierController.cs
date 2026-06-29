@@ -404,7 +404,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         }
 
         // ============================================================
-        // DELETE /api/suppliers/{id}  (soft delete: set Status = 0)
+        // DELETE /api/suppliers/{id}  (Hard Delete)
         // Quyền truy cập: Owner (Mặc định qua Handler) hoặc có quyền SUPPLIER_MANAGE
         // ============================================================
         [HttpDelete("{id:guid}")]
@@ -421,28 +421,15 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         Message = "Supplier not found",
                         Errors = new() { $"No supplier with ID: {id}" }
                     });
+                _context.Suppliers.Remove(s);
 
-                // 🌟 Lấy UserId từ JWT để lưu vết xem ai thực hiện thao tác xóa này
-                Guid? currentUserId = null;
-                var nameIdentifier = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (Guid.TryParse(nameIdentifier, out var parsedGuid))
-                {
-                    currentUserId = parsedGuid;
-                }
-
-                // Soft delete: chuyển đổi trạng thái về inactive
-                s.Status = 0;
-
-                // 🌟 Ghi nhận vết Audit vì soft delete cũng bản chất là cập nhật bản ghi
-                s.UpdatedBy = currentUserId;
-                s.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
-
+                // Lưu thay đổi (EF Core sẽ sinh ra lệnh DELETE FROM suppliers WHERE...)
                 await _context.SaveChangesAsync();
 
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = "Supplier deactivated successfully"
+                    Message = "Supplier deleted permanently from database" // Sửa lại message cho đúng bản chất
                 });
             }
             catch (Exception ex)

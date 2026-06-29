@@ -31,6 +31,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public decimal? Width { get; set; }
         public decimal? Length { get; set; }
         public decimal? Height { get; set; }
+        public string? SizeUnit { get; set; }
         public string? Specification { get; set; }
         public string? SpecificationDetail { get; set; }
         public string? ImageUrl { get; set; }
