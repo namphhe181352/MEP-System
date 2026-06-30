@@ -68,7 +68,8 @@ public class ProductsController : ControllerBase
             Barcode = bp.Product?.Barcode,
             RetailPrice = bp.SellPrice,
             FloorPrice = bp.CostPrice,
-            Unit = bp.Product?.BaseUnit
+            Unit = bp.Product?.BaseUnit,
+            AvailableStock = bp.AvailableStock
         });
     }
 
