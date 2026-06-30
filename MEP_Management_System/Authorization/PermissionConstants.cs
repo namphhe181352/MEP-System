@@ -35,6 +35,7 @@ public static class PermissionConstants
     public const string STOCK_CHECK_VIEW = "STOCK_CHECK_VIEW";
     public const string STOCK_CHECK_CREATE = "STOCK_CHECK_CREATE";
     public const string STOCK_CHECK_APPROVE = "STOCK_CHECK_APPROVE";
+    public const string STOCK_CHECK_CANCEL = "STOCK_CHECK_CANCEL";
 
     // === SALE / POS ===
     public const string CUSTOMER_VIEW = "CUSTOMER_VIEW";
@@ -56,6 +57,13 @@ public static class PermissionConstants
     public const string OWNER_MANAGE = "OWNER_MANAGE";
     public const string SYSTEM_MANAGE = "SYSTEM_MANAGE";
     public const string REPORT_VIEW = "REPORT_VIEW";
+
+    // === STAFF / EMPLOYEE (Nhân viên) ===
+    public const string STAFF_VIEW = "STAFF_VIEW";
+    public const string STAFF_CREATE = "STAFF_CREATE";
+    public const string STAFF_UPDATE = "STAFF_UPDATE";
+    public const string STAFF_DELETE = "STAFF_DELETE";
+    public const string STAFF_ASSIGN_BRANCH = "STAFF_ASSIGN_BRANCH";
 
     // === ROLE & CLAIM TYPE ===
     /// <summary>Role Owner - được bypass mọi Permission check.</summary>

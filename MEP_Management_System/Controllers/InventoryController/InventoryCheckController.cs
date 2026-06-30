@@ -12,10 +12,9 @@ using Microsoft.AspNetCore.SignalR;
 using MEP_Management_System.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-//test comment check account uppdate
+
 namespace MEP_Management_System.Controllers.InventoryController;
-//test comment check account uppdate
-//test comment check account uppdate
+
 [ApiController]
 [Route("api/[controller]")]
 [Tags("Quản lý Kho (Inventory)")]
@@ -118,7 +117,8 @@ public class InventoryCheckController : ControllerBase
                     Status = ticket.Status.ToString(),
                     DetailCount = ticket.Details.Count,
                     BranchId = ticket.BranchId,
-                    CreatedByUserId = ticket.CreatedByUserId
+                    CreatedByUserId = ticket.CreatedByUserId,
+                    AssigneeUserId = ticket.AssigneeUserId
                 })
                 .ToListAsync();
 
@@ -239,6 +239,32 @@ public class InventoryCheckController : ControllerBase
                 });
             }
 
+            // Validate: Check if any products are already in active inventory checks (Draft/WaitingForApproval)
+            var existingActiveChecks = await _context.InventoryCheckTickets
+                .Where(t => t.BranchId == branchId.Value &&
+                           (t.Status == InventoryCheckTicketStatus.Draft || t.Status == InventoryCheckTicketStatus.WaitingForApproval))
+                .SelectMany(t => t.Details)
+                .Where(d => dto.ProductIds.Contains(d.ProductId))
+                .Select(d => d.ProductId)
+                .Distinct()
+                .ToListAsync();
+
+            if (existingActiveChecks.Any())
+            {
+                var productNames = await _context.Products
+                    .Where(p => existingActiveChecks.Contains(p.ProductId))
+                    .Select(p => p.ProductName)
+                    .Take(5)
+                    .ToListAsync();
+
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Một số sản phẩm đang nằm trong phiếu kiểm kê chưa hoàn tất.",
+                    Errors = new() { $"Các sản phẩm sau đang có phiếu kiểm kê Draft/WaitingForApproval: {string.Join(", ", productNames)}" }
+                });
+            }
+
             var branchProducts = await _context.BranchProducts
                 .Where(bp => bp.BranchId == branchId.Value && dto.ProductIds.Contains(bp.ProductId))
                 .ToListAsync();
@@ -262,6 +288,7 @@ public class InventoryCheckController : ControllerBase
                 Status = InventoryCheckTicketStatus.Draft,
                 BranchId = branchId.Value,
                 CreatedByUserId = userId.Value,
+                AssigneeUserId = dto.AssigneeUserId,
                 Notes = dto.Notes
             };
 
@@ -274,14 +301,23 @@ public class InventoryCheckController : ControllerBase
                     ProductId = branchProduct.ProductId,
                     SystemQuantity = systemQuantity,
                     ActualQuantity = 0,
-                    // At draft time we haven't counted yet — store a placeholder discrepancy
-                    // so the UI can show it's uncounted. We'll treat Draft as "no discrepancy shown" in DTO mapping.
+                    IsCounted = false,
                     Discrepancy = 0 - systemQuantity
                 });
             }
 
             await _context.InventoryCheckTickets.AddAsync(ticket);
             await _context.SaveChangesAsync();
+
+            // SignalR notification
+            await _hub.Clients.Group($"Branch_{branchId.Value}")
+                .SendAsync("InventoryCheckCreated", new
+                {
+                    ticketId = ticket.TicketId,
+                    ticketCode = ticket.TicketCode,
+                    branchId = ticket.BranchId,
+                    createdBy = ticket.CreatedByUserId
+                });
 
             return CreatedAtAction(nameof(GetInventoryCheckById), new { id = ticket.TicketId }, new ApiResponse<InventoryCheckResponseDto>
             {
@@ -301,7 +337,242 @@ public class InventoryCheckController : ControllerBase
         }
     }
 
+    [HttpPut("{id:guid}")]
+    [HasPermission(PermissionConstants.STOCK_CHECK_CREATE)]
+    public async Task<IActionResult> UpdateInventoryCheck(Guid id, [FromBody] UpdateInventoryCheckDto dto)
+    {
+        try
+        {
+            var branchId = _currentBranch.GetBranchId();
+            if (branchId == null)
+            {
+                return Unauthorized(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy thông tin chi nhánh trong Token.",
+                    Errors = new() { "branchId claim is required." }
+                });
+            }
+
+            var userId = GetUserId();
+            if (userId == null)
+            {
+                return Unauthorized(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy thông tin người dùng trong Token.",
+                    Errors = new() { "User claim is required." }
+                });
+            }
+
+            var ticket = await _context.InventoryCheckTickets
+                .Include(t => t.Details)
+                .FirstOrDefaultAsync(t => t.TicketId == id && t.BranchId == branchId.Value);
+
+            if (ticket == null)
+            {
+                return NotFound(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Phiếu kiểm kê không tồn tại.",
+                    Errors = new() { $"Không tìm thấy phiếu với ID: {id}." }
+                });
+            }
+
+            if (ticket.Status != InventoryCheckTicketStatus.Draft)
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Chỉ có thể cập nhật phiếu ở trạng thái Draft.",
+                    Errors = new() { "Chỉ phiếu Draft mới có thể được cập nhật." }
+                });
+            }
+
+            // Update notes
+            if (dto.Notes != null)
+            {
+                ticket.Notes = dto.Notes;
+            }
+
+            // Update assignee
+            if (dto.AssigneeUserId.HasValue)
+            {
+                ticket.AssigneeUserId = dto.AssigneeUserId;
+            }
+
+            // Add products
+            if (dto.AddProductIds != null && dto.AddProductIds.Any())
+            {
+                var existingProductIds = ticket.Details.Select(d => d.ProductId).ToHashSet();
+                var newProductIds = dto.AddProductIds.Except(existingProductIds).ToList();
+
+                if (newProductIds.Any())
+                {
+                    // Check for duplicate in other active checks
+                    var activeProductIds = await _context.InventoryCheckTickets
+                        .Where(t => t.BranchId == branchId.Value && t.TicketId != id &&
+                                   (t.Status == InventoryCheckTicketStatus.Draft || t.Status == InventoryCheckTicketStatus.WaitingForApproval))
+                        .SelectMany(t => t.Details)
+                        .Select(d => d.ProductId)
+                        .Distinct()
+                        .ToListAsync();
+
+                    var conflictingIds = newProductIds.Intersect(activeProductIds).ToList();
+                    if (conflictingIds.Any())
+                    {
+                        return BadRequest(new ApiResponse<object>
+                        {
+                            Success = false,
+                            Message = "Một số sản phẩm đang nằm trong phiếu kiểm kê chưa hoàn tất.",
+                            Errors = new() { $"Các sản phẩm sau đang có phiếu kiểm kê Draft/WaitingForApproval: {string.Join(", ", conflictingIds)}" }
+                        });
+                    }
+
+                    var branchProducts = await _context.BranchProducts
+                        .Where(bp => bp.BranchId == branchId.Value && newProductIds.Contains(bp.ProductId))
+                        .ToListAsync();
+
+                    foreach (var bp in branchProducts)
+                    {
+                        var systemQuantity = Convert.ToInt32(Math.Floor(bp.ActualStock));
+                        ticket.Details.Add(new InventoryCheckDetail
+                        {
+                            DetailId = Guid.NewGuid(),
+                            ProductId = bp.ProductId,
+                            SystemQuantity = systemQuantity,
+                            ActualQuantity = 0,
+                            IsCounted = false,
+                            Discrepancy = 0 - systemQuantity
+                        });
+                    }
+                }
+            }
+
+            // Remove products
+            if (dto.RemoveProductIds != null && dto.RemoveProductIds.Any())
+            {
+                var detailsToRemove = ticket.Details.Where(d => dto.RemoveProductIds.Contains(d.ProductId)).ToList();
+                foreach (var detail in detailsToRemove)
+                {
+                    _context.InventoryCheckDetails.Remove(detail);
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            // Reload with product details
+            var updatedTicket = await _context.InventoryCheckTickets
+                .Include(t => t.Details)
+                    .ThenInclude(d => d.Product)
+                .FirstOrDefaultAsync(t => t.TicketId == id);
+
+            return Ok(new ApiResponse<InventoryCheckResponseDto>
+            {
+                Success = true,
+                Message = "Phiếu kiểm kê đã được cập nhật.",
+                Data = MapToResponseDto(updatedTicket!)
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Lỗi máy chủ khi cập nhật phiếu kiểm kê.",
+                Errors = new() { ex.Message }
+            });
+        }
+    }
+
+    [HttpDelete("{id:guid}")]
+    [HasPermission(PermissionConstants.STOCK_CHECK_CREATE)]
+    public async Task<IActionResult> DeleteInventoryCheck(Guid id)
+    {
+        try
+        {
+            var branchId = _currentBranch.GetBranchId();
+            if (branchId == null)
+            {
+                return Unauthorized(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy thông tin chi nhánh trong Token.",
+                    Errors = new() { "branchId claim is required." }
+                });
+            }
+
+            var userId = GetUserId();
+            if (userId == null)
+            {
+                return Unauthorized(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy thông tin người dùng trong Token.",
+                    Errors = new() { "User claim is required." }
+                });
+            }
+
+            var ticket = await _context.InventoryCheckTickets
+                .FirstOrDefaultAsync(t => t.TicketId == id && t.BranchId == branchId.Value);
+
+            if (ticket == null)
+            {
+                return NotFound(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Phiếu kiểm kê không tồn tại.",
+                    Errors = new() { $"Không tìm thấy phiếu với ID: {id}." }
+                });
+            }
+
+            if (ticket.Status != InventoryCheckTicketStatus.Draft)
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Chỉ có thể xóa phiếu ở trạng thái Draft.",
+                    Errors = new() { "Chỉ phiếu Draft mới có thể được xóa." }
+                });
+            }
+
+            // Only allow creator or Owner to delete
+            var isOwner = User.HasClaim(c => c.Type == "IsOwner" && c.Value == "true");
+            if (ticket.CreatedByUserId != userId && !isOwner)
+            {
+                return Forbid();
+            }
+
+            // Delete details first
+            var details = await _context.InventoryCheckDetails
+                .Where(d => d.TicketId == id)
+                .ToListAsync();
+            _context.InventoryCheckDetails.RemoveRange(details);
+
+            // Delete ticket
+            _context.InventoryCheckTickets.Remove(ticket);
+            await _context.SaveChangesAsync();
+
+            return Ok(new ApiResponse<object>
+            {
+                Success = true,
+                Message = "Phiếu kiểm kê đã được xóa.",
+                Data = null
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Lỗi máy chủ khi xóa phiếu kiểm kê.",
+                Errors = new() { ex.Message }
+            });
+        }
+    }
+
     [HttpPut("{id:guid}/fill")]
+    [HasPermission(PermissionConstants.STOCK_CHECK_CREATE)]
     public async Task<IActionResult> FillActualQuantities(Guid id, [FromBody] FillActualQuantityDto dto)
     {
         try
@@ -327,6 +598,17 @@ public class InventoryCheckController : ControllerBase
                 });
             }
 
+            var userId = GetUserId();
+            if (userId == null)
+            {
+                return Unauthorized(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy thông tin người dùng trong Token.",
+                    Errors = new() { "User claim is required." }
+                });
+            }
+
             var ticket = await _context.InventoryCheckTickets
                 .Include(t => t.Details)
                 .FirstOrDefaultAsync(t => t.TicketId == id && t.BranchId == branchId.Value);
@@ -341,14 +623,24 @@ public class InventoryCheckController : ControllerBase
                 });
             }
 
-            if (ticket.Status == InventoryCheckTicketStatus.Completed || ticket.Status == InventoryCheckTicketStatus.Cancelled)
+            if (ticket.Status != InventoryCheckTicketStatus.Draft)
             {
                 return BadRequest(new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Phiếu kiểm kê đã hoàn tất hoặc đã hủy và không thể cập nhật.",
-                    Errors = new() { "Only Draft or WaitingForApproval tickets can be updated." }
+                    Message = "Phiếu kiểm kê đã chuyển trạng thái và không thể cập nhật.",
+                    Errors = new() { "Chỉ phiếu Draft mới có thể nhập số lượng." }
                 });
+            }
+
+            // Check assignee permission
+            if (ticket.AssigneeUserId.HasValue && ticket.AssigneeUserId != userId)
+            {
+                var isOwner = User.HasClaim(c => c.Type == "IsOwner" && c.Value == "true");
+                if (!isOwner)
+                {
+                    return Forbid();
+                }
             }
 
             var detailMap = ticket.Details.ToDictionary(detail => detail.DetailId);
@@ -368,17 +660,37 @@ public class InventoryCheckController : ControllerBase
                 var detail = detailMap[update.DetailId];
                 detail.ActualQuantity = update.ActualQuantity;
                 detail.Discrepancy = detail.ActualQuantity - detail.SystemQuantity;
+                detail.IsCounted = true;
+                detail.CountedByUserId = userId;
+                detail.CountedAt = DateTime.UtcNow;
             }
 
             ticket.Status = InventoryCheckTicketStatus.WaitingForApproval;
+            ticket.FilledByUserId = userId;
+            ticket.FilledAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
+
+            // SignalR notification
+            await _hub.Clients.Group($"Branch_{branchId.Value}")
+                .SendAsync("InventoryCheckFilled", new
+                {
+                    ticketId = ticket.TicketId,
+                    ticketCode = ticket.TicketCode,
+                    branchId = ticket.BranchId,
+                    filledBy = ticket.FilledByUserId
+                });
+
+            var updatedTicket = await _context.InventoryCheckTickets
+                .Include(t => t.Details)
+                    .ThenInclude(d => d.Product)
+                .FirstOrDefaultAsync(t => t.TicketId == id);
 
             return Ok(new ApiResponse<InventoryCheckResponseDto>
             {
                 Success = true,
                 Message = "Số lượng đếm thực tế đã được cập nhật.",
-                Data = MapToResponseDto(ticket)
+                Data = MapToResponseDto(updatedTicket!)
             });
         }
         catch (Exception ex)
@@ -393,6 +705,7 @@ public class InventoryCheckController : ControllerBase
     }
 
     [HttpPost("{id:guid}/approve")]
+    [HasPermission(PermissionConstants.STOCK_CHECK_APPROVE)]
     public async Task<IActionResult> ApproveInventoryCheck(Guid id)
     {
         using var transaction = await _context.Database.BeginTransactionAsync();
@@ -406,6 +719,17 @@ public class InventoryCheckController : ControllerBase
                     Success = false,
                     Message = "Không tìm thấy thông tin chi nhánh trong Token.",
                     Errors = new() { "branchId claim is required." }
+                });
+            }
+
+            var userId = GetUserId();
+            if (userId == null)
+            {
+                return Unauthorized(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy thông tin người dùng trong Token.",
+                    Errors = new() { "User claim is required." }
                 });
             }
 
@@ -453,10 +777,36 @@ public class InventoryCheckController : ControllerBase
                 });
             }
 
+            // VALIDATION: Check if all details are counted
+            var uncountedDetails = ticket.Details.Where(d => !d.IsCounted).ToList();
+            if (uncountedDetails.Any())
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Còn sản phẩm chưa được nhập số lượng đếm thực tế.",
+                    Errors = new() { $"{uncountedDetails.Count} sản phẩm chưa được count. Vui lòng nhập đầy đủ trước khi duyệt." }
+                });
+            }
+
             var productIds = ticket.Details.Select(detail => detail.ProductId).Distinct().ToList();
             var branchProducts = await _context.BranchProducts
                 .Where(bp => bp.BranchId == branchId.Value && productIds.Contains(bp.ProductId))
                 .ToDictionaryAsync(bp => bp.ProductId);
+
+            // Generate StockTicket for adjustments
+            var stockTicket = new StockTicket
+            {
+                StockTicketId = Guid.NewGuid(),
+                TicketCode = await GenerateStockTicketCodeAsync(),
+                BranchId = branchId.Value,
+                UserId = userId.Value,
+                TicketType = "ADJUSTMENT",
+                Status = "COMPLETED",
+                Notes = $"Điều chỉnh tồn kho từ phiếu kiểm kê {ticket.TicketCode}",
+                CreatedAt = DateTime.UtcNow
+            };
+            await _context.StockTickets.AddAsync(stockTicket);
 
             foreach (var detail in ticket.Details)
             {
@@ -470,7 +820,6 @@ public class InventoryCheckController : ControllerBase
                     });
                 }
 
-                // Use the counted actual quantity as the single source of truth when approving.
                 var actualQty = detail.ActualQuantity;
                 if (actualQty < 0)
                 {
@@ -482,21 +831,55 @@ public class InventoryCheckController : ControllerBase
                     });
                 }
 
-                // Assign actual quantities directly — this prevents issues when other operations
-                // (sales/receipts) happened during the counting window.
+                // Update branch product stock
                 branchProduct.ActualStock = Convert.ToDecimal(actualQty);
                 branchProduct.AvailableStock = Convert.ToDecimal(actualQty);
+
+                // Create StockTicketItem if there's a discrepancy
+                if (detail.Discrepancy != 0)
+                {
+                    var stockTicketItem = new StockTicketItem
+                    {
+                        TicketItemId = Guid.NewGuid(),
+                        StockTicketId = stockTicket.StockTicketId,
+                        BranchProductId = branchProduct.BranchProductId,
+                        SystemQuantity = Convert.ToDecimal(detail.SystemQuantity),
+                        ActualQuantity = Convert.ToDecimal(detail.ActualQuantity),
+                        Discrepancy = Convert.ToDecimal(detail.Discrepancy)
+                    };
+                    await _context.StockTicketItems.AddAsync(stockTicketItem);
+                }
             }
 
             ticket.Status = InventoryCheckTicketStatus.Completed;
+            ticket.ApprovedByUserId = userId;
+            ticket.ApprovedAt = DateTime.UtcNow;
+            ticket.LinkedStockTicketId = stockTicket.StockTicketId;
+
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
+
+            // SignalR notification
+            await _hub.Clients.Group($"Branch_{branchId.Value}")
+                .SendAsync("InventoryCheckApproved", new
+                {
+                    ticketId = ticket.TicketId,
+                    ticketCode = ticket.TicketCode,
+                    branchId = ticket.BranchId,
+                    approvedBy = ticket.ApprovedByUserId,
+                    linkedStockTicketId = stockTicket.StockTicketId
+                });
+
+            var updatedTicket = await _context.InventoryCheckTickets
+                .Include(t => t.Details)
+                    .ThenInclude(d => d.Product)
+                .FirstOrDefaultAsync(t => t.TicketId == id);
 
             return Ok(new ApiResponse<InventoryCheckResponseDto>
             {
                 Success = true,
                 Message = "Phiếu kiểm kê đã được duyệt và tồn kho đã được điều chỉnh.",
-                Data = MapToResponseDto(ticket)
+                Data = MapToResponseDto(updatedTicket!)
             });
         }
         catch (Exception ex)
@@ -512,7 +895,8 @@ public class InventoryCheckController : ControllerBase
     }
 
     [HttpPost("{id:guid}/cancel")]
-    public async Task<IActionResult> CancelInventoryCheck(Guid id)
+    [HasPermission(PermissionConstants.STOCK_CHECK_CANCEL)]
+    public async Task<IActionResult> CancelInventoryCheck(Guid id, [FromBody] CancelInventoryCheckDto? dto)
     {
         try
         {
@@ -524,6 +908,17 @@ public class InventoryCheckController : ControllerBase
                     Success = false,
                     Message = "Không tìm thấy thông tin chi nhánh trong Token.",
                     Errors = new() { "branchId claim is required." }
+                });
+            }
+
+            var userId = GetUserId();
+            if (userId == null)
+            {
+                return Unauthorized(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy thông tin người dùng trong Token.",
+                    Errors = new() { "User claim is required." }
                 });
             }
 
@@ -561,7 +956,21 @@ public class InventoryCheckController : ControllerBase
             }
 
             ticket.Status = InventoryCheckTicketStatus.Cancelled;
+            ticket.CancelledByUserId = userId;
+            ticket.CancelledAt = DateTime.UtcNow;
+            ticket.CancelledReason = dto?.Reason;
+
             await _context.SaveChangesAsync();
+
+            // SignalR notification
+            await _hub.Clients.Group($"Branch_{branchId.Value}")
+                .SendAsync("InventoryCheckCancelled", new
+                {
+                    ticketId = ticket.TicketId,
+                    ticketCode = ticket.TicketCode,
+                    branchId = ticket.BranchId,
+                    cancelledBy = ticket.CancelledByUserId
+                });
 
             return Ok(new ApiResponse<object>
             {
@@ -581,6 +990,100 @@ public class InventoryCheckController : ControllerBase
         }
     }
 
+    [HttpPost("{id:guid}/reasons")]
+    [HasPermission(PermissionConstants.STOCK_CHECK_APPROVE)]
+    public async Task<IActionResult> UpdateDiscrepancyReasons(Guid id, [FromBody] InventoryCheckReasonDto dto)
+    {
+        try
+        {
+            var branchId = _currentBranch.GetBranchId();
+            if (branchId == null)
+            {
+                return Unauthorized(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy thông tin chi nhánh trong Token.",
+                    Errors = new() { "branchId claim is required." }
+                });
+            }
+
+            if (dto == null || dto.Details == null || dto.Details.Count == 0)
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Dữ liệu cập nhật giải trình không hợp lệ.",
+                    Errors = new() { "Details là bắt buộc và không thể rỗng." }
+                });
+            }
+
+            var ticket = await _context.InventoryCheckTickets
+                .Include(t => t.Details)
+                .FirstOrDefaultAsync(t => t.TicketId == id && t.BranchId == branchId.Value);
+
+            if (ticket == null)
+            {
+                return NotFound(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Phiếu kiểm kê không tồn tại.",
+                    Errors = new() { $"Không tìm thấy phiếu với ID: {id}." }
+                });
+            }
+
+            if (ticket.Status != InventoryCheckTicketStatus.WaitingForApproval && ticket.Status != InventoryCheckTicketStatus.Completed)
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Chỉ có thể nhập giải trình cho phiếu đang chờ duyệt hoặc đã hoàn tất.",
+                    Errors = new() { "Phiếu phải ở trạng thái WaitingForApproval hoặc Completed." }
+                });
+            }
+
+            var detailMap = ticket.Details.ToDictionary(d => d.DetailId);
+            var invalidIds = dto.Details.Where(item => !detailMap.ContainsKey(item.DetailId)).Select(item => item.DetailId).ToList();
+            if (invalidIds.Any())
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Một số chi tiết không tồn tại trong phiếu.",
+                    Errors = invalidIds.Select(id => $"DetailId không hợp lệ: {id}").ToList()
+                });
+            }
+
+            foreach (var update in dto.Details)
+            {
+                var detail = detailMap[update.DetailId];
+                detail.ReasonNote = update.ReasonNote;
+            }
+
+            await _context.SaveChangesAsync();
+
+            var updatedTicket = await _context.InventoryCheckTickets
+                .Include(t => t.Details)
+                    .ThenInclude(d => d.Product)
+                .FirstOrDefaultAsync(t => t.TicketId == id);
+
+            return Ok(new ApiResponse<InventoryCheckResponseDto>
+            {
+                Success = true,
+                Message = "Giải trình chênh lệch đã được cập nhật.",
+                Data = MapToResponseDto(updatedTicket!)
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Lỗi máy chủ khi cập nhật giải trình.",
+                Errors = new() { ex.Message }
+            });
+        }
+    }
+
     private InventoryCheckResponseDto MapToResponseDto(InventoryCheckTicket ticket)
     {
         return new InventoryCheckResponseDto
@@ -591,6 +1094,15 @@ public class InventoryCheckController : ControllerBase
             Status = ticket.Status.ToString(),
             BranchId = ticket.BranchId,
             CreatedByUserId = ticket.CreatedByUserId,
+            FilledByUserId = ticket.FilledByUserId,
+            FilledAt = ticket.FilledAt,
+            ApprovedByUserId = ticket.ApprovedByUserId,
+            ApprovedAt = ticket.ApprovedAt,
+            CancelledByUserId = ticket.CancelledByUserId,
+            CancelledAt = ticket.CancelledAt,
+            CancelledReason = ticket.CancelledReason,
+            AssigneeUserId = ticket.AssigneeUserId,
+            LinkedStockTicketId = ticket.LinkedStockTicketId,
             Notes = ticket.Notes,
             Details = ticket.Details.Select(detail => new InventoryCheckDetailDto
             {
@@ -600,8 +1112,11 @@ public class InventoryCheckController : ControllerBase
                 ProductName = detail.Product?.ProductName,
                 SystemQuantity = detail.SystemQuantity,
                 ActualQuantity = detail.ActualQuantity,
-                // For Draft tickets we don't want to surface an actual discrepancy — treat as not-yet-counted
-                Discrepancy = ticket.Status == InventoryCheckTicketStatus.Draft ? 0 : detail.Discrepancy
+                Discrepancy = ticket.Status == InventoryCheckTicketStatus.Draft ? 0 : detail.Discrepancy,
+                IsCounted = detail.IsCounted,
+                ReasonNote = detail.ReasonNote,
+                CountedByUserId = detail.CountedByUserId,
+                CountedAt = detail.CountedAt
             }).ToList()
         };
     }
@@ -609,22 +1124,96 @@ public class InventoryCheckController : ControllerBase
     private async Task<string> GenerateTicketCodeAsync()
     {
         const string prefix = "KKK";
-        var lastCode = await _context.InventoryCheckTickets
-            .Where(t => t.TicketCode.StartsWith(prefix))
-            .OrderByDescending(t => t.TicketCode)
-            .Select(t => t.TicketCode)
-            .FirstOrDefaultAsync();
+        const int maxRetries = 5;
 
-        var nextSequence = 1;
-        if (!string.IsNullOrWhiteSpace(lastCode) && lastCode.Length > prefix.Length)
+        for (int attempt = 0; attempt < maxRetries; attempt++)
         {
-            var numberPart = lastCode[prefix.Length..];
-            if (int.TryParse(numberPart, out var parsedNumber))
+            try
             {
-                nextSequence = parsedNumber + 1;
+                var lastCode = await _context.InventoryCheckTickets
+                    .Where(t => t.TicketCode.StartsWith(prefix))
+                    .OrderByDescending(t => t.TicketCode)
+                    .Select(t => t.TicketCode)
+                    .FirstOrDefaultAsync();
+
+                var nextSequence = 1;
+                if (!string.IsNullOrWhiteSpace(lastCode) && lastCode.Length > prefix.Length)
+                {
+                    var numberPart = lastCode[prefix.Length..];
+                    if (int.TryParse(numberPart, out var parsedNumber))
+                    {
+                        nextSequence = parsedNumber + 1;
+                    }
+                }
+
+                var newCode = prefix + nextSequence.ToString("D5");
+
+                // Check if exists (race condition check)
+                var exists = await _context.InventoryCheckTickets
+                    .AnyAsync(t => t.TicketCode == newCode);
+
+                if (!exists)
+                {
+                    return newCode;
+                }
+            }
+            catch (DbUpdateException)
+            {
+                // Retry on conflict
+                if (attempt == maxRetries - 1) throw;
             }
         }
 
-        return prefix + nextSequence.ToString("D5");
+        // Fallback: use GUID-based code
+        return prefix + Guid.NewGuid().ToString("N")[..8].ToUpper();
     }
+
+    private async Task<string> GenerateStockTicketCodeAsync()
+    {
+        const string prefix = "ADJ";
+        const int maxRetries = 5;
+
+        for (int attempt = 0; attempt < maxRetries; attempt++)
+        {
+            try
+            {
+                var lastCode = await _context.StockTickets
+                    .Where(t => t.TicketCode != null && t.TicketCode.StartsWith(prefix))
+                    .OrderByDescending(t => t.TicketCode)
+                    .Select(t => t.TicketCode)
+                    .FirstOrDefaultAsync();
+
+                var nextSequence = 1;
+                if (!string.IsNullOrWhiteSpace(lastCode) && lastCode.Length > prefix.Length)
+                {
+                    var numberPart = lastCode[prefix.Length..];
+                    if (int.TryParse(numberPart, out var parsedNumber))
+                    {
+                        nextSequence = parsedNumber + 1;
+                    }
+                }
+
+                var newCode = prefix + "-" + DateTime.UtcNow.ToString("yyyyMMdd") + "-" + nextSequence.ToString("D4");
+
+                var exists = await _context.StockTickets
+                    .AnyAsync(t => t.TicketCode == newCode);
+
+                if (!exists)
+                {
+                    return newCode;
+                }
+            }
+            catch (DbUpdateException)
+            {
+                if (attempt == maxRetries - 1) throw;
+            }
+        }
+
+        return prefix + "-" + Guid.NewGuid().ToString("N")[..8].ToUpper();
+    }
+}
+
+public class CancelInventoryCheckDto
+{
+    public string? Reason { get; set; }
 }

@@ -291,6 +291,35 @@ public partial class MEPDatabaseContext : DbContext
                 .HasColumnName("branch_id");
             entity.Property(e => e.CreatedByUserId)
                 .HasColumnName("created_by_user_id");
+
+            // Audit trail fields
+            entity.Property(e => e.FilledByUserId)
+                .HasColumnName("filled_by_user_id");
+            entity.Property(e => e.FilledAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("filled_at");
+            entity.Property(e => e.ApprovedByUserId)
+                .HasColumnName("approved_by_user_id");
+            entity.Property(e => e.ApprovedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("approved_at");
+            entity.Property(e => e.CancelledByUserId)
+                .HasColumnName("cancelled_by_user_id");
+            entity.Property(e => e.CancelledAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("cancelled_at");
+            entity.Property(e => e.CancelledReason)
+                .HasMaxLength(500)
+                .HasColumnName("cancelled_reason");
+
+            // Assignee
+            entity.Property(e => e.AssigneeUserId)
+                .HasColumnName("assignee_user_id");
+
+            // Linked StockTicket
+            entity.Property(e => e.LinkedStockTicketId)
+                .HasColumnName("linked_stock_ticket_id");
+
             entity.Property(e => e.Notes)
                 .HasMaxLength(1000)
                 .HasColumnName("notes");
@@ -299,6 +328,12 @@ public partial class MEPDatabaseContext : DbContext
                 .WithOne(d => d.Ticket)
                 .HasForeignKey(d => d.TicketId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Relationship to LinkedStockTicket
+            entity.HasOne(e => e.LinkedStockTicket)
+                .WithMany()
+                .HasForeignKey(e => e.LinkedStockTicketId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<InventoryTransferTicket>(entity =>
@@ -356,6 +391,23 @@ public partial class MEPDatabaseContext : DbContext
                 .HasColumnName("actual_quantity");
             entity.Property(e => e.Discrepancy)
                 .HasColumnName("discrepancy");
+
+            // IsCounted flag
+            entity.Property(e => e.IsCounted)
+                .HasDefaultValue(false)
+                .HasColumnName("is_counted");
+
+            // Reason note for discrepancy
+            entity.Property(e => e.ReasonNote)
+                .HasMaxLength(500)
+                .HasColumnName("reason_note");
+
+            // Audit for counting
+            entity.Property(e => e.CountedByUserId)
+                .HasColumnName("counted_by_user_id");
+            entity.Property(e => e.CountedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("counted_at");
 
             entity.HasOne(d => d.Product)
                 .WithMany()
