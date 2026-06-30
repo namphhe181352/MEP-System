@@ -232,10 +232,12 @@ public class InvoicesController : ControllerBase
     public async Task<ActionResult<InvoiceItemDto>> ScanItem(Guid invoiceId, [FromBody] ScanItemRequest request)
     {
         var branchId = GetBranchId();
-        var product = await _context.Products.FirstOrDefaultAsync(p => p.Barcode == request.Barcode && p.Status == 1);
-        if (product == null) return NotFound(ApiErrorResponse.Create("MSG-59", "Product not found by barcode"));
+        var bp = await _context.BranchProducts
+            .Include(b => b.Product)
+            .FirstOrDefaultAsync(b => b.BranchId == branchId && b.Product.Barcode == request.Barcode && b.IsActive == 1);
+        if (bp == null) return NotFound(ApiErrorResponse.Create("MSG-59", "Product not found by barcode"));
 
-        var addReq = new AddItemRequest { ProductId = product.ProductId, Quantity = request.Quantity };
+        var addReq = new AddItemRequest { ProductId = bp.ProductId, Quantity = request.Quantity > 0 ? request.Quantity : 1 };
         return await AddItem(invoiceId, addReq);
     }
 
@@ -456,13 +458,13 @@ public class InvoicesController : ControllerBase
     }
 
     // GET /api/pos/invoices/on-hold
-    /// <summary>Lấy danh sách hóa đơn đang treo (chưa hết hạn 24h).</summary>
+    /// <summary>Lấy danh sách hóa đơn đang treo (chưa hết hạn 7 ngày).</summary>
     [HttpGet("on-hold")]
     public async Task<ActionResult<PageResultDto<InvoiceDto>>> GetOnHoldInvoices(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         var branchId = GetBranchId();
-        var cutoff = DateTime.UtcNow.AddHours(-24);
+        var cutoff = DateTime.UtcNow.AddDays(-7); // 7 days expiry
 
         var query = _context.Invoices
             .Where(i => i.Order.BranchId == branchId &&

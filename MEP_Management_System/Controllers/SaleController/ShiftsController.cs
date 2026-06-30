@@ -62,7 +62,17 @@ public class ShiftsController : ControllerBase
         _context.Shifts.Add(shift);
         await _context.SaveChangesAsync();
 
-        var dto = _mapper.Map<ShiftDto>(shift);
+        var dto = new ShiftDto
+        {
+            ShiftId = shift.ShiftId,
+            ShiftCode = shift.ShiftCode,
+            UserId = shift.UserId,
+            BranchId = shift.BranchId,
+            Status = shift.Status,
+            StartedAt = shift.StartedAt,
+            OpeningBalance = shift.OpeningBalance,
+            UserName = User.FindFirst(ClaimTypes.Name)?.Value ?? User.FindFirst("name")?.Value
+        };
 
         // Real-time: notify branch staff that a new shift was opened
         _ = _notifications.NotifyBranchShiftOpened(branchId, new
