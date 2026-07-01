@@ -297,11 +297,17 @@ public partial class MEPDatabaseContext : DbContext
                 .HasColumnName("cancelled_reason");
             entity.Property(e => e.LinkedStockTicketId)
                 .HasColumnName("linked_stock_ticket_id");
-            entity.Ignore(e => e.RecountNumber);
-            entity.Ignore(e => e.RecountRequestedAt);
-            entity.Ignore(e => e.RecountRequestedByUserId);
-            entity.Ignore(e => e.RecountRequestedByUser);
-            entity.Ignore(e => e.RecountReason);
+            entity.Property(e => e.RecountNumber)
+                .HasDefaultValue(0)
+                .HasColumnName("recount_number");
+            entity.Property(e => e.RecountRequestedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("recount_requested_at");
+            entity.Property(e => e.RecountRequestedByUserId)
+                .HasColumnName("recount_requested_by_user_id");
+            entity.Property(e => e.RecountReason)
+                .HasMaxLength(1000)
+                .HasColumnName("recount_reason");
             entity.Property(e => e.Notes)
                 .HasMaxLength(1000)
                 .HasColumnName("notes");
@@ -347,6 +353,12 @@ public partial class MEPDatabaseContext : DbContext
                 .HasForeignKey(d => d.LinkedStockTicketId)
                 .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("inventory_check_tickets_linked_stock_ticket_id_fkey");
+
+            entity.HasOne(d => d.RecountRequestedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.RecountRequestedByUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("inventory_check_tickets_recount_requested_by_user_id_fkey");
 
             entity.HasOne(d => d.Branch)
                 .WithMany()
@@ -1705,13 +1717,13 @@ public partial class MEPDatabaseContext : DbContext
                 .HasColumnName("created_at");
 
             entity.HasOne(d => d.RecipientUser)
-                .WithMany()
+                .WithMany(p => p.ReceivedNotifications)
                 .HasForeignKey(d => d.RecipientUserId)
                 .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("notifications_recipient_user_id_fkey");
 
             entity.HasOne(d => d.TriggeredByUser)
-                .WithMany()
+                .WithMany(p => p.TriggeredNotifications)
                 .HasForeignKey(d => d.TriggeredByUserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("notifications_triggered_by_user_id_fkey");
@@ -1723,7 +1735,7 @@ public partial class MEPDatabaseContext : DbContext
                 .HasConstraintName("notifications_inventory_check_id_fkey");
 
             entity.HasOne(d => d.Branch)
-                .WithMany()
+                .WithMany(p => p.Notifications)
                 .HasForeignKey(d => d.BranchId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("notifications_branch_id_fkey");

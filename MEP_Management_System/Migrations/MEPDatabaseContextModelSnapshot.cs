@@ -544,24 +544,29 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("actual_quantity");
 
                     b.Property<DateTime?>("CountedAt")
-                        .HasColumnType("timestamp without time zone");
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("counted_at");
 
                     b.Property<Guid?>("CountedByUserId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("counted_by_user_id");
 
                     b.Property<int>("Discrepancy")
                         .HasColumnType("integer")
                         .HasColumnName("discrepancy");
 
                     b.Property<bool>("IsCounted")
-                        .HasColumnType("boolean");
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_counted");
 
                     b.Property<Guid>("ProductId")
                         .HasColumnType("uuid")
                         .HasColumnName("product_id");
 
                     b.Property<string>("ReasonNote")
-                        .HasColumnType("text");
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("reason_note");
 
                     b.Property<int>("SystemQuantity")
                         .HasColumnType("integer")
@@ -592,26 +597,33 @@ namespace MEP_Management_System.Migrations
                         .HasDefaultValueSql("uuid_generate_v4()");
 
                     b.Property<DateTime?>("ApprovedAt")
-                        .HasColumnType("timestamp without time zone");
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("approved_at");
 
                     b.Property<Guid?>("ApprovedByUserId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("approved_by_user_id");
 
                     b.Property<Guid?>("AssigneeUserId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("assignee_user_id");
 
                     b.Property<Guid>("BranchId")
                         .HasColumnType("uuid")
                         .HasColumnName("branch_id");
 
                     b.Property<DateTime?>("CancelledAt")
-                        .HasColumnType("timestamp without time zone");
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("cancelled_at");
 
                     b.Property<Guid?>("CancelledByUserId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("cancelled_by_user_id");
 
                     b.Property<string>("CancelledReason")
-                        .HasColumnType("text");
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("cancelled_reason");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone")
@@ -622,13 +634,16 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("created_by_user_id");
 
                     b.Property<DateTime?>("FilledAt")
-                        .HasColumnType("timestamp without time zone");
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("filled_at");
 
                     b.Property<Guid?>("FilledByUserId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("filled_by_user_id");
 
                     b.Property<Guid?>("LinkedStockTicketId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("linked_stock_ticket_id");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(1000)
@@ -636,16 +651,23 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("notes");
 
                     b.Property<int>("RecountNumber")
-                        .HasColumnType("integer");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("recount_number");
 
                     b.Property<string>("RecountReason")
-                        .HasColumnType("text");
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("recount_reason");
 
                     b.Property<DateTime?>("RecountRequestedAt")
-                        .HasColumnType("timestamp without time zone");
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("recount_requested_at");
 
                     b.Property<Guid?>("RecountRequestedByUserId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("recount_requested_by_user_id");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -3193,7 +3215,7 @@ namespace MEP_Management_System.Migrations
             modelBuilder.Entity("MEP_Management_System.Models.Notification", b =>
                 {
                     b.HasOne("MEP_Management_System.Models.Branch", "Branch")
-                        .WithMany()
+                        .WithMany("Notifications")
                         .HasForeignKey("BranchId")
                         .IsRequired()
                         .HasConstraintName("notifications_branch_id_fkey");
@@ -3205,13 +3227,13 @@ namespace MEP_Management_System.Migrations
                         .HasConstraintName("notifications_inventory_check_id_fkey");
 
                     b.HasOne("MEP_Management_System.Models.User", "RecipientUser")
-                        .WithMany()
+                        .WithMany("ReceivedNotifications")
                         .HasForeignKey("RecipientUserId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("notifications_recipient_user_id_fkey");
 
                     b.HasOne("MEP_Management_System.Models.User", "TriggeredByUser")
-                        .WithMany()
+                        .WithMany("TriggeredNotifications")
                         .HasForeignKey("TriggeredByUserId")
                         .IsRequired()
                         .HasConstraintName("notifications_triggered_by_user_id_fkey");
@@ -3824,6 +3846,8 @@ namespace MEP_Management_System.Migrations
 
                     b.Navigation("DailySummaries");
 
+                    b.Navigation("Notifications");
+
                     b.Navigation("Orders");
 
                     b.Navigation("Shifts");
@@ -3963,6 +3987,8 @@ namespace MEP_Management_System.Migrations
 
                     b.Navigation("PurchaseOrders");
 
+                    b.Navigation("ReceivedNotifications");
+
                     b.Navigation("ReturnOrders");
 
                     b.Navigation("Shifts");
@@ -3976,6 +4002,8 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("SystemLogs");
 
                     b.Navigation("SystemNotifications");
+
+                    b.Navigation("TriggeredNotifications");
 
                     b.Navigation("UserPermissions");
 
