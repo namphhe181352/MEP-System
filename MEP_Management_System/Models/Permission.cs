@@ -9,6 +9,9 @@ public partial class Permission
 
     public string PermissionCode { get; set; } = null!;
 
+    // Alias for backward compatibility with controller code
+    public string Code => PermissionCode;
+
     public string PermissionName { get; set; } = null!;
 
     public virtual ICollection<Role> Roles { get; set; } = new List<Role>();

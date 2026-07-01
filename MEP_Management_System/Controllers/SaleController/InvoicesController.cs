@@ -4,6 +4,7 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using AutoMapper;
+using MEP_Management_System.Authorization;
 using MEP_Management_System.DTOs.SaleDTOs;
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
@@ -15,7 +16,7 @@ namespace MEP_Management_System.Controllers.SaleController;
 
 [ApiController]
 [Route("api/pos/invoices")]
-[Authorize(Roles = "SalesStaff,Owner")]
+[HasPermission(PermissionConstants.SALE_VIEW)]
 [Tags("Quản lý bán hàng (Sale)")]
 public class InvoicesController : ControllerBase
 {

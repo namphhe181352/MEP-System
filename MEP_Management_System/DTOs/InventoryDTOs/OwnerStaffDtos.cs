@@ -3,6 +3,9 @@ using System.Collections.Generic;
 
 namespace MEP_Management_System.DTOs.InventoryDTOs;
 
+/// <summary>
+/// DTO trả về thông tin nhân viên (KHÔNG bao gồm PasswordHash)
+/// </summary>
 public class OwnerStaffDto
 {
     public Guid UserId { get; set; }
@@ -12,13 +15,21 @@ public class OwnerStaffDto
     public short? IsActive { get; set; }
     public Guid? BranchId { get; set; }
     public string? BranchName { get; set; }
-    public string? PasswordHash { get; set; }
     public List<string> PermissionCodes { get; set; } = new();
+    public List<string> Roles { get; set; } = new();
 }
+
+/// <summary>
+/// Request gán chi nhánh cho nhân viên
+/// </summary>
 public class AssignStaffBranchRequest
 {
     public Guid BranchId { get; set; }
 }
+
+/// <summary>
+/// Request tạo nhân viên mới với permissions
+/// </summary>
 public class CreateStaffWithPermissionRequest
 {
     public string Username { get; set; } = null!;
@@ -26,11 +37,14 @@ public class CreateStaffWithPermissionRequest
     public string FullName { get; set; } = null!;
     public string Password { get; set; } = null!;
     public string? PhoneNumber { get; set; }
-    public Guid? BranchId { get; set; }  // optional
+    public Guid? BranchId { get; set; }
     public string? DefaultRoleType { get; set; }
     public List<string>? CustomPermissionCodes { get; set; }
 }
 
+/// <summary>
+/// Request cập nhật nhân viên
+/// </summary>
 public class UpdateStaffPermissionRequest
 {
     public string? FullName { get; set; }

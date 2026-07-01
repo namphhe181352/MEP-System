@@ -1,4 +1,6 @@
-﻿namespace MEP_Management_System.DTOs.InventoryDTOs
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace MEP_Management_System.DTOs.InventoryDTOs
 {
     // ============================================================
     // QUERY PARAMETERS
@@ -104,11 +106,20 @@
 
     public class CreateSupplierPaymentDto
     {
+        [Required(ErrorMessage = "Vui lòng chọn nhà cung cấp.")]
         public Guid SupplierId { get; set; }
+
         public Guid? PurchaseOrderId { get; set; }
+
+        [Range(0.01, double.MaxValue, ErrorMessage = "Số tiền thanh toán phải lớn hơn 0.")]
         public decimal Amount { get; set; }
+
+        [Required(ErrorMessage = "Vui lòng chọn phương thức thanh toán.")]
+        [RegularExpression("^(Cash|Transfer|Credit)$", ErrorMessage = "Phương thức thanh toán phải là: Cash, Transfer hoặc Credit.")]
         public string PaymentMethod { get; set; } = null!;
+
         public string? ReferenceCode { get; set; }
+
         public string? Note { get; set; }
     }
 
