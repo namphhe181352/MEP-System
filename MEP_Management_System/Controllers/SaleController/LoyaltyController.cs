@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using AutoMapper;
+using MEP_Management_System.Authorization;
 using MEP_Management_System.DTOs.SaleDTOs;
 using MEP_Management_System.Models;
 using Microsoft.AspNetCore.Authorization;

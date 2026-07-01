@@ -19,9 +19,9 @@ namespace MEP_Management_System.Services
         }
 
         // =========================================================================
-        // HÀM SINH TOKEN: Đã thêm tham số branchId để đính kèm định danh chi nhánh
+        // HÀM SINH TOKEN: Đã thêm tham số permissions để hỗ trợ cơ chế RBAC phân quyền
         // =========================================================================
-        public string GenerateToken(Guid userId, string username, string fullName, List<string> roles, string? branchId = null)
+        public string GenerateToken(Guid userId, string username, string fullName, List<string> roles, List<string> permissions, string? branchId = null)
         {
             var claims = new List<Claim>
             {
@@ -30,40 +30,41 @@ namespace MEP_Management_System.Services
                 new Claim(ClaimTypes.GivenName, fullName)
             };
 
-            // 🎯 ĐẬP THÊM CLAIM BRANCH_ID VÀO ĐÂY NẾU CÓ
+            // 🎯 ĐẬP THÊM CLAIM BRANCH_ID VÀO ĐÂY NẾU CÓ (Giữ nguyên logic cũ của bạn)
             if (!string.IsNullOrEmpty(branchId))
             {
                 // Dùng chuỗi thường "branchId" để đồng bộ tuyệt đối với hàm User.FindFirst("branchId") bên Controller
                 claims.Add(new Claim("branchId", branchId));
             }
 
+            // 1. Duyệt nạp toàn bộ danh sách Roles (Giữ nguyên logic cũ của bạn)
             foreach (var role in roles)
             {
                 claims.Add(new Claim(ClaimTypes.Role, role));
             }
 
+            // 2. 🌟 THÊM MỚI: Duyệt nạp toàn bộ danh sách mã quyền (PermissionCode) vào JWT dưới claim "permission"
+            foreach (var permission in permissions)
+            {
+                claims.Add(new Claim("permission", permission));
+            }
+
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-            //var token = new JwtSecurityToken(
-            //    issuer: _config["Jwt:Issuer"],
-            //    audience: _config["Jwt:Audience"],
-            //    claims: claims,
-            //    expires: DateTime.UtcNow.AddMinutes(Convert.ToDouble(_config["Jwt:ExpiryInMinutes"])),
-            //    signingCredentials: creds
-            //);
+            // Giữ nguyên thiết lập cấu hình Token chạy thời hạn 1 năm (365 ngày) của bạn
             var token = new JwtSecurityToken(
-    issuer: _config["Jwt:Issuer"],
-    audience: _config["Jwt:Audience"],
-    claims: claims,
-    expires: DateTime.UtcNow.AddDays(365), // 🔥 Sửa thành AddDays(365) để dùng 1 năm không lo hết hạn
-    signingCredentials: creds
-);
+                issuer: _config["Jwt:Issuer"],
+                audience: _config["Jwt:Audience"],
+                claims: claims,
+                expires: DateTime.UtcNow.AddDays(365), // 🔥 Giữ nguyên 1 năm không lo hết hạn của bạn
+                signingCredentials: creds
+            );
 
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
-        // Hàm đọc và giải mã Token (Giữ nguyên vì TokenValidationParameters sẽ tự động giải mã toàn bộ Claims mới)
+        // Hàm đọc và giải mã Token (Giữ nguyên hoàn toàn vì TokenValidationParameters tự động dịch ngược toàn bộ claims mới)
         public ClaimsPrincipal? ValidateAndReadToken(string token)
         {
             if (string.IsNullOrEmpty(token)) return null;

@@ -29,4 +29,5 @@ public partial class StockTicket
     public virtual ICollection<StockTicketItem> StockTicketItems { get; set; } = new List<StockTicketItem>();
 
     public virtual User User { get; set; } = null!;
+
 }

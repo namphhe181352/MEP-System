@@ -1,22 +1,18 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
-
+﻿using System;
+using Microsoft.EntityFrameworkCore.Migrations;
 #nullable disable
-
 namespace MEP_Management_System.Migrations
 {
     /// <inheritdoc />
-    public partial class UpdateDBLastNight_24_06 : Migration
+    public partial class VerifyFinalSync3 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-
         }
-
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-
         }
     }
 }

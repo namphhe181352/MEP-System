@@ -80,6 +80,8 @@ public partial class MEPDatabaseContext : DbContext
 
     public virtual DbSet<SystemNotification> SystemNotifications { get; set; }
 
+    public virtual DbSet<Notification> Notifications { get; set; }
+
     public virtual DbSet<User> Users { get; set; }
 
     public virtual DbSet<UserPermission> UserPermissions { get; set; }
@@ -168,7 +170,7 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.IsDeleted).HasDefaultValue((short)0);
 
             entity.HasOne(d => d.Supplier)
-                .WithMany()
+                .WithMany(s => s.SupplierPayments)
                 .HasForeignKey(d => d.SupplierId)
                 .OnDelete(DeleteBehavior.ClientSetNull);
 
@@ -273,6 +275,39 @@ public partial class MEPDatabaseContext : DbContext
                 .HasColumnName("branch_id");
             entity.Property(e => e.CreatedByUserId)
                 .HasColumnName("created_by_user_id");
+            entity.Property(e => e.AssigneeUserId)
+                .HasColumnName("assignee_user_id");
+            entity.Property(e => e.FilledByUserId)
+                .HasColumnName("filled_by_user_id");
+            entity.Property(e => e.FilledAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("filled_at");
+            entity.Property(e => e.ApprovedByUserId)
+                .HasColumnName("approved_by_user_id");
+            entity.Property(e => e.ApprovedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("approved_at");
+            entity.Property(e => e.CancelledByUserId)
+                .HasColumnName("cancelled_by_user_id");
+            entity.Property(e => e.CancelledAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("cancelled_at");
+            entity.Property(e => e.CancelledReason)
+                .HasMaxLength(1000)
+                .HasColumnName("cancelled_reason");
+            entity.Property(e => e.LinkedStockTicketId)
+                .HasColumnName("linked_stock_ticket_id");
+            entity.Property(e => e.RecountNumber)
+                .HasDefaultValue(0)
+                .HasColumnName("recount_number");
+            entity.Property(e => e.RecountRequestedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("recount_requested_at");
+            entity.Property(e => e.RecountRequestedByUserId)
+                .HasColumnName("recount_requested_by_user_id");
+            entity.Property(e => e.RecountReason)
+                .HasMaxLength(1000)
+                .HasColumnName("recount_reason");
             entity.Property(e => e.Notes)
                 .HasMaxLength(1000)
                 .HasColumnName("notes");
@@ -281,6 +316,55 @@ public partial class MEPDatabaseContext : DbContext
                 .WithOne(d => d.Ticket)
                 .HasForeignKey(d => d.TicketId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Navigation properties for audit fields
+            entity.HasOne(d => d.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.CreatedByUserId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("inventory_check_tickets_created_by_user_id_fkey");
+
+            entity.HasOne(d => d.AssigneeUser)
+                .WithMany()
+                .HasForeignKey(d => d.AssigneeUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("inventory_check_tickets_assignee_user_id_fkey");
+
+            entity.HasOne(d => d.FilledByUser)
+                .WithMany()
+                .HasForeignKey(d => d.FilledByUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("inventory_check_tickets_filled_by_user_id_fkey");
+
+            entity.HasOne(d => d.ApprovedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.ApprovedByUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("inventory_check_tickets_approved_by_user_id_fkey");
+
+            entity.HasOne(d => d.CancelledByUser)
+                .WithMany()
+                .HasForeignKey(d => d.CancelledByUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("inventory_check_tickets_cancelled_by_user_id_fkey");
+
+            entity.HasOne(d => d.LinkedStockTicket)
+                .WithMany()
+                .HasForeignKey(d => d.LinkedStockTicketId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("inventory_check_tickets_linked_stock_ticket_id_fkey");
+
+            entity.HasOne(d => d.RecountRequestedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.RecountRequestedByUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("inventory_check_tickets_recount_requested_by_user_id_fkey");
+
+            entity.HasOne(d => d.Branch)
+                .WithMany()
+                .HasForeignKey(d => d.BranchId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("inventory_check_tickets_branch_id_fkey");
         });
 
         modelBuilder.Entity<InventoryTransferTicket>(entity =>
@@ -338,11 +422,27 @@ public partial class MEPDatabaseContext : DbContext
                 .HasColumnName("actual_quantity");
             entity.Property(e => e.Discrepancy)
                 .HasColumnName("discrepancy");
+            entity.Property(e => e.IsCounted)
+                .HasColumnName("is_counted");
+            entity.Property(e => e.ReasonNote)
+                .HasMaxLength(1000)
+                .HasColumnName("reason_note");
+            entity.Property(e => e.CountedByUserId)
+                .HasColumnName("counted_by_user_id");
+            entity.Property(e => e.CountedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("counted_at");
 
             entity.HasOne(d => d.Product)
                 .WithMany()
                 .HasForeignKey(d => d.ProductId)
                 .OnDelete(DeleteBehavior.ClientSetNull);
+
+            entity.HasOne(d => d.CountedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.CountedByUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("inventory_check_details_counted_by_user_id_fkey");
         });
 
         modelBuilder.Entity<Comment>(entity =>
@@ -786,6 +886,14 @@ public partial class MEPDatabaseContext : DbContext
                 .HasConstraintName("user_permissions_permission_id_fkey");
         });
 
+        // ------------------------------------------------------------------
+        // ĐÃ SỬA: entity Product trước đây có 2 khối HasOne(CreatedByUser)/
+        // HasOne(UpdatedByUser) trùng lặp (một khối ngay sau phần Property,
+        // một khối lặp lại sau phần HasOne(Supplier) ở cuối). Chỉ giữ lại
+        // MỘT khối duy nhất để tránh EF tính sai diff khi scaffold migration
+        // (đây là nguyên nhân gốc của lỗi "column already exists" khi chạy
+        // dotnet ef database update).
+        // ------------------------------------------------------------------
         modelBuilder.Entity<Product>(entity =>
         {
             entity.HasKey(e => e.ProductId).HasName("products_pkey");
@@ -1279,12 +1387,22 @@ public partial class MEPDatabaseContext : DbContext
                 .HasColumnName("last_rated_at");
 
             entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+            entity.Property(e => e.UpdatedBy).HasColumnName("updated_by");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("updated_at");
 
             entity.HasOne(d => d.CreatedByUser)
                 .WithMany()
                 .HasForeignKey(d => d.CreatedBy)
                 .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("suppliers_created_by_fkey");
+
+            entity.HasOne(d => d.UpdatedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.UpdatedBy)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("suppliers_updated_by_fkey");
         });
 
         modelBuilder.Entity<SupplierRating>(entity =>
@@ -1575,6 +1693,63 @@ public partial class MEPDatabaseContext : DbContext
                 .HasForeignKey(d => d.CreatedBy)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("system_notifications_created_by_fkey");
+        });
+
+        // Notification fluent API (user notifications for inventory check)
+        modelBuilder.Entity<Notification>(entity =>
+        {
+            entity.HasKey(e => e.NotificationId).HasName("notifications_pkey");
+
+            entity.ToTable("notifications");
+
+            entity.Property(e => e.NotificationId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("notification_id");
+            entity.Property(e => e.Type)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasColumnName("type");
+            entity.Property(e => e.RecipientUserId)
+                .HasColumnName("recipient_user_id");
+            entity.Property(e => e.BranchId)
+                .HasColumnName("branch_id");
+            entity.Property(e => e.InventoryCheckId)
+                .HasColumnName("inventory_check_id");
+            entity.Property(e => e.TriggeredByUserId)
+                .HasColumnName("triggered_by_user_id");
+            entity.Property(e => e.Message)
+                .HasColumnName("message");
+            entity.Property(e => e.IsRead)
+                .HasDefaultValue(false)
+                .HasColumnName("is_read");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+
+            entity.HasOne(d => d.RecipientUser)
+                .WithMany(p => p.ReceivedNotifications)
+                .HasForeignKey(d => d.RecipientUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("notifications_recipient_user_id_fkey");
+
+            entity.HasOne(d => d.TriggeredByUser)
+                .WithMany(p => p.TriggeredNotifications)
+                .HasForeignKey(d => d.TriggeredByUserId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("notifications_triggered_by_user_id_fkey");
+
+            entity.HasOne(d => d.InventoryCheck)
+                .WithMany(p => p.Notifications)
+                .HasForeignKey(d => d.InventoryCheckId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("notifications_inventory_check_id_fkey");
+
+            entity.HasOne(d => d.Branch)
+                .WithMany(p => p.Notifications)
+                .HasForeignKey(d => d.BranchId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("notifications_branch_id_fkey");
         });
 
         modelBuilder.Entity<StoreApproval>(entity =>

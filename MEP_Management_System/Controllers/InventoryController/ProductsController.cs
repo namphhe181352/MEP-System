@@ -1,9 +1,8 @@
 using AutoMapper;
+using MEP_Management_System.Authorization;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
-using MEP_Management_System.Services;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -14,7 +13,6 @@ using System.Threading.Tasks;
 
 namespace MEP_Management_System.Controllers.InventoryController
 {
-    [Authorize]
     [ApiController]
     [Route("api/[controller]")]
     [Tags("Quản lý Kho (Inventory)")]
@@ -22,34 +20,50 @@ namespace MEP_Management_System.Controllers.InventoryController
     {
         private readonly MEPDatabaseContext _context;
         private readonly IMapper _mapper;
-        private readonly ICurrentBranchAccessor _currentBranch;
 
-        public ProductsController(MEPDatabaseContext context, IMapper mapper, ICurrentBranchAccessor currentBranch)
+        public ProductsController(MEPDatabaseContext context, IMapper mapper)
         {
             _context = context;
             _mapper = mapper;
-            _currentBranch = currentBranch;
+        }
+
+        // Lấy UserId hiện tại từ JWT (dùng cho audit log)
+        private Guid GetCurrentUserId()
+        {
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            Guid.TryParse(userIdStr, out Guid userId);
+            return userId;
+        }
+
+        private async Task<Guid> GetCurrentBranchId()
+        {
+            return await _context.Branches
+                .Where(b => b.IsActive == 1)
+                .Select(b => b.BranchId)
+                .FirstAsync();
+        }
+
+        private Guid? GetUserInfo()
+        {
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+            if (Guid.TryParse(userIdStr, out Guid userId))
+            {
+                return userId;
+            }
+
+            return null;
         }
 
         /// <summary>
         /// 1. GET /api/products - List all products with pagination, filtering, and sorting
-        /// For Owner role: provide branchId via query param (?branchId=guid) or X-Branch-Id header
         /// </summary>
         [HttpGet]
-        public async Task<IActionResult> GetProducts([FromQuery] DTOs.InventoryDTOs.ProductParameters @params, [FromQuery] Guid? branchId = null)
+        [HasPermission(PermissionConstants.PRODUCT_VIEW)]
+        public async Task<IActionResult> GetProducts([FromQuery] DTOs.InventoryDTOs.ProductParameters @params)
         {
             try
             {
-                var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
-                if (resolvedBranchId == null)
-                {
-                    return Unauthorized(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "JWT token is missing or invalid",
-                        Errors = new() { "Authorization header required" }
-                    });
-                }
+                var branchId = await GetCurrentBranchId();
 
                 // Validate pagination
                 if (@params.PageSize < 1 || @params.PageSize > 1000)
@@ -67,7 +81,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Include(bp => bp.Product).ThenInclude(p => p.MediaResources)
                     .Include(bp => bp.Product).ThenInclude(p => p.ProductAttributes)
                     .Include(bp => bp.Product).ThenInclude(p => p.ProductConversionUnits)
-                    .Where(bp => bp.BranchId == resolvedBranchId.Value).AsQueryable();
+                    .Include(bp => bp.Product).ThenInclude(p => p.CreatedByUser)
+                    .Include(bp => bp.Product).ThenInclude(p => p.UpdatedByUser)
+                    .Where(bp => bp.BranchId == branchId).AsQueryable();
 
                 // Search by product name, code, or barcode
                 if (!string.IsNullOrWhiteSpace(@params.SearchTerm))
@@ -152,28 +168,16 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         /// <summary>
-        /// <summary>
         /// 1a. GET /api/products/search - Autocomplete tìm sản phẩm (dùng trong form nhập hàng).
-        /// Hỗ trợ tìm theo productCode, productName, barcode.
         /// </summary>
         [HttpGet("search")]
-        public async Task<IActionResult> SearchProducts(
-        [FromQuery] string term,
-        [FromQuery] int limit = 10,
-        [FromQuery] Guid? branchId = null)
+        [HasPermission(PermissionConstants.PRODUCT_VIEW)]
+        public async Task<IActionResult> SearchProducts([FromQuery] string term, [FromQuery] int limit = 10)
         {
             try
             {
-                var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
-                if (resolvedBranchId == null)
-                {
-                    return Unauthorized(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "JWT token is missing or invalid",
-                        Errors = new() { "Authorization header required" }
-                    });
-                }
+                // 🔐 Quyền đã kiểm tra bằng [HasPermission] ở attribute
+                var branchId = await GetCurrentBranchId();
 
                 if (string.IsNullOrWhiteSpace(term))
                 {
@@ -191,36 +195,36 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var trimmedTerm = term.Trim().ToLower();
 
                 var results = await _context.BranchProducts
-                .Include(bp => bp.Product).ThenInclude(p => p.MediaResources)
-                .Where(bp => bp.BranchId == resolvedBranchId.Value
-                && bp.IsActive == 1
-                && bp.Product.Status == 1)
-                .Where(bp =>
-                bp.Product.ProductCode.ToLower().Contains(trimmedTerm)
-                || bp.Product.ProductName.ToLower().Contains(trimmedTerm)
-                || (bp.Product.Barcode != null && bp.Product.Barcode.ToLower().Contains(trimmedTerm))
-                )
-                .OrderBy(bp => bp.Product.ProductName)
-                .Take(limit)
-                .Select(bp => new ProductSearchResultDto
-                {
-                    ProductId = bp.Product.ProductId,
-                    BranchProductId = bp.BranchProductId,
-                    ProductCode = bp.Product.ProductCode,
-                    ProductName = bp.Product.ProductName,
-                    BrandName = bp.Product.BrandName,
-                    CategoryName = bp.Product.CategoryName,
-                    Barcode = bp.Product.Barcode,
-                    Unit = bp.Product.BaseUnit,
-                    ImageUrl = bp.Product.MediaResources
-                .Where(m => m.IsPrimary == 1)
-                .Select(m => m.MediaUrl)
-                .FirstOrDefault() ?? bp.Product.MediaResources.Select(m => m.MediaUrl).FirstOrDefault(),
-                    CurrentStock = bp.AvailableStock,
-                    CostPrice = bp.CostPrice,
-                    SalePrice = bp.SellPrice
-                })
-                .ToListAsync();
+                    .Include(bp => bp.Product).ThenInclude(p => p.MediaResources)
+                    .Where(bp => bp.BranchId == branchId
+                        && bp.IsActive == 1
+                        && bp.Product.Status == 1)
+                    .Where(bp =>
+                        bp.Product.ProductCode.ToLower().Contains(trimmedTerm)
+                        || bp.Product.ProductName.ToLower().Contains(trimmedTerm)
+                        || (bp.Product.Barcode != null && bp.Product.Barcode.ToLower().Contains(trimmedTerm))
+                    )
+                    .OrderBy(bp => bp.Product.ProductName)
+                    .Take(limit)
+                    .Select(bp => new ProductSearchResultDto
+                    {
+                        ProductId = bp.Product.ProductId,
+                        BranchProductId = bp.BranchProductId,
+                        ProductCode = bp.Product.ProductCode,
+                        ProductName = bp.Product.ProductName,
+                        BrandName = bp.Product.BrandName,
+                        CategoryName = bp.Product.CategoryName,
+                        Barcode = bp.Product.Barcode,
+                        Unit = bp.Product.BaseUnit,
+                        ImageUrl = bp.Product.MediaResources
+                            .Where(m => m.IsPrimary == 1)
+                            .Select(m => m.MediaUrl)
+                            .FirstOrDefault() ?? bp.Product.MediaResources.Select(m => m.MediaUrl).FirstOrDefault(),
+                        CurrentStock = bp.AvailableStock,
+                        CostPrice = bp.CostPrice,
+                        SalePrice = bp.SellPrice
+                    })
+                    .ToListAsync();
 
                 return Ok(new ApiResponse<object>
                 {
@@ -241,14 +245,16 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         /// <summary>
-        /// 1b. GET /api/products/suggest-new-product - Gợi ý thông tin khi user muốn tạo sp mới inline
-        /// trong form nhập hàng (không cần rời trang).
+        /// 1b. GET /api/products/suggest-new-product - Gợi ý thông tin sản phẩm mới inline
         /// </summary>
         [HttpGet("suggest-new-product")]
+        [HasPermission(PermissionConstants.PRODUCT_VIEW)]
         public async Task<IActionResult> SuggestNewProduct([FromQuery] string term)
         {
             try
             {
+                // 🔐 Quyền đã kiểm tra bằng [HasPermission] ở attribute
+
                 if (string.IsNullOrWhiteSpace(term) || term.Trim().Length < 2)
                 {
                     return BadRequest(new ApiResponse<object>
@@ -262,18 +268,18 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 // Sinh mã gợi ý không trùng
                 string baseCode = new string(namePart
-                .ToUpper()
-                .Replace(' ', '_')
-                .Where(c => char.IsLetterOrDigit(c) || c == '_')
-                .ToArray());
+                    .ToUpper()
+                    .Replace(' ', '_')
+                    .Where(c => char.IsLetterOrDigit(c) || c == '_')
+                    .ToArray());
 
                 if (baseCode.Length > 12) baseCode = baseCode.Substring(0, 12);
                 if (string.IsNullOrEmpty(baseCode)) baseCode = "SP";
 
                 var existingCodes = await _context.Products
-                .Where(p => p.ProductCode.StartsWith(baseCode))
-                .Select(p => p.ProductCode)
-                .ToListAsync();
+                    .Where(p => p.ProductCode.StartsWith(baseCode))
+                    .Select(p => p.ProductCode)
+                    .ToListAsync();
 
                 string suggestedCode = baseCode;
                 int suffix = 1;
@@ -285,20 +291,20 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 // Gợi ý brand/category có sẵn
                 var brandSuggestions = await _context.Products
-                .Where(p => p.BrandName != null && p.BrandName != "")
-                .GroupBy(p => p.BrandName)
-                .Select(g => g.Key!)
-                .OrderBy(b => b)
-                .Take(10)
-                .ToListAsync();
+                    .Where(p => p.BrandName != null && p.BrandName != "")
+                    .GroupBy(p => p.BrandName)
+                    .Select(g => g.Key!)
+                    .OrderBy(b => b)
+                    .Take(10)
+                    .ToListAsync();
 
                 var categorySuggestions = await _context.Products
-                .Where(p => p.CategoryName != null && p.CategoryName != "")
-                .GroupBy(p => p.CategoryName)
-                .Select(g => g.Key!)
-                .OrderBy(c => c)
-                .Take(10)
-                .ToListAsync();
+                    .Where(p => p.CategoryName != null && p.CategoryName != "")
+                    .GroupBy(p => p.CategoryName)
+                    .Select(g => g.Key!)
+                    .OrderBy(c => c)
+                    .Take(10)
+                    .ToListAsync();
 
                 return Ok(new ApiResponse<object>
                 {
@@ -325,202 +331,24 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         /// <summary>
-        /// 1a. GET /api/products/search - Autocomplete tìm sản phẩm (dùng trong form nhập hàng).
-        /// Hỗ trợ tìm theo productCode, productName, barcode.
-        /// </summary>
-        // [HttpGet("search")]
-        // public async Task<IActionResult> SearchProducts(
-        // [FromQuery] string term,
-        // [FromQuery] int limit = 10,
-        // [FromQuery] Guid? branchId = null)
-        // {
-        //     try
-        //     {
-        //         var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
-        //         if (resolvedBranchId == null)
-        //         {
-        //             return Unauthorized(new ApiResponse<object>
-        //             {
-        //                 Success = false,
-        //                 Message = "JWT token is missing or invalid",
-        //                 Errors = new() { "Authorization header required" }
-        //             });
-        //         }
-
-        //         if (string.IsNullOrWhiteSpace(term))
-        //         {
-        //             return Ok(new ApiResponse<object>
-        //             {
-        //                 Success = true,
-        //                 Message = "Empty term",
-        //                 Data = new { items = new List<ProductSearchResultDto>() }
-        //             });
-        //         }
-
-        //         if (limit < 1) limit = 10;
-        //         if (limit > 50) limit = 50;
-
-        //         var trimmedTerm = term.Trim().ToLower();
-
-        //         var results = await _context.BranchProducts
-        //         .Include(bp => bp.Product).ThenInclude(p => p.MediaResources)
-        //         .Where(bp => bp.BranchId == resolvedBranchId.Value
-        //         && bp.IsActive == 1
-        //         && bp.Product.Status == 1)
-        //         .Where(bp =>
-        //         bp.Product.ProductCode.ToLower().Contains(trimmedTerm)
-        //         || bp.Product.ProductName.ToLower().Contains(trimmedTerm)
-        //         || (bp.Product.Barcode != null && bp.Product.Barcode.ToLower().Contains(trimmedTerm))
-        //         )
-        //         .OrderBy(bp => bp.Product.ProductName)
-        //         .Take(limit)
-        //         .Select(bp => new ProductSearchResultDto
-        //         {
-        //             ProductId = bp.Product.ProductId,
-        //             BranchProductId = bp.BranchProductId,
-        //             ProductCode = bp.Product.ProductCode,
-        //             ProductName = bp.Product.ProductName,
-        //             BrandName = bp.Product.BrandName,
-        //             CategoryName = bp.Product.CategoryName,
-        //             Barcode = bp.Product.Barcode,
-        //             Unit = bp.Product.BaseUnit,
-        //             ImageUrl = bp.Product.MediaResources
-        //         .Where(m => m.IsPrimary == 1)
-        //         .Select(m => m.MediaUrl)
-        //         .FirstOrDefault() ?? bp.Product.MediaResources.Select(m => m.MediaUrl).FirstOrDefault(),
-        //             CurrentStock = bp.AvailableStock,
-        //             CostPrice = bp.CostPrice,
-        //             SalePrice = bp.SellPrice
-        //         })
-        //         .ToListAsync();
-
-        //         return Ok(new ApiResponse<object>
-        //         {
-        //             Success = true,
-        //             Message = $"Found {results.Count} product(s)",
-        //             Data = new { items = results, total = results.Count }
-        //         });
-        //     }
-        //     catch (Exception ex)
-        //     {
-        //         return StatusCode(500, new ApiResponse<object>
-        //         {
-        //             Success = false,
-        //             Message = "Internal server error",
-        //             Errors = new() { ex.Message }
-        //         });
-        //     }
-        // }
-
-        /// <summary>
-        /// 1b. GET /api/products/suggest-new-product - Gợi ý thông tin khi user muốn tạo sp mới inline
-        /// trong form nhập hàng (không cần rời trang).
-        /// </summary>
-        //  [HttpGet("suggest-new-product")]
-        //  public async Task<IActionResult> SuggestNewProduct([FromQuery] string term)
-        //  {
-        //  try
-        //  {
-        //  if (string.IsNullOrWhiteSpace(term) || term.Trim().Length < 2)
-        //  {
-        //  return BadRequest(new ApiResponse<object>
-        //  {
-        //  Success = false,
-        //  Message = "Term phải có ít nhất 2 ký tự"
-        //  });
-        //  }
-
-        //  var namePart = term.Trim();
-
-        //  // Sinh mã gợi ý không trùng
-        //  string baseCode = new string(namePart
-        //  .ToUpper()
-        //  .Replace(' ', '_')
-        //  .Where(c => char.IsLetterOrDigit(c) || c == '_')
-        //  .ToArray());
-
-        //  if (baseCode.Length > 12) baseCode = baseCode.Substring(0, 12);
-        //  if (string.IsNullOrEmpty(baseCode)) baseCode = "SP";
-
-        //  var existingCodes = await _context.Products
-        //  .Where(p => p.ProductCode.StartsWith(baseCode))
-        //  .Select(p => p.ProductCode)
-        //  .ToListAsync();
-
-        //  string suggestedCode = baseCode;
-        //  int suffix = 1;
-        //  while (existingCodes.Contains(suggestedCode))
-        //  {
-        //  suffix++;
-        //  suggestedCode = $"{baseCode}{suffix:000}";
-        //  }
-
-        //  // Gợi ý brand/category có sẵn
-        //  var brandSuggestions = await _context.Products
-        //  .Where(p => p.BrandName != null && p.BrandName != "")
-        //  .GroupBy(p => p.BrandName)
-        //  .Select(g => g.Key!)
-        //  .OrderBy(b => b)
-        //  .Take(10)
-        //  .ToListAsync();
-
-        //  var categorySuggestions = await _context.Products
-        //  .Where(p => p.CategoryName != null && p.CategoryName != "")
-        //  .GroupBy(p => p.CategoryName)
-        //  .Select(g => g.Key!)
-        //  .OrderBy(c => c)
-        //  .Take(10)
-        //  .ToListAsync();
-
-        //  return Ok(new ApiResponse<object>
-        //  {
-        //  Success = true,
-        //  Data = new NewProductSuggestionDto
-        //  {
-        //  SuggestedCode = suggestedCode,
-        //  ProductName = namePart,
-        //  DefaultUnit = "Cái",
-        //  BrandSuggestions = brandSuggestions,
-        //  CategorySuggestions = categorySuggestions
-        //  }
-        //  });
-        //  }
-        //  catch (Exception ex)
-        //  {
-        //  return StatusCode(500, new ApiResponse<object>
-        //  {
-        //  Success = false,
-        //  Message = "Internal server error",
-        //  Errors = new() { ex.Message }
-        //  });
-        //  }
-        //  }
-
         /// 2. GET /api/products/{id} - Get product details by ID
-        /// For Owner role: provide branchId via query param (?branchId=guid) or X-Branch-Id header
         /// </summary>
         [HttpGet("{id:guid}")]
-        public async Task<IActionResult> GetProductById(Guid id, [FromQuery] Guid? branchId = null)
+        [HasPermission(PermissionConstants.PRODUCT_VIEW)]
+        public async Task<IActionResult> GetProductById(Guid id)
         {
             try
             {
-                var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
-                if (resolvedBranchId == null)
-                {
-                    return Unauthorized(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "JWT token is missing or invalid",
-                        Errors = new() { "Authorization header required" }
-                    });
-                }
+                var branchId = await GetCurrentBranchId();
 
                 var bp = await _context.BranchProducts
                     .Include(bp => bp.Product).ThenInclude(p => p.Supplier)
                     .Include(bp => bp.Product).ThenInclude(p => p.MediaResources)
                     .Include(bp => bp.Product).ThenInclude(p => p.ProductAttributes)
                     .Include(bp => bp.Product).ThenInclude(p => p.ProductConversionUnits)
-                    .FirstOrDefaultAsync(bp => bp.ProductId == id && bp.BranchId == resolvedBranchId.Value);
+                    .Include(bp => bp.Product).ThenInclude(p => p.CreatedByUser)
+                    .Include(bp => bp.Product).ThenInclude(p => p.UpdatedByUser)
+                    .FirstOrDefaultAsync(bp => bp.ProductId == id && bp.BranchId == branchId);
 
                 if (bp == null)
                 {
@@ -553,302 +381,321 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// <summary>
         /// 3. POST /api/products - Create product
         /// </summary>
-        [Authorize(Roles = "Owner")]
-[HttpPost]
-public async Task<IActionResult> CreateProduct([FromBody] ProductUpsertDto dto, [FromQuery] Guid? branchId = null)
-{
-    try
-    {
-        var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
-        if (resolvedBranchId == null)
+        [HttpPost]
+        [HasPermission(PermissionConstants.PRODUCT_CREATE)]
+        public async Task<IActionResult> CreateProduct([FromBody] ProductUpsertDto dto)
         {
-            return BadRequest(new ApiResponse<object>
+            try
             {
-                Success = false,
-                Message = "Không xác định được chi nhánh. Vui lòng truyền param '?branchId=...' khi tạo sản phẩm.",
-                Errors = new() { "BranchId is required" }
-            });
-        }
+                var branchId = await GetCurrentBranchId();
 
-        // --- Validate data giữ nguyên ---
-        var errors = new List<string>();
-        if (string.IsNullOrWhiteSpace(dto.ProductCode)) errors.Add("productCode is required");
-        if (string.IsNullOrWhiteSpace(dto.ProductName)) errors.Add("productName is required");
-        if (string.IsNullOrWhiteSpace(dto.Unit)) errors.Add("unit is required");
-        if (dto.CostPrice <= 0) errors.Add("costPrice must be greater than 0");
-        if (dto.SalePrice <= 0) errors.Add("salePrice must be greater than 0");
-        if (dto.SalePrice < dto.CostPrice) errors.Add("salePrice should be >= costPrice");
+                var errors = new List<string>();
+                if (string.IsNullOrWhiteSpace(dto.ProductCode)) errors.Add("productCode is required");
+                if (string.IsNullOrWhiteSpace(dto.ProductName)) errors.Add("productName is required");
+                if (string.IsNullOrWhiteSpace(dto.Unit)) errors.Add("unit is required");
 
-        if (errors.Any())
-        {
-            return BadRequest(new ApiResponse<object> { Success = false, Message = "Validation failed", Errors = errors });
-        }
-
-        bool isCodeExist = await _context.Products.AnyAsync(p => p.ProductCode.ToLower() == dto.ProductCode.Trim().ToLower());
-        if (isCodeExist)
-        {
-            return BadRequest(new ApiResponse<object> { Success = false, Message = "Product code already exists", Errors = new() { $"Code '{dto.ProductCode}' exists" } });
-        }
-
-        var currentLocalTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
-        
-        // 🎯 LẤY USER ID TỪ JWT TOKEN
-        var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        Guid? currentUserId = string.IsNullOrEmpty(userIdStr) ? null : Guid.Parse(userIdStr);
-
-        using var transaction = await _context.Database.BeginTransactionAsync();
-        try
-        {
-            var product = _mapper.Map<Product>(dto);
-            product.ProductId = Guid.NewGuid();
-            product.CreatedAt = currentLocalTime;
-            
-            // 🎯 GÁN NGƯỜI TẠO Ở ĐÂY
-            product.CreatedBy = currentUserId; 
-            
-            product.ProductConversionUnits = new List<ProductConversionUnit>();
-            product.BranchProducts = new List<BranchProduct>();
-
-            _context.Products.Add(product);
-
-            // --- Giữ nguyên logic thêm Images, Attributes, ConversionUnits cũ của bạn ---
-            if (dto.Images != null && dto.Images.Any())
-            {
-                foreach (var imgUrl in dto.Images)
+                if (errors.Any())
                 {
-                    _context.MediaResources.Add(new MediaResource
-                    {
-                        MediaId = Guid.NewGuid(),
-                        ProductId = product.ProductId,
-                        MediaUrl = imgUrl.Trim(),
-                        MediaType = "IMAGE",
-                        IsPrimary = (short)(imgUrl.Trim() == dto.ImageUrl?.Trim() ? 1 : 0),
-                        CreatedAt = currentLocalTime
-                    });
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Validation failed", Errors = errors });
                 }
-            }
 
-            if (dto.Attributes != null && dto.Attributes.Any())
-            {
-                foreach (var attr in dto.Attributes)
+                bool isCodeExist = await _context.Products.AnyAsync(p => p.ProductCode.ToLower() == dto.ProductCode.Trim().ToLower());
+                if (isCodeExist)
                 {
-                    _context.ProductAttributes.Add(new ProductAttribute
-                    {
-                        AttributeId = Guid.NewGuid(),
-                        ProductId = product.ProductId,
-                        AttributeName = attr.Name,
-                        AttributeValue = attr.Value
-                    });
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Product code already exists", Errors = new() { $"Code '{dto.ProductCode}' exists" } });
                 }
-            }
 
-            if (dto.ConversionUnits != null && dto.ConversionUnits.Any())
-            {
-                foreach (var unit in dto.ConversionUnits)
+                var currentLocalTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+
+                Guid? currentUserId = GetUserInfo();
+
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
                 {
-                    _context.ProductConversionUnits.Add(new ProductConversionUnit
+                    var product = _mapper.Map<Product>(dto);
+                    product.ProductId = Guid.NewGuid();
+                    product.CreatedAt = currentLocalTime;
+                    product.CreatedBy = currentUserId;
+
+                    product.ProductConversionUnits = new List<ProductConversionUnit>();
+                    product.BranchProducts = new List<BranchProduct>();
+
+                    _context.Products.Add(product);
+
+                    if (dto.Images != null && dto.Images.Any())
                     {
-                        ConversionId = Guid.NewGuid(),
+                        foreach (var imgUrl in dto.Images)
+                        {
+                            _context.MediaResources.Add(new MediaResource
+                            {
+                                MediaId = Guid.NewGuid(),
+                                ProductId = product.ProductId,
+                                MediaUrl = imgUrl.Trim(),
+                                MediaType = "IMAGE",
+                                IsPrimary = (short)(imgUrl.Trim() == dto.ImageUrl?.Trim() ? 1 : 0),
+                                CreatedAt = currentLocalTime
+                            });
+                        }
+                    }
+
+                    if (dto.Attributes != null && dto.Attributes.Any())
+                    {
+                        foreach (var attr in dto.Attributes)
+                        {
+                            _context.ProductAttributes.Add(new ProductAttribute
+                            {
+                                AttributeId = Guid.NewGuid(),
+                                ProductId = product.ProductId,
+                                AttributeName = attr.Name,
+                                AttributeValue = attr.Value
+                            });
+                        }
+                    }
+
+                    if (dto.ConversionUnits != null && dto.ConversionUnits.Any())
+                    {
+                        foreach (var unit in dto.ConversionUnits)
+                        {
+                            _context.ProductConversionUnits.Add(new ProductConversionUnit
+                            {
+                                ConversionId = Guid.NewGuid(),
+                                ProductId = product.ProductId,
+                                UnitName = unit.Name,
+                                ConvertValue = unit.Rate > 0 ? unit.Rate : unit.ConvertValue,
+                                Price = unit.Price,
+                                DirectSale = (short?)(unit.DirectSale ? 1 : 0),
+                                Product = null!
+                            });
+                        }
+                    }
+
+                    // Chuẩn hoá ShelfLocation: ưu tiên ShelfLocation đầu tiên trong ShelfLocations
+                    var primaryShelfLocation =
+                        !string.IsNullOrWhiteSpace(dto.ShelfLocation)
+                            ? dto.ShelfLocation
+                            : (dto.ShelfLocations != null && dto.ShelfLocations.Count > 0
+                                ? dto.ShelfLocations[0]
+                                : null);
+
+                    var branchProduct = new BranchProduct
+                    {
+                        BranchProductId = Guid.NewGuid(),
+                        BranchId = branchId,
                         ProductId = product.ProductId,
-                        UnitName = unit.Name,
-                        ConvertValue = unit.Rate > 0 ? unit.Rate : unit.ConvertValue,
-                        Price = unit.Price,
-                        DirectSale = (short?)(unit.DirectSale ? 1 : 0),
+                        ActualStock = dto.ActualStock,
+                        AvailableStock = dto.AvailableStock,
+                        ReservedStock = dto.ReservedStock,
+                        ShelfLocation = primaryShelfLocation ?? "Chưa xếp vị trí",
+                        MinimumStock = dto.MinimumStock ?? 0,
+                        MaximumStock = dto.MaximumStock ?? 0,
+                        CostPrice = dto.CostPrice,
+                        SellPrice = dto.SalePrice,
+                        DirectSale = (short?)(dto.DirectSale ? 1 : 0),
                         Product = null!
-                    });
+                    };
+                    _context.BranchProducts.Add(branchProduct);
+
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    return CreatedAtAction(nameof(GetProductById), new { id = product.ProductId },
+                        new ApiResponse<ProductUpsertDto> { Success = true, Message = "Product created successfully", Data = MapToProductDto(branchProduct) });
+                }
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync();
+                    throw;
                 }
             }
-
-            var branchProduct = new BranchProduct
+            catch (Exception ex)
             {
-                BranchProductId = Guid.NewGuid(),
-                BranchId = resolvedBranchId.Value,
-                ProductId = product.ProductId,
-                ActualStock = dto.ActualStock,
-                AvailableStock = dto.AvailableStock,
-                ReservedStock = dto.ReservedStock,
-                ShelfLocation = dto.ShelfLocation ?? "Chưa xếp vị trí",
-                CostPrice = dto.CostPrice,
-                SellPrice = dto.SalePrice,
-                Product = null!
-            };
-            _context.BranchProducts.Add(branchProduct);
-
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            return CreatedAtAction(nameof(GetProductById), new { id = product.ProductId, branchId = resolvedBranchId.Value },
-                new ApiResponse<ProductUpsertDto> { Success = true, Message = "Product created successfully", Data = MapToProductDto(branchProduct) });
+                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "Error creating product", Errors = new() { ex.Message } });
+            }
         }
-        catch (Exception ex)
-        {
-            await transaction.RollbackAsync();
-            throw ex;
-        }
-    }
-    catch (Exception ex)
-    {
-        return StatusCode(500, new ApiResponse<object> { Success = false, Message = "Error creating product", Errors = new() { ex.Message } });
-    }
-}
 
         /// <summary>
         /// 4. PUT /api/products/{id} - Update product
         /// </summary>
-        [Authorize(Roles = "Owner")]
-[HttpPut("{id:guid}")]
-public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpsertDto dto, [FromQuery] Guid? branchId = null)
-{
-    try
-    {
-        // 🎯 ĐÃ SỬA: Linh hoạt lấy chi nhánh để Owner sửa đúng kho
-        var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
-        if (resolvedBranchId == null)
+        [HttpPut("{id:guid}")]
+        [HasPermission(PermissionConstants.PRODUCT_UPDATE)]
+        public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpsertDto dto)
         {
-            return BadRequest(new ApiResponse<object>
+            try
             {
-                Success = false,
-                Message = "Không xác định được chi nhánh. Vui lòng truyền param '?branchId=...' khi cập nhật sản phẩm.",
-                Errors = new() { "BranchId is required" }
-            });
+                var branchId = await GetCurrentBranchId();
+
+                var bp = await _context.BranchProducts
+                    .Include(b => b.Product).ThenInclude(p => p.MediaResources)
+                    .Include(b => b.Product).ThenInclude(p => p.ProductAttributes)
+                    .Include(b => b.Product).ThenInclude(p => p.ProductConversionUnits)
+                    .FirstOrDefaultAsync(b => b.ProductId == id && b.BranchId == branchId);
+
+                if (bp == null)
+                {
+                    return NotFound(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Product not found",
+                        Errors = new() { $"No product with ID: {id} in the branch" }
+                    });
+                }
+
+                var errors = new List<string>();
+                if (string.IsNullOrWhiteSpace(dto.ProductCode)) errors.Add("productCode is required");
+                if (string.IsNullOrWhiteSpace(dto.ProductName)) errors.Add("productName is required");
+                if (string.IsNullOrWhiteSpace(dto.Unit)) errors.Add("unit is required");
+
+                if (errors.Any())
+                {
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Validation failed", Errors = errors });
+                }
+
+                bool isCodeExist = await _context.Products.AnyAsync(p => p.ProductId != id && p.ProductCode.ToLower() == dto.ProductCode.Trim().ToLower());
+                if (isCodeExist)
+                {
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Product code already exists", Errors = new() { $"Code '{dto.ProductCode}' exists" } });
+                }
+
+                var currentLocalTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+
+                Guid? currentUserId = GetUserInfo();
+
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    var originalProductId = bp.Product.ProductId;
+                    _mapper.Map(dto, bp.Product);
+                    bp.Product.ProductId = originalProductId;
+
+                    bp.Product.UpdatedAt = currentLocalTime;
+                    bp.Product.UpdatedBy = currentUserId;
+
+                    // Đảm bảo SizeUnit được lưu (DTO có, Product có, AutoMapper xử lý đúng)
+                    if (!string.IsNullOrWhiteSpace(dto.SizeUnit))
+                        bp.Product.SizeUnit = dto.SizeUnit;
+
+                    _context.Products.Update(bp.Product);
+
+                    bp.ActualStock = dto.ActualStock;
+                    bp.AvailableStock = dto.AvailableStock;
+                    bp.ReservedStock = dto.ReservedStock;
+
+                    // Chuẩn hoá ShelfLocation: ưu tiên ShelfLocation đầu tiên trong ShelfLocations
+                    var primaryShelfLocation =
+                        !string.IsNullOrWhiteSpace(dto.ShelfLocation)
+                            ? dto.ShelfLocation
+                            : (dto.ShelfLocations != null && dto.ShelfLocations.Count > 0
+                                ? dto.ShelfLocations[0]
+                                : null);
+                    bp.ShelfLocation = primaryShelfLocation ?? bp.ShelfLocation ?? "Chưa xếp vị trí";
+
+                    // Lưu MinimumStock / MaximumStock vào BranchProduct (vì Product model không có 2 field này)
+                    bp.MinimumStock = dto.MinimumStock ?? bp.MinimumStock ?? 0;
+                    bp.MaximumStock = dto.MaximumStock ?? bp.MaximumStock ?? 0;
+
+                    bp.CostPrice = dto.CostPrice;
+                    bp.SellPrice = dto.SalePrice;
+                    bp.DirectSale = (short?)(dto.DirectSale ? 1 : 0);
+
+                    _context.BranchProducts.Update(bp);
+
+                    var oldMedia = await _context.MediaResources.Where(m => m.ProductId == id).ToListAsync();
+                    _context.MediaResources.RemoveRange(oldMedia);
+
+                    if (dto.Images != null && dto.Images.Any())
+                    {
+                        foreach (var imgUrl in dto.Images)
+                        {
+                            _context.MediaResources.Add(new MediaResource
+                            {
+                                MediaId = Guid.NewGuid(),
+                                ProductId = id,
+                                MediaUrl = imgUrl.Trim(),
+                                MediaType = "IMAGE",
+                                IsPrimary = (short)(imgUrl.Trim() == dto.ImageUrl?.Trim() ? 1 : 0),
+                                CreatedAt = currentLocalTime
+                            });
+                        }
+                    }
+
+                    var oldAttributes = await _context.ProductAttributes.Where(a => a.ProductId == id).ToListAsync();
+                    _context.ProductAttributes.RemoveRange(oldAttributes);
+
+                    if (dto.Attributes != null && dto.Attributes.Any())
+                    {
+                        foreach (var attr in dto.Attributes)
+                        {
+                            _context.ProductAttributes.Add(new ProductAttribute
+                            {
+                                AttributeId = Guid.NewGuid(),
+                                ProductId = id,
+                                AttributeName = attr.Name,
+                                AttributeValue = attr.Value
+                            });
+                        }
+                    }
+
+                    var oldUnits = await _context.ProductConversionUnits.Where(u => u.ProductId == id).ToListAsync();
+                    _context.ProductConversionUnits.RemoveRange(oldUnits);
+
+                    if (dto.ConversionUnits != null && dto.ConversionUnits.Any())
+                    {
+                        foreach (var unit in dto.ConversionUnits)
+                        {
+                            _context.ProductConversionUnits.Add(new ProductConversionUnit
+                            {
+                                ConversionId = Guid.NewGuid(),
+                                ProductId = id,
+                                UnitName = unit.Name,
+                                ConvertValue = unit.Rate > 0 ? unit.Rate : unit.ConvertValue,
+                                Price = unit.Price,
+                                DirectSale = (short?)(unit.DirectSale ? 1 : 0),
+                                Product = null!
+                            });
+                        }
+                    }
+
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    var updatedBp = await _context.BranchProducts
+                        .Include(b => b.Product).ThenInclude(p => p.Supplier)
+                        .Include(b => b.Product).ThenInclude(p => p.MediaResources)
+                        .Include(b => b.Product).ThenInclude(p => p.ProductAttributes)
+                        .Include(b => b.Product).ThenInclude(p => p.ProductConversionUnits)
+                        .FirstOrDefaultAsync(b => b.ProductId == id && b.BranchId == branchId);
+
+                    return Ok(new ApiResponse<ProductUpsertDto>
+                    {
+                        Success = true,
+                        Message = "Product updated successfully",
+                        Data = MapToProductDto(updatedBp!)
+                    });
+                }
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "Error updating product", Errors = new() { ex.Message } });
+            }
         }
 
-        var bp = await _context.BranchProducts
-            .Include(b => b.Product).ThenInclude(p => p.MediaResources)
-            .Include(b => b.Product).ThenInclude(p => p.ProductAttributes)
-            .Include(b => b.Product).ThenInclude(p => p.ProductConversionUnits)
-            .FirstOrDefaultAsync(b => b.ProductId == id && b.BranchId == resolvedBranchId.Value);
-
-        if (bp == null)
-        {
-            return NotFound(new ApiResponse<object> { Success = false, Message = "Product not found in this branch", Errors = new() { $"No product with ID: {id}" } });
-        }
-
-        // --- Validate data giữ nguyên ---
-        var errors = new List<string>();
-        if (string.IsNullOrWhiteSpace(dto.ProductName)) errors.Add("productName is required");
-        if (dto.CostPrice < 0) errors.Add("costPrice cannot be negative");
-        if (dto.SalePrice < 0) errors.Add("salePrice cannot be negative");
-        if (dto.SalePrice > 0 && dto.CostPrice > 0 && dto.SalePrice < dto.CostPrice) errors.Add("salePrice should be >= costPrice");
-
-        if (errors.Any())
-        {
-            return BadRequest(new ApiResponse<object> { Success = false, Message = "Validation failed", Errors = errors });
-        }
-
-        var currentLocalTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
         
-        // 🎯 LẤY USER ID TỪ JWT TOKEN
-        var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        Guid? currentUserId = string.IsNullOrEmpty(userIdStr) ? null : Guid.Parse(userIdStr);
-
-        using var transaction = await _context.Database.BeginTransactionAsync();
-        try
-        {
-            _mapper.Map(dto, bp.Product);
-            
-            // 🎯 CẬP NHẬT THÔNG TIN NGƯỜI SỬA VÀ THỜI GIAN SỬA
-            bp.Product.UpdatedAt = currentLocalTime;
-            bp.Product.UpdatedBy = currentUserId;
-            
-            _context.Products.Update(bp.Product);
-
-            bp.ActualStock = dto.ActualStock;
-            bp.AvailableStock = dto.AvailableStock;
-            bp.ReservedStock = dto.ReservedStock;
-            bp.ShelfLocation = dto.ShelfLocation ?? "Chưa xếp vị trí";
-            bp.CostPrice = dto.CostPrice;
-            bp.SellPrice = dto.SalePrice;
-            _context.BranchProducts.Update(bp);
-
-            // --- Giữ nguyên logic xóa/thêm mới các bảng liên quan cũ của bạn ---
-            _context.MediaResources.RemoveRange(bp.Product.MediaResources);
-            if (dto.Images != null && dto.Images.Any())
-            {
-                foreach (var imgUrl in dto.Images)
-                {
-                    _context.MediaResources.Add(new MediaResource
-                    {
-                        MediaId = Guid.NewGuid(),
-                        ProductId = id,
-                        MediaUrl = imgUrl.Trim(),
-                        MediaType = "IMAGE",
-                        IsPrimary = (short)(imgUrl.Trim() == dto.ImageUrl?.Trim() ? 1 : 0),
-                        CreatedAt = currentLocalTime
-                    });
-                }
-            }
-
-            _context.ProductAttributes.RemoveRange(bp.Product.ProductAttributes);
-            if (dto.Attributes != null && dto.Attributes.Any())
-            {
-                foreach (var attr in dto.Attributes)
-                {
-                    _context.ProductAttributes.Add(new ProductAttribute
-                    {
-                        AttributeId = Guid.NewGuid(),
-                        ProductId = id,
-                        AttributeName = attr.Name,
-                        AttributeValue = attr.Value
-                    });
-                }
-            }
-
-            _context.ProductConversionUnits.RemoveRange(bp.Product.ProductConversionUnits);
-            if (dto.ConversionUnits != null && dto.ConversionUnits.Any())
-            {
-                foreach (var unit in dto.ConversionUnits)
-                {
-                    _context.ProductConversionUnits.Add(new ProductConversionUnit
-                    {
-                        ConversionId = Guid.NewGuid(),
-                        ProductId = id,
-                        UnitName = unit.Name,
-                        ConvertValue = unit.Rate > 0 ? unit.Rate : unit.ConvertValue,
-                        Price = unit.Price,
-                        DirectSale = (short?)(unit.DirectSale ? 1 : 0)
-                    });
-                }
-            }
-
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            return Ok(new ApiResponse<ProductUpsertDto> { Success = true, Message = "Product updated successfully", Data = MapToProductDto(bp) });
-        }
-        catch (Exception ex)
-        {
-            await transaction.RollbackAsync();
-            throw ex;
-        }
-    }
-    catch (Exception ex)
-    {
-        return StatusCode(500, new ApiResponse<object> { Success = false, Message = "Error updating product", Errors = new() { ex.Message } });
-    }
-}
-        /// <summary>
-        /// 5. DELETE /api/products/{id} - Delete product (soft delete)
-        /// </summary>
-        [Authorize(Roles = "Owner")]
         [HttpDelete("{id:guid}")]
+        [HasPermission(PermissionConstants.PRODUCT_DELETE)]
         public async Task<IActionResult> DeleteProduct(Guid id)
         {
             try
             {
-                var branchId = _currentBranch.GetBranchId();
-                if (branchId == null)
-                {
-                    return Unauthorized(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "JWT token is missing or invalid",
-                        Errors = new() { "Authorization header required" }
-                    });
-                }
+                var branchId = await GetCurrentBranchId();
 
                 var bp = await _context.BranchProducts
-                    .Include(b => b.Product).FirstOrDefaultAsync(b => b.ProductId == id && b.BranchId == branchId.Value);
+                    .Include(b => b.Product)
+                    .FirstOrDefaultAsync(b => b.ProductId == id && b.BranchId == branchId);
 
                 if (bp == null)
                 {
@@ -866,6 +713,7 @@ public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpsert
                     bp.Product.Status = 0;
                     _context.Products.Update(bp.Product);
                 }
+
                 _context.BranchProducts.Update(bp);
                 await _context.SaveChangesAsync();
 
@@ -889,26 +737,17 @@ public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpsert
         /// <summary>
         /// 6. PATCH /api/products/{id}/toggle-status - Quick status toggle
         /// </summary>
-        [Authorize(Roles = "Owner")]
         [HttpPatch("{id:guid}/toggle-status")]
+        [HasPermission(PermissionConstants.PRODUCT_UPDATE)]
         public async Task<IActionResult> ToggleStatus(Guid id, [FromQuery] bool isActive)
         {
             try
             {
-                var branchId = _currentBranch.GetBranchId();
-                if (branchId == null)
-                {
-                    return Unauthorized(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "JWT token is missing or invalid",
-                        Errors = new() { "Authorization header required" }
-                    });
-                }
+                var branchId = await GetCurrentBranchId();
 
                 var bp = await _context.BranchProducts
- .Include(b => b.Product) // ← THÊM DÒNG NÀY
-  .FirstOrDefaultAsync(b => b.ProductId == id && b.BranchId == branchId.Value);
+                    .Include(b => b.Product)
+                    .FirstOrDefaultAsync(b => b.ProductId == id && b.BranchId == branchId);
 
                 if (bp == null)
                 {
@@ -916,22 +755,26 @@ public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpsert
                     {
                         Success = false,
                         Message = "Product not found",
-                        Errors = new() { $"No product with ID: {id}" }
+                        Errors = new() { $"No product with ID {id} belongs to this branch" }
                     });
                 }
 
-                bp.IsActive = (short?)(isActive ? 1 : 0);
+                short statusVal = isActive ? (short)1 : (short)0;
+                bp.IsActive = statusVal;
+
                 if (bp.Product != null)
                 {
-                    bp.Product.Status = (short?)(isActive ? 1 : 0);
+                    bp.Product.Status = statusVal;
                     _context.Products.Update(bp.Product);
                 }
+
                 _context.BranchProducts.Update(bp);
                 await _context.SaveChangesAsync();
+
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = $"Product status updated to: {(isActive ? "Active" : "Inactive")}"
+                    Message = $"Product status updated to {(isActive ? "Active" : "Inactive")} successfully"
                 });
             }
             catch (Exception ex)
@@ -939,30 +782,22 @@ public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpsert
                 return StatusCode(500, new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Error updating product status",
+                    Message = "Error toggling product status",
                     Errors = new() { ex.Message }
                 });
             }
         }
+
         /// <summary>
-        /// 7. PATCH /api/products/toggle-status-bulk - Toggle status for many products at once
+        /// 7. PATCH /api/products/toggle-status-bulk - Bulk toggle status
         /// </summary>
-        [Authorize(Roles = "Owner")]
         [HttpPatch("toggle-status-bulk")]
+        [HasPermission(PermissionConstants.PRODUCT_UPDATE)]
         public async Task<IActionResult> ToggleStatusBulk([FromBody] BulkToggleStatusRequest request)
         {
             try
             {
-                var branchId = _currentBranch.GetBranchId();
-                if (branchId == null)
-                {
-                    return Unauthorized(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "JWT token is missing or invalid",
-                        Errors = new() { "Authorization header required" }
-                    });
-                }
+                var branchId = await GetCurrentBranchId();
 
                 if (request?.Ids == null || !request.Ids.Any())
                 {
@@ -970,11 +805,10 @@ public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpsert
                     {
                         Success = false,
                         Message = "Validation failed",
-                        Errors = new() { "ids must not be empty" }
+                        Errors = new() { "List of product IDs cannot be empty" }
                     });
                 }
 
-                // Giới hạn 500 id / lần để tránh quá tải request
                 if (request.Ids.Count > 500)
                 {
                     return BadRequest(new ApiResponse<object>
@@ -985,11 +819,10 @@ public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpsert
                     });
                 }
 
-                // Lấy ra các BranchProduct thuộc branch hiện tại
                 var bps = await _context.BranchProducts
-                .Include(b => b.Product)
-                .Where(b => b.BranchId == branchId.Value && request.Ids.Contains(b.ProductId))
-                .ToListAsync();
+                    .Include(b => b.Product)
+                    .Where(b => b.BranchId == branchId && request.Ids.Contains(b.ProductId))
+                    .ToListAsync();
 
                 if (!bps.Any())
                 {
@@ -1006,28 +839,31 @@ public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpsert
 
                 foreach (var bp in bps)
                 {
-                    bp.IsActive = (short?)(request.IsActive ? 1 : 0);
+                    short statusVal = request.IsActive ? (short)1 : (short)0;
+                    bp.IsActive = statusVal;
+
                     if (bp.Product != null)
                     {
-                        bp.Product.Status = (short?)(request.IsActive ? 1 : 0);
+                        bp.Product.Status = statusVal;
                         _context.Products.Update(bp.Product);
                     }
+
                     _context.BranchProducts.Update(bp);
                     updatedIds.Add(bp.ProductId);
                 }
 
                 await _context.SaveChangesAsync();
 
-                return Ok(new ApiResponse<BulkToggleStatusResponse>
+                return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = $"Updated {updatedIds.Count} product(s) successfully",
-                    Data = new BulkToggleStatusResponse
+                    Message = $"Bulk status update completed. Updated {updatedIds.Count} product(s).",
+                    Data = new
                     {
                         UpdatedCount = updatedIds.Count,
                         UpdatedIds = updatedIds,
-                        NotFoundIds = notFoundIds,
-                        NewStatus = request.IsActive ? "Active" : "Inactive"
+                        NotFoundCount = notFoundIds.Count,
+                        NotFoundIds = notFoundIds
                     }
                 });
             }
@@ -1036,47 +872,28 @@ public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpsert
                 return StatusCode(500, new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Error updating product statuses",
+                    Message = "Error during bulk status updating",
                     Errors = new() { ex.Message }
                 });
             }
         }
-        // ========== HELPER METHODS ==========
 
-        /// <summary>
-        /// Apply sorting to the query
-        /// </summary>
-        private IQueryable<BranchProduct> ApplySorting(IQueryable<BranchProduct> query, string? sort, string? order)
+        private IQueryable<BranchProduct> ApplySorting(IQueryable<BranchProduct> query, string sortBy, string order)
         {
-            var sortOrder = order?.ToLower() == "desc" ? "desc" : "asc";
+            bool isDesc = order?.ToLower() == "desc";
+            string sort = sortBy?.ToLower() ?? "name";
 
-            return sort?.ToLower() switch
+            return sort switch
             {
-                "name" => sortOrder == "desc"
-                    ? query.OrderByDescending(bp => bp.Product.ProductName)
-                    : query.OrderBy(bp => bp.Product.ProductName),
-                "code" => sortOrder == "desc"
-                    ? query.OrderByDescending(bp => bp.Product.ProductCode)
-                    : query.OrderBy(bp => bp.Product.ProductCode),
-                "saleprice" => sortOrder == "desc"
-                    ? query.OrderByDescending(bp => bp.SellPrice)
-                    : query.OrderBy(bp => bp.SellPrice),
-                "costprice" => sortOrder == "desc"
-                    ? query.OrderByDescending(bp => bp.CostPrice)
-                    : query.OrderBy(bp => bp.CostPrice),
-                "stock" => sortOrder == "desc"
-                    ? query.OrderByDescending(bp => bp.ActualStock)
-                    : query.OrderBy(bp => bp.ActualStock),
-                "createdat" => sortOrder == "desc"
-                    ? query.OrderByDescending(bp => bp.Product.CreatedAt)
-                    : query.OrderBy(bp => bp.Product.CreatedAt),
-                _ => query.OrderByDescending(bp => bp.Product.CreatedAt)
+                "code" => isDesc ? query.OrderByDescending(bp => bp.Product.ProductCode) : query.OrderBy(bp => bp.Product.ProductCode),
+                "stock" => isDesc ? query.OrderByDescending(bp => bp.AvailableStock) : query.OrderBy(bp => bp.AvailableStock),
+                "price" => isDesc ? query.OrderByDescending(bp => bp.SellPrice) : query.OrderBy(bp => bp.SellPrice),
+                "cost" => isDesc ? query.OrderByDescending(bp => bp.CostPrice) : query.OrderBy(bp => bp.CostPrice),
+                "createdat" => isDesc ? query.OrderByDescending(bp => bp.Product.CreatedAt) : query.OrderBy(bp => bp.Product.CreatedAt),
+                _ => isDesc ? query.OrderByDescending(bp => bp.Product.ProductName) : query.OrderBy(bp => bp.Product.ProductName)
             };
         }
 
-        /// <summary>
-        /// Convert BranchProduct entity to ProductUpsertDto response
-        /// </summary>
         private ProductUpsertDto MapToProductDto(BranchProduct bp)
         {
             var p = bp.Product;
@@ -1084,9 +901,9 @@ public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpsert
             // Determine product status
             string productStatus = p.Status == 0 ? "inactive" : "active";
 
-            // Determine stock status
+            // Determine stock status (so sánh với MinimumStock thay vì Weight)
             string stockStatus = bp.ActualStock > 0
-                ? (bp.ActualStock > (p.Weight ?? 0) ? "Sẵn hàng" : "Sắp hết")
+                ? (bp.ActualStock > (bp.MinimumStock ?? 0) ? "Sẵn hàng" : "Sắp hết")
                 : "Hết hàng";
 
             string statusTone = stockStatus switch
@@ -1122,8 +939,10 @@ public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpsert
                 ActualStock = bp.ActualStock,
                 AvailableStock = bp.AvailableStock,
                 ReservedStock = bp.ReservedStock,
-                MinimumStock = null,
-                MaximumStock = null,
+
+                // Lấy MinimumStock / MaximumStock từ BranchProduct (không phải Weight)
+                MinimumStock = bp.MinimumStock ?? 0,
+                MaximumStock = bp.MaximumStock ?? 0,
 
                 // Location & Dimensions
                 ShelfLocation = bp.ShelfLocation,
@@ -1133,6 +952,7 @@ public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpsert
                 Width = p.Width,
                 Length = p.Length,
                 Height = p.Height,
+                SizeUnit = p.SizeUnit,
                 Specification = p.Specification,
                 SpecificationDetail = $"{p.Width ?? 0}x{p.Length ?? 0}x{p.Height ?? 0}",
 
@@ -1142,7 +962,7 @@ public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpsert
                 Images = p.MediaResources.Select(m => m.MediaUrl).ToList(),
 
                 // Sales & Status
-                DirectSale = true,
+                DirectSale = bp.DirectSale == 1 || bp.DirectSale == null,
                 SalesChannelLinked = p.SalesChannelLinked == 1,
                 IsActive = p.Status == 1,
 
@@ -1173,7 +993,13 @@ public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpsert
                 // Timestamps
                 EstimatedOutAt = p.CreatedAt?.AddDays(30),
                 CreatedAt = p.CreatedAt,
-                UpdatedAt = p.CreatedAt
+                UpdatedAt = p.UpdatedAt,
+
+                // Trả thông tin định danh người tạo và sửa đổi
+                CreatedBy = p.CreatedBy,
+                CreatedByName = p.CreatedByUser?.FullName ?? "Hệ thống",
+                UpdatedBy = p.UpdatedBy,
+                UpdatedByName = p.UpdatedByUser?.FullName ?? "Chưa cập nhật"
             };
         }
     }

@@ -90,9 +90,9 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public decimal TotalPurchased { get; set; }
 
         // Đánh giá
-        public decimal? AverageRating { get; set; }
-        public int RatingCount { get; set; }
-        public DateTime? LastRatedAt { get; set; }
+        //public decimal? AverageRating { get; set; }
+        //public int RatingCount { get; set; }
+        //public DateTime? LastRatedAt { get; set; }
     }
 
     public class SupplierDetailDto
@@ -112,9 +112,9 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? Notes { get; set; }
         public string Status { get; set; } = "active";
         public DateTime? CreatedAt { get; set; }
-        public decimal? AverageRating { get; set; }
-        public int RatingCount { get; set; }
-        public DateTime? LastRatedAt { get; set; }
+        //public decimal? AverageRating { get; set; }
+        //public int RatingCount { get; set; }
+        //public DateTime? LastRatedAt { get; set; }
     }
 
     public class SupplierPagedResponse

@@ -9,7 +9,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.RateLimiting; // Rate Limit
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace MEP_Management_System.Controllers
 {
@@ -64,7 +64,7 @@ namespace MEP_Management_System.Controllers
         }
 
         // ==========================================
-        // 2. REGISTER VERIFY: XÁC THỰC OTP + TẠO CỬA HÀNG & OWNER
+        // 2. REGISTER VERIFY: XÁC THỰC OTP + TẠO CỬA HÀNG MẶC ĐỊNH & OWNER
         // ==========================================
         [HttpPost("register/verify")]
         public async Task<IActionResult> RegisterVerify([FromBody] RegisterVerifyDto dto)
@@ -102,13 +102,13 @@ namespace MEP_Management_System.Controllers
                 FullName = dto.FullName,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                 IsActive = 1,
-                IsVerified = true, // kích hoạt luôn
+                IsVerified = true,
                 CreatedAt = now
             };
             newUser.Roles.Add(ownerRole);
             _context.Users.Add(newUser);
 
-            // Tạo Branch đầu tiên
+            // Tạo đúng 1 Branch duy nhất (Hệ thống chạy Single-Branch ngầm)
             var branch = new Branch
             {
                 BranchId = Guid.NewGuid(),
@@ -120,10 +120,10 @@ namespace MEP_Management_System.Controllers
             };
             _context.Branches.Add(branch);
 
-            // 🎯 Gán DefaultBranchId cho user khi tạo
+            // Gán DefaultBranchId ngầm để phục vụ kiến trúc tương lai
             newUser.DefaultBranchId = branch.BranchId;
 
-            // Gán Owner vào Branch luôn
+            // Vẫn lưu vào StaffAssignments để phục vụ phân quyền dữ liệu sau này
             _context.StaffAssignments.Add(new StaffAssignment
             {
                 AssignmentId = Guid.NewGuid(),
@@ -139,7 +139,7 @@ namespace MEP_Management_System.Controllers
         }
 
         // ==========================================
-        // 3. LOGIN: ĐĂNG NHẬP (DÙNG CHUNG CHO CẢ OWNER & STAFF)
+        // 3. LOGIN: ĐĂNG NHẬP ĐƠN GIẢN HÓA CÓ THU THẬP QUYỀN TRUY CẬP (RBAC FLOW)
         // ==========================================
         [EnableRateLimiting("StrictLimit")]
         [HttpPost("login")]
@@ -154,12 +154,13 @@ namespace MEP_Management_System.Controllers
             if (user.IsActive != 1) return BadRequest(new { message = "Tài khoản của bạn hiện đang bị khóa." });
             if (!user.IsVerified) return BadRequest(new { message = "Tài khoản của bạn chưa được xác thực." });
 
+            // 1. Lấy danh sách tên nhóm vai trò (Roles) gắn liền với User
             var userRoles = await _context.Roles
                 .Where(r => r.Users.Any(u => u.UserId == user.UserId))
                 .Select(r => r.RoleName)
                 .ToListAsync();
 
-            var isOwner = userRoles.Contains("Owner");
+var isOwner = userRoles.Contains("Owner");
 
             string? branchIdForToken = null;
             object? branchesForResponse = null;
@@ -211,39 +212,45 @@ namespace MEP_Management_System.Controllers
                 }
             }
 
+// 2. 🌟 THÊM MỚI: Truy vấn toàn bộ mã quyền (PermissionCode) thông qua các Roles của User
+            var rolePermissions = await _context.Roles
+                .Where(r => r.Users.Any(u => u.UserId == user.UserId))
+                .SelectMany(r => r.Permissions)
+                .Select(p => p.PermissionCode)
+                .ToListAsync();
+
+            // 3. 🌟 THÊM MỚI: Truy vấn mã quyền (PermissionCode) được chỉ định / gán trực tiếp cho User (bảng nối UserPermission)
+            var userPermissions = await _context.UserPermissions
+                .Where(up => up.UserId == user.UserId)
+                .Select(up => up.Permission.PermissionCode)
+                .ToListAsync();
+
+            // 4. 🌟 THÊM MỚI: Sử dụng phương thức tập hợp Union để gộp 2 mảng quyền lại và triệt tiêu trùng lặp ngầm bằng Distinct
+            var allPermissions = rolePermissions
+                .Union(userPermissions)
+                .Distinct()
+                .ToList();
+
+            // 5. 🌟 THAY ĐỔI: Tiến hành truyền thêm tham số danh sách mảng quyền `allPermissions` vào hàm sinh Token
             var jwtToken = _jwtHelper.GenerateToken(
                 user.UserId,
                 user.Username,
                 user.FullName,
                 userRoles,
-                branchId: branchIdForToken  // null nếu Owner, có giá trị nếu Staff
+                allPermissions,
+                branchId: null
             );
 
             var responseDto = _mapper.Map<UserResponseDto>(user);
             responseDto.Token = jwtToken;
             responseDto.Roles = userRoles;
 
-            // Determine defaultBranchId
-            Guid? defaultBranchId = user.DefaultBranchId;
-            if (defaultBranchId == null && isOwner)
-            {
-                // If Owner has no default branch set, use first available branch
-                if (branchesForResponse is List<dynamic> branchList && branchList.Count > 0)
-                {
-                    defaultBranchId = branchList[0].BranchId;
-                }
-            }
-
             return Ok(new
             {
                 message = "Đăng nhập thành công!",
                 roles = userRoles,
-                branches = branchesForResponse, // Owner nhận list branches, Staff nhận null
-                defaultBranchId = defaultBranchId, // Add this
                 data = responseDto
             });
         }
-
-       
     }
 }

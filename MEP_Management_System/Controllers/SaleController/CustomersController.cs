@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using AutoMapper;
+using MEP_Management_System.Authorization;
 using MEP_Management_System.DTOs.SaleDTOs;
 using MEP_Management_System.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -14,7 +15,7 @@ namespace MEP_Management_System.Controllers.SaleController;
 
 [ApiController]
 [Route("api/pos/customers")]
-[Authorize(Roles = "SalesStaff,Owner")]
+[HasPermission(PermissionConstants.CUSTOMER_VIEW)]
 [Tags("Quản lý bán hàng (Sale)")]
 public class CustomersController : ControllerBase
 {

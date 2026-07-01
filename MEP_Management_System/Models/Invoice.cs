@@ -23,7 +23,7 @@ public partial class Invoice
 
     public string? Note { get; set; }
 
-    /// <summary>Ghi chú khi treo hóa đơn (Hold Invoice).</summary>
+/// <summary>Ghi chú khi treo hóa đơn (Hold Invoice).</summary>
     public string? HoldNote { get; set; }
 
     /// <summary>Thời điểm hóa đơn được treo.</summary>

@@ -1,13 +1,15 @@
+using MEP_Management_System.Authorization;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace MEP_Management_System.Controllers.InventoryController.Supplier
 {
-    [Authorize]
+    [Authorize] // Bắt buộc phải đăng nhập JWT cho toàn bộ Controller
     [ApiController]
     [Route("api/suppliers")]
     [Tags("Quản lý nhà cung cấp (Inventory)")]
@@ -18,14 +20,6 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         public SupplierController(MEPDatabaseContext context)
         {
             _context = context;
-        }
-
-        private async Task<Guid> GetOwnerIdAsync()
-        {
-            var ownerId = await HttpContext.GetOwnerIdAsync(_context);
-            if (ownerId == Guid.Empty)
-                throw new UnauthorizedAccessException("Cannot determine Owner from token.");
-            return ownerId;
         }
 
         // Helper: chuyển mã hiển thị từ GUID (8 ký tự đầu)
@@ -39,19 +33,15 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
 
         // ============================================================
         // GET /api/suppliers
-        // Query: searchTerm, status (active|inactive|all), groupName,
-        //        pageNumber, pageSize
+        // Quyền truy cập: Owner (Mặc định qua Handler) hoặc có quyền SUPPLIER_VIEW
         // ============================================================
         [HttpGet]
+        [HasPermission(PermissionConstants.SUPPLIER_VIEW)]
         public async Task<IActionResult> GetSuppliers([FromQuery] SupplierQueryParameters p)
         {
             try
             {
-                var ownerId = await GetOwnerIdAsync();
-                var query = _context.Suppliers
-                    .Include(s => s.PurchaseOrders)
-                    .Where(s => s.CreatedBy == ownerId)
-                    .AsQueryable();
+                var query = _context.Suppliers.AsQueryable();
 
                 // Filter search
                 if (!string.IsNullOrWhiteSpace(p.SearchTerm))
@@ -75,17 +65,26 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                 if (!string.IsNullOrWhiteSpace(p.GroupName) && p.GroupName != "all")
                     query = query.Where(s => s.GroupName == p.GroupName);
 
-                var suppliers = await query.OrderByDescending(s => s.CreatedAt).ToListAsync();
+                // Tính tổng số lượng trực tiếp từ Database bằng CountAsync
+                var totalCount = await query.CountAsync();
 
-                // Distinct groups
+                // Thực hiện Phân trang (Skip/Take) ngay tại SQL và chỉ lấy trang hiện tại lên RAM
+                var suppliers = await query
+                    .Include(s => s.PurchaseOrders)
+                    .OrderByDescending(s => s.CreatedAt)
+                    .Skip((p.PageNumber - 1) * p.PageSize)
+                    .Take(p.PageSize)
+                    .ToListAsync();
+
+                // Distinct groups toàn hệ thống
                 var distinctGroups = await _context.Suppliers
-                    .Where(s => s.CreatedBy == ownerId && s.GroupName != null)
+                    .Where(s => s.GroupName != null)
                     .Select(s => s.GroupName!)
                     .Distinct()
                     .OrderBy(g => g)
                     .ToListAsync();
 
-                // Map sang DTO (kèm computed: currentDebt, totalPurchased)
+                // Map dữ liệu của trang hiện tại sang DTO (kèm computed: currentDebt, totalPurchased)
                 var items = suppliers.Select(s => new SupplierListItemDto
                 {
                     Id = s.SupplierId,
@@ -104,18 +103,10 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         .Sum(po => po.TotalAmount ?? 0),
                     TotalPurchased = s.PurchaseOrders
                         .Where(po => po.Status == "COMPLETED" || po.Status == "APPROVED")
-                        .Sum(po => po.TotalAmount ?? 0),
-                    AverageRating = s.AverageRating,
-                    RatingCount = s.RatingCount ?? 0,
-                    LastRatedAt = s.LastRatedAt,
+                        .Sum(po => po.TotalAmount ?? 0)
                 }).ToList();
 
-                var totalCount = items.Count;
                 var totalPages = (int)Math.Ceiling(totalCount / (double)p.PageSize);
-                var paged = items
-                    .Skip((p.PageNumber - 1) * p.PageSize)
-                    .Take(p.PageSize)
-                    .ToList();
 
                 return Ok(new DTOs.ApiResponse<SupplierPagedResponse>
                 {
@@ -123,7 +114,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     Message = "Suppliers retrieved successfully",
                     Data = new SupplierPagedResponse
                     {
-                        Items = paged,
+                        Items = items,
                         TotalCount = totalCount,
                         PageNumber = p.PageNumber,
                         PageSize = p.PageSize,
@@ -147,15 +138,16 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
 
         // ============================================================
         // GET /api/suppliers/{id}
+        // Quyền truy cập: Owner (Mặc định qua Handler) hoặc có quyền SUPPLIER_VIEW
         // ============================================================
         [HttpGet("{id:guid}")]
+        [HasPermission(PermissionConstants.SUPPLIER_VIEW)]
         public async Task<IActionResult> GetSupplier(Guid id)
         {
             try
             {
-                var ownerId = await GetOwnerIdAsync();
                 var s = await _context.Suppliers
-                    .FirstOrDefaultAsync(x => x.SupplierId == id && x.CreatedBy == ownerId);
+                    .FirstOrDefaultAsync(x => x.SupplierId == id);
 
                 if (s == null)
                     return NotFound(new DTOs.ApiResponse<object>
@@ -185,10 +177,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         Address = s.Address,
                         Notes = s.Notes,
                         Status = StatusLabel(s.Status),
-                        CreatedAt = s.CreatedAt,
-                        AverageRating = s.AverageRating,
-                        RatingCount = s.RatingCount ?? 0,
-                        LastRatedAt = s.LastRatedAt,
+                        CreatedAt = s.CreatedAt
                     }
                 });
             }
@@ -205,8 +194,10 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
 
         // ============================================================
         // POST /api/suppliers
+        // Quyền truy cập: Owner (Mặc định qua Handler) hoặc có quyền SUPPLIER_MANAGE
         // ============================================================
         [HttpPost]
+        [HasPermission(PermissionConstants.SUPPLIER_CREATE)]
         public async Task<IActionResult> CreateSupplier([FromBody] SupplierUpsertRequest req)
         {
             try
@@ -225,9 +216,11 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     });
                 }
 
-                // Check trùng tên (case-insensitive)
+                var inputName = req.SupplierName.Trim();
+
+                // So sánh trùng tên có kèm theo Trim() cả 2 đầu ở dưới DB
                 var exists = await _context.Suppliers
-                    .AnyAsync(x => x.SupplierName.ToLower() == req.SupplierName.ToLower());
+                    .AnyAsync(x => x.SupplierName.Trim().ToLower() == inputName.ToLower());
                 if (exists)
                     return BadRequest(new ApiResponse<object>
                     {
@@ -236,12 +229,18 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         Errors = new() { $"Nhà cung cấp '{req.SupplierName}' đã tồn tại." }
                     });
 
-                var ownerId = await GetOwnerIdAsync();
+                // Lấy UserId từ JWT lưu vào CreatedBy phục vụ audit lịch sử
+                Guid? currentUserId = null;
+                var nameIdentifier = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (Guid.TryParse(nameIdentifier, out var parsedGuid))
+                {
+                    currentUserId = parsedGuid;
+                }
 
                 var s = new Models.Supplier
                 {
                     SupplierId = Guid.NewGuid(),
-                    SupplierName = req.SupplierName.Trim(),
+                    SupplierName = inputName,
                     ContactPhone = req.ContactPhone?.Trim(),
                     ContactEmail = req.ContactEmail?.Trim(),
                     ContactPerson = req.ContactPerson?.Trim(),
@@ -254,8 +253,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     Notes = req.Notes?.Trim(),
                     Status = req.Status,
                     CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified),
-                    RatingCount = 0,
-                    CreatedBy = ownerId,
+                    CreatedBy = currentUserId
                 };
 
                 _context.Suppliers.Add(s);
@@ -281,7 +279,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         Address = s.Address,
                         Notes = s.Notes,
                         Status = StatusLabel(s.Status),
-                        CreatedAt = s.CreatedAt,
+                        CreatedAt = s.CreatedAt
                     }
                 });
             }
@@ -298,8 +296,10 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
 
         // ============================================================
         // PUT /api/suppliers/{id}
+        // Quyền truy cập: Owner (Mặc định qua Handler) hoặc có quyền SUPPLIER_MANAGE
         // ============================================================
         [HttpPut("{id:guid}")]
+        [HasPermission(PermissionConstants.SUPPLIER_UPDATE)]
         public async Task<IActionResult> UpdateSupplier(Guid id, [FromBody] SupplierUpsertRequest req)
         {
             try
@@ -318,9 +318,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     });
                 }
 
-                // Check trùng tên với NCC khác
-                var ownerId = await GetOwnerIdAsync();
-                var s = await _context.Suppliers.FirstOrDefaultAsync(x => x.SupplierId == id && x.CreatedBy == ownerId);
+                var s = await _context.Suppliers.FirstOrDefaultAsync(x => x.SupplierId == id);
                 if (s == null)
                     return NotFound(new ApiResponse<object>
                     {
@@ -329,9 +327,12 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         Errors = new() { $"No supplier with ID: {id}" }
                     });
 
+                var inputName = req.SupplierName.Trim();
+
+                // Kiểm tra trùng tên với nhà cung cấp khác có kèm theo Trim()
                 var nameExists = await _context.Suppliers
                     .AnyAsync(x => x.SupplierId != id
-                                && x.SupplierName.ToLower() == req.SupplierName.ToLower());
+                                && x.SupplierName.Trim().ToLower() == inputName.ToLower());
                 if (nameExists)
                     return BadRequest(new ApiResponse<object>
                     {
@@ -340,7 +341,15 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         Errors = new() { $"Nhà cung cấp '{req.SupplierName}' đã tồn tại." }
                     });
 
-                s.SupplierName = req.SupplierName.Trim();
+                // 🌟 Lấy UserId từ JWT lưu vào UpdatedBy để theo dõi ai là người sửa đổi cuối cùng
+                Guid? currentUserId = null;
+                var nameIdentifier = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (Guid.TryParse(nameIdentifier, out var parsedGuid))
+                {
+                    currentUserId = parsedGuid;
+                }
+
+                s.SupplierName = inputName;
                 s.ContactPhone = req.ContactPhone?.Trim();
                 s.ContactEmail = req.ContactEmail?.Trim();
                 s.ContactPerson = req.ContactPerson?.Trim();
@@ -352,6 +361,10 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                 s.Address = req.Address?.Trim();
                 s.Notes = req.Notes?.Trim();
                 s.Status = req.Status;
+
+                // 🌟 Ghi nhận vết Audit sửa đổi
+                s.UpdatedBy = currentUserId;
+                s.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
                 await _context.SaveChangesAsync();
 
@@ -375,10 +388,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         Address = s.Address,
                         Notes = s.Notes,
                         Status = StatusLabel(s.Status),
-                        CreatedAt = s.CreatedAt,
-                        AverageRating = s.AverageRating,
-                        RatingCount = s.RatingCount ?? 0,
-                        LastRatedAt = s.LastRatedAt,
+                        CreatedAt = s.CreatedAt
                     }
                 });
             }
@@ -394,15 +404,16 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         }
 
         // ============================================================
-        // DELETE /api/suppliers/{id}  (soft delete: set Status = 0)
+        // DELETE /api/suppliers/{id}  (Hard Delete)
+        // Quyền truy cập: Owner (Mặc định qua Handler) hoặc có quyền SUPPLIER_MANAGE
         // ============================================================
         [HttpDelete("{id:guid}")]
+        [HasPermission(PermissionConstants.SUPPLIER_DELETE)]
         public async Task<IActionResult> DeleteSupplier(Guid id)
         {
             try
             {
-                var ownerId = await GetOwnerIdAsync();
-                var s = await _context.Suppliers.FirstOrDefaultAsync(x => x.SupplierId == id && x.CreatedBy == ownerId);
+                var s = await _context.Suppliers.FirstOrDefaultAsync(x => x.SupplierId == id);
                 if (s == null)
                     return NotFound(new ApiResponse<object>
                     {
@@ -410,15 +421,15 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         Message = "Supplier not found",
                         Errors = new() { $"No supplier with ID: {id}" }
                     });
+                _context.Suppliers.Remove(s);
 
-                // Soft delete: chỉ tắt trạng thái, giữ lại lịch sử PO
-                s.Status = 0;
+                // Lưu thay đổi (EF Core sẽ sinh ra lệnh DELETE FROM suppliers WHERE...)
                 await _context.SaveChangesAsync();
 
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = "Supplier deactivated successfully"
+                    Message = "Supplier deleted permanently from database" // Sửa lại message cho đúng bản chất
                 });
             }
             catch (Exception ex)

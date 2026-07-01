@@ -58,4 +58,6 @@ public partial class User
 
     public virtual ICollection<StoreApproval> StoreApprovals { get; set; } = new List<StoreApproval>();
     public virtual ICollection<Shift> Shifts { get; set; } = new List<Shift>();
+    public virtual ICollection<Notification> ReceivedNotifications { get; set; } = new List<Notification>();
+    public virtual ICollection<Notification> TriggeredNotifications { get; set; } = new List<Notification>();
 }

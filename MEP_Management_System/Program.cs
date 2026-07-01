@@ -1,8 +1,10 @@
+using MEP_Management_System.Authorization;
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
 using MEP_Management_System.Services.InventoryService;
 using MEP_Management_System.Hubs;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.OData;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -86,6 +88,15 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
+// =========================================================================
+// RBAC: đăng ký Authorization Handler + toàn bộ Policy Permission
+// =========================================================================
+builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+builder.Services.AddAuthorization(options =>
+{
+    PermissionPolicyFactory.RegisterAll(options);
+});
+
 builder.Services.AddScoped<IInventoryReportService, InventoryReportService>();
 builder.Services.AddScoped<MepNotificationService>();
 builder.Services.AddSignalR();
@@ -148,7 +159,7 @@ app.UseSwaggerUI(c =>
             window.addEventListener('load', function() {
                 setTimeout(function() {
                     
-                    var token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6Ijk4NmM0NWQwLWFhMjctNDdkMi1iNzdmLWFiN2ZkZTc4ZTZiOCIsImh0dHA6Ly9zY2hlbWFzLnhtbHNvYXAub3JnL3dzLzIwMDUvMDUvaWRlbnRpdHkvY2xhaW1zL25hbWUiOiIxMjNAZ21haWwuY29tIiwiaHR0cDovL3NjaGVtYXMueG1sc29hcC5vcmcvd3MvMjAwNS8wNS9pZGVudGl0eS9jbGFpbXMvZ2l2ZW5uYW1lIjoiMTIzNDU2IiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiT3duZXIiLCJleHAiOjE4MTM3MzgxNzQsImlzcyI6IkludmVudG9yeVNlcnZpY2VBUEkiLCJhdWQiOiJJbnZlbnRvcnlTZXJ2aWNlVXNlcnMifQ.0UatgtjG4s4lVXG7s4_74ujWWXbQZDw7ZlwsCY8LG6g';
+                    var token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6Ijk4NmM0NWQwLWFhMjctNDdkMi1iNzdmLWFiN2ZkZTc4ZTZiOCIsImh0dHA6Ly9zY2hlbWFzLnhtbHNvYXAub3JnL3dzLzIwMDUvMDUvaWRlbnRpdHkvY2xhaW1zL25hbWUiOiIxMjNAZ21haWwuY29tIiwiaHR0cDovL3NjaGVtYXMueG1sc29hcC5vcmcvd3MvMjAwNS8wNS9pZGVudGl0eS9jbGFpbXMvZ2l2ZW5uYW1lIjoiMTIzNDU2IiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiT3duZXIiLCJleHAiOjE4MTM5Nzk2NDEsImlzcyI6IkludmVudG9yeVNlcnZpY2VBUEkiLCJhdWQiOiJJbnZlbnRvcnlTZXJ2aWNlVXNlcnMifQ.oVfU50KZ5wMiAEy2P5ONclMFyV_gpblqV5-6JQVOw4o';
                     if (token) {
                         ui.preauthorizeApiKey('Bearer', token);
                         console.log('--- Swagger đã tự động Đăng nhập tài khoản Owner thành công! ---');
