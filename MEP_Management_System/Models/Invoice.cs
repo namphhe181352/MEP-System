@@ -23,6 +23,12 @@ public partial class Invoice
 
     public string? Note { get; set; }
 
+    /// <summary>Ghi chú tạm giữ hóa đơn (hold note).</summary>
+    public string? HoldNote { get; set; }
+
+    /// <summary>Thời điểm tạm giữ hóa đơn.</summary>
+    public DateTime? HeldAt { get; set; }
+
     public DateTime? CreatedAt { get; set; }
 
     public virtual ICollection<InvoiceItem> InvoiceItems { get; set; } = new List<InvoiceItem>();

@@ -80,6 +80,8 @@ public partial class MEPDatabaseContext : DbContext
 
     public virtual DbSet<SystemNotification> SystemNotifications { get; set; }
 
+    public virtual DbSet<Notification> Notifications { get; set; }
+
     public virtual DbSet<User> Users { get; set; }
 
     public virtual DbSet<UserPermission> UserPermissions { get; set; }
@@ -160,48 +162,30 @@ public partial class MEPDatabaseContext : DbContext
         });
         modelBuilder.Entity<SupplierPayment>(entity =>
         {
-            // 1. Định nghĩa Khóa chính (Đã xóa dòng HasKey bị trùng)
-            entity.HasKey(e => e.PaymentId).HasName("supplier_payments_pkey");
-
-            // 2. Ánh xạ tên bảng dưới DB (Nếu Postgres thường viết thường snake_case: "supplier_payments")
+            entity.HasKey(e => e.PaymentId);
             entity.ToTable("SupplierPayments");
-
-            // 3. Cấu hình kiểu dữ liệu các cột
             entity.Property(e => e.Amount).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.PaymentMethod).HasMaxLength(50);
             entity.Property(e => e.ReferenceCode).HasMaxLength(100);
             entity.Property(e => e.IsDeleted).HasDefaultValue((short)0);
+
+            entity.HasOne(d => d.Supplier)
+                .WithMany(s => s.SupplierPayments)
+                .HasForeignKey(d => d.SupplierId)
+                .OnDelete(DeleteBehavior.ClientSetNull);
+
+            entity.HasOne(d => d.PurchaseOrder)
+                .WithMany()
+                .HasForeignKey(d => d.PurchaseOrderId)
+                .OnDelete(DeleteBehavior.SetNull);
+
             entity.Property(e => e.CreatedBy).HasColumnName("created_by");
 
-            // 🌟 4. CẤU HÌNH KHÓA NGOẠI NỐI SANG SUPPLIER (QUAN TRỌNG NHẤT)
-            // Thay vì .WithMany() để trống, bạn phải điền p => p.SupplierPayments
-            entity.HasOne(d => d.Supplier)
-                .WithMany(p => p.SupplierPayments) // 👈 Khớp chính xác với ICollection trong file Supplier.cs
-                .HasForeignKey(d => d.SupplierId)
-                .OnDelete(DeleteBehavior.Restrict) // Đổi từ ClientSetNull sang Restrict/Cascade tùy logic (thường là Restrict để tránh xóa NCC khi đã có phiếu chi)
-                .HasConstraintName("FK_SupplierPayments_Suppliers");
-
-            // 5. Cấu hình khóa ngoại nối sang PurchaseOrder
-            entity.HasOne(d => d.PurchaseOrder)
-                .WithMany() // Nếu bên PurchaseOrder không tạo ICollection<SupplierPayment> thì để trống như này là đúng
-                .HasForeignKey(d => d.PurchaseOrderId)
-                .OnDelete(DeleteBehavior.SetNull)
-                .HasConstraintName("FK_SupplierPayments_PurchaseOrders");
-
-            // 6. Cấu hình khóa ngoại nối sang User (Người tạo phiếu)
             entity.HasOne(d => d.CreatedByUser)
                 .WithMany()
                 .HasForeignKey(d => d.CreatedBy)
                 .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("supplier_payments_created_by_fkey");
-
-            // 7. Cấu hình khóa ngoại cho cột RecordedBy nối sang User (Người ghi nhận)
-            // Dựa vào thuộc tính [ForeignKey("RecordedBy")] trong Model của bạn, cấu hình thêm ở đây cho tường minh:
-            entity.HasOne(d => d.RecordedByUser)
-                .WithMany()
-                .HasForeignKey(d => d.RecordedBy)
-                .OnDelete(DeleteBehavior.Restrict)
-                .HasConstraintName("FK_SupplierPayments_Users_RecordedBy");
         });
         modelBuilder.Entity<BranchProduct>(entity =>
         {
@@ -291,35 +275,6 @@ public partial class MEPDatabaseContext : DbContext
                 .HasColumnName("branch_id");
             entity.Property(e => e.CreatedByUserId)
                 .HasColumnName("created_by_user_id");
-
-            // Audit trail fields
-            entity.Property(e => e.FilledByUserId)
-                .HasColumnName("filled_by_user_id");
-            entity.Property(e => e.FilledAt)
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("filled_at");
-            entity.Property(e => e.ApprovedByUserId)
-                .HasColumnName("approved_by_user_id");
-            entity.Property(e => e.ApprovedAt)
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("approved_at");
-            entity.Property(e => e.CancelledByUserId)
-                .HasColumnName("cancelled_by_user_id");
-            entity.Property(e => e.CancelledAt)
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("cancelled_at");
-            entity.Property(e => e.CancelledReason)
-                .HasMaxLength(500)
-                .HasColumnName("cancelled_reason");
-
-            // Assignee
-            entity.Property(e => e.AssigneeUserId)
-                .HasColumnName("assignee_user_id");
-
-            // Linked StockTicket
-            entity.Property(e => e.LinkedStockTicketId)
-                .HasColumnName("linked_stock_ticket_id");
-
             entity.Property(e => e.Notes)
                 .HasMaxLength(1000)
                 .HasColumnName("notes");
@@ -329,11 +284,54 @@ public partial class MEPDatabaseContext : DbContext
                 .HasForeignKey(d => d.TicketId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Relationship to LinkedStockTicket
-            entity.HasOne(e => e.LinkedStockTicket)
+            // Navigation properties for audit fields
+            entity.HasOne(d => d.CreatedByUser)
                 .WithMany()
-                .HasForeignKey(e => e.LinkedStockTicketId)
-                .OnDelete(DeleteBehavior.SetNull);
+                .HasForeignKey(d => d.CreatedByUserId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("inventory_check_tickets_created_by_user_id_fkey");
+
+            entity.HasOne(d => d.AssigneeUser)
+                .WithMany()
+                .HasForeignKey(d => d.AssigneeUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("inventory_check_tickets_assignee_user_id_fkey");
+
+            entity.HasOne(d => d.FilledByUser)
+                .WithMany()
+                .HasForeignKey(d => d.FilledByUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("inventory_check_tickets_filled_by_user_id_fkey");
+
+            entity.HasOne(d => d.ApprovedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.ApprovedByUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("inventory_check_tickets_approved_by_user_id_fkey");
+
+            entity.HasOne(d => d.CancelledByUser)
+                .WithMany()
+                .HasForeignKey(d => d.CancelledByUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("inventory_check_tickets_cancelled_by_user_id_fkey");
+
+            entity.HasOne(d => d.RecountRequestedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.RecountRequestedByUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("inventory_check_tickets_recount_requested_by_user_id_fkey");
+
+            entity.HasOne(d => d.LinkedStockTicket)
+                .WithMany()
+                .HasForeignKey(d => d.LinkedStockTicketId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("inventory_check_tickets_linked_stock_ticket_id_fkey");
+
+            entity.HasOne(d => d.Branch)
+                .WithMany()
+                .HasForeignKey(d => d.BranchId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("inventory_check_tickets_branch_id_fkey");
         });
 
         modelBuilder.Entity<InventoryTransferTicket>(entity =>
@@ -392,27 +390,16 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.Discrepancy)
                 .HasColumnName("discrepancy");
 
-            // IsCounted flag
-            entity.Property(e => e.IsCounted)
-                .HasDefaultValue(false)
-                .HasColumnName("is_counted");
-
-            // Reason note for discrepancy
-            entity.Property(e => e.ReasonNote)
-                .HasMaxLength(500)
-                .HasColumnName("reason_note");
-
-            // Audit for counting
-            entity.Property(e => e.CountedByUserId)
-                .HasColumnName("counted_by_user_id");
-            entity.Property(e => e.CountedAt)
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("counted_at");
-
             entity.HasOne(d => d.Product)
                 .WithMany()
                 .HasForeignKey(d => d.ProductId)
                 .OnDelete(DeleteBehavior.ClientSetNull);
+
+            entity.HasOne(d => d.CountedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.CountedByUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("inventory_check_details_counted_by_user_id_fkey");
         });
 
         modelBuilder.Entity<Comment>(entity =>
@@ -615,6 +602,8 @@ public partial class MEPDatabaseContext : DbContext
                 .HasMaxLength(50)
                 .HasColumnName("status");
             entity.Property(e => e.Note).HasColumnName("note");
+            entity.Property(e => e.HoldNote).HasMaxLength(500).HasColumnName("hold_note");
+            entity.Property(e => e.HeldAt).HasColumnType("timestamp without time zone").HasColumnName("held_at");
 
             entity.HasIndex(e => e.InvoiceCode, "invoices_invoice_code_key").IsUnique();
 
@@ -854,6 +843,14 @@ public partial class MEPDatabaseContext : DbContext
                 .HasConstraintName("user_permissions_permission_id_fkey");
         });
 
+        // ------------------------------------------------------------------
+        // ĐÃ SỬA: entity Product trước đây có 2 khối HasOne(CreatedByUser)/
+        // HasOne(UpdatedByUser) trùng lặp (một khối ngay sau phần Property,
+        // một khối lặp lại sau phần HasOne(Supplier) ở cuối). Chỉ giữ lại
+        // MỘT khối duy nhất để tránh EF tính sai diff khi scaffold migration
+        // (đây là nguyên nhân gốc của lỗi "column already exists" khi chạy
+        // dotnet ef database update).
+        // ------------------------------------------------------------------
         modelBuilder.Entity<Product>(entity =>
         {
             entity.HasKey(e => e.ProductId).HasName("products_pkey");
@@ -881,15 +878,10 @@ public partial class MEPDatabaseContext : DbContext
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("created_at");
-            entity.HasOne(d => d.CreatedByUser)
-        .WithMany() // Nếu bảng User không cần quan hệ ngược lại, để trống WithMany()
-        .HasForeignKey(d => d.CreatedBy)
-        .HasConstraintName("FK_Product_User_CreatedBy");
-
-            entity.HasOne(d => d.UpdatedByUser)
-                .WithMany()
-                .HasForeignKey(d => d.UpdatedBy)
-                .HasConstraintName("FK_Product_User_UpdatedBy");
+            entity.Property(e => e.CreatedBy)
+                .HasColumnName("created_by");
+            entity.Property(e => e.UpdatedBy)
+                .HasColumnName("updated_by");
             entity.Property(e => e.UpdatedAt)
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("updated_at");
@@ -934,6 +926,16 @@ public partial class MEPDatabaseContext : DbContext
             entity.HasOne(d => d.Supplier).WithMany(p => p.Products)
                 .HasForeignKey(d => d.SupplierId)
                 .HasConstraintName("products_supplier_id_fkey");
+
+            entity.HasOne(d => d.CreatedByUser).WithMany()
+                .HasForeignKey(d => d.CreatedBy)
+                .HasConstraintName("products_created_by_fkey")
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(d => d.UpdatedByUser).WithMany()
+                .HasForeignKey(d => d.UpdatedBy)
+                .HasConstraintName("products_updated_by_fkey")
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<ProductAttribute>(entity =>
@@ -1282,79 +1284,66 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.SupplierId)
                 .HasDefaultValueSql("uuid_generate_v4()")
                 .HasColumnName("supplier_id");
-
-            entity.Property(e => e.SupplierName)
-                .HasMaxLength(150)
-                .HasColumnName("supplier_name");
-
             entity.Property(e => e.ContactPhone)
                 .HasMaxLength(20)
                 .HasColumnName("contact_phone");
-
+            entity.Property(e => e.SupplierName)
+                .HasMaxLength(150)
+                .HasColumnName("supplier_name");
             entity.Property(e => e.ContactEmail)
                 .HasMaxLength(150)
                 .HasColumnName("contact_email");
-
             entity.Property(e => e.ContactPerson)
                 .HasMaxLength(100)
                 .HasColumnName("contact_person");
-
             entity.Property(e => e.TaxCode)
                 .HasMaxLength(50)
                 .HasColumnName("tax_code");
-
             entity.Property(e => e.GroupName)
                 .HasMaxLength(50)
                 .HasColumnName("group_name");
-
             entity.Property(e => e.BankAccount)
                 .HasMaxLength(50)
                 .HasColumnName("bank_account");
-
             entity.Property(e => e.BankName)
                 .HasMaxLength(100)
                 .HasColumnName("bank_name");
-
             entity.Property(e => e.Website)
                 .HasMaxLength(255)
                 .HasColumnName("website");
-
             entity.Property(e => e.Notes).HasColumnName("notes");
-
             entity.Property(e => e.Address)
                 .HasMaxLength(255)
                 .HasColumnName("address");
-
             entity.Property(e => e.Status)
                 .HasDefaultValue((short)1)
                 .HasColumnName("status");
-
-            // ======= AUDIT PROPERTIES (Đã dọn dẹp trùng lặp) =======
-            entity.Property(e => e.CreatedBy)
-                .HasColumnName("created_by");
-
-            entity.Property(e => e.UpdatedBy)
-                .HasColumnName("updated_by"); // 🌟 Cần chỉ định tên cột dưới DB cho trường mới
-
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("created_at");
+            entity.Property(e => e.AverageRating)
+                .HasPrecision(3, 2)
+                .HasColumnName("average_rating");
+            entity.Property(e => e.RatingCount)
+                .HasDefaultValue(0)
+                .HasColumnName("rating_count");
+            entity.Property(e => e.LastRatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("last_rated_at");
 
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+            entity.Property(e => e.UpdatedBy).HasColumnName("updated_by");
             entity.Property(e => e.UpdatedAt)
                 .HasColumnType("timestamp without time zone")
-                .HasColumnName("updated_at"); // 🌟 Cần chỉ định tên cột dưới DB cho trường mới
+                .HasColumnName("updated_at");
 
-            // ======= RELATIONSHIPS (KHÓA NGOẠI NỐI SANG USER) =======
-
-            // 1. Khóa ngoại cho Người Tạo (CreatedBy)
             entity.HasOne(d => d.CreatedByUser)
                 .WithMany()
                 .HasForeignKey(d => d.CreatedBy)
-                .OnDelete(DeleteBehavior.SetNull) // Hoặc Restrict tùy bạn, giữ SetNull giống như fkey cũ dưới DB của bạn
+                .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("suppliers_created_by_fkey");
 
-            // 2. Khóa ngoại cho Người Cập Nhật (UpdatedBy)
             entity.HasOne(d => d.UpdatedByUser)
                 .WithMany()
                 .HasForeignKey(d => d.UpdatedBy)
@@ -1390,9 +1379,9 @@ public partial class MEPDatabaseContext : DbContext
             entity.HasIndex(e => e.SupplierId, "ix_supplier_ratings_supplier_id");
             entity.HasIndex(e => e.RatedAt, "ix_supplier_ratings_rated_at");
 
-            //entity.HasOne(d => d.Supplier).WithMany(p => p.SupplierRatings)
-            //    .HasForeignKey(d => d.SupplierId)
-            //    .HasConstraintName("supplier_ratings_supplier_id_fkey");
+            entity.HasOne(d => d.Supplier).WithMany(p => p.SupplierRatings)
+                .HasForeignKey(d => d.SupplierId)
+                .HasConstraintName("supplier_ratings_supplier_id_fkey");
 
             entity.HasOne(d => d.PurchaseOrder).WithMany()
                 .HasForeignKey(d => d.PurchaseOrderId)
@@ -1650,6 +1639,63 @@ public partial class MEPDatabaseContext : DbContext
                 .HasForeignKey(d => d.CreatedBy)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("system_notifications_created_by_fkey");
+        });
+
+        // Notification fluent API (user notifications for inventory check)
+        modelBuilder.Entity<Notification>(entity =>
+        {
+            entity.HasKey(e => e.NotificationId).HasName("notifications_pkey");
+
+            entity.ToTable("notifications");
+
+            entity.Property(e => e.NotificationId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("notification_id");
+            entity.Property(e => e.Type)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasColumnName("type");
+            entity.Property(e => e.RecipientUserId)
+                .HasColumnName("recipient_user_id");
+            entity.Property(e => e.BranchId)
+                .HasColumnName("branch_id");
+            entity.Property(e => e.InventoryCheckId)
+                .HasColumnName("inventory_check_id");
+            entity.Property(e => e.TriggeredByUserId)
+                .HasColumnName("triggered_by_user_id");
+            entity.Property(e => e.Message)
+                .HasColumnName("message");
+            entity.Property(e => e.IsRead)
+                .HasDefaultValue(false)
+                .HasColumnName("is_read");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+
+            entity.HasOne(d => d.RecipientUser)
+                .WithMany()
+                .HasForeignKey(d => d.RecipientUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("notifications_recipient_user_id_fkey");
+
+            entity.HasOne(d => d.TriggeredByUser)
+                .WithMany()
+                .HasForeignKey(d => d.TriggeredByUserId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("notifications_triggered_by_user_id_fkey");
+
+            entity.HasOne(d => d.InventoryCheck)
+                .WithMany(p => p.Notifications)
+                .HasForeignKey(d => d.InventoryCheckId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("notifications_inventory_check_id_fkey");
+
+            entity.HasOne(d => d.Branch)
+                .WithMany()
+                .HasForeignKey(d => d.BranchId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("notifications_branch_id_fkey");
         });
 
         modelBuilder.Entity<StoreApproval>(entity =>

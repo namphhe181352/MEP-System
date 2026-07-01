@@ -18,3 +18,9 @@ obj/
 appsettings.Development.json
 appsettings.local.json
 patch_seeder.py
+
+API_DOCUMENTATION.md
+
+API_DOCUMENTATION_INVENTORY_CHECK.md
+
+DATABASE_GUIDE.md

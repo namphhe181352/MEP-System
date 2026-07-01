@@ -12,31 +12,26 @@ public class CreateInventoryCheckDto
     public string? Notes { get; set; }
 
     /// <summary>
-    /// Optional: Assign a specific user to perform the inventory check
-    /// If null, any user with STOCK_CHECK_CREATE permission can fill
+    /// Optional: Assign a specific user to perform the inventory check.
+    /// OWNER can assign to anyone.
+    /// STAFF: If provided and different from CreatedByUserId, will be rejected (override to CreatedByUserId).
+    /// If null, auto-assign to CreatedByUserId for Staff, or leave unassigned for Owner.
     /// </summary>
     public Guid? AssigneeUserId { get; set; }
 }
 
 public class UpdateInventoryCheckDto
 {
-    /// <summary>
-    /// Updated notes for the inventory check ticket
-    /// </summary>
     public string? Notes { get; set; }
 
-    /// <summary>
-    /// Products to add to the inventory check (only in Draft status)
-    /// </summary>
     public List<Guid>? AddProductIds { get; set; }
 
-    /// <summary>
-    /// Product IDs to remove from the inventory check (only in Draft status)
-    /// </summary>
     public List<Guid>? RemoveProductIds { get; set; }
 
     /// <summary>
-    /// Reassign the inventory check to a different user
+    /// Reassign the inventory check to a different user.
+    /// OWNER: can reassign to anyone.
+    /// STAFF: cannot reassign to someone else (will be rejected).
     /// </summary>
     public Guid? AssigneeUserId { get; set; }
 }
@@ -88,23 +83,35 @@ public class InventoryCheckResponseDto
     public string Status { get; set; } = null!;
     public Guid BranchId { get; set; }
     public Guid CreatedByUserId { get; set; }
+    public string? CreatedByUserName { get; set; }
 
-    // Audit trail fields
     public Guid? FilledByUserId { get; set; }
+    public string? FilledByUserName { get; set; }
     public DateTime? FilledAt { get; set; }
+
     public Guid? ApprovedByUserId { get; set; }
+    public string? ApprovedByUserName { get; set; }
     public DateTime? ApprovedAt { get; set; }
+
     public Guid? CancelledByUserId { get; set; }
+    public string? CancelledByUserName { get; set; }
     public DateTime? CancelledAt { get; set; }
     public string? CancelledReason { get; set; }
 
-    // Assignee
     public Guid? AssigneeUserId { get; set; }
+    public string? AssigneeUserName { get; set; }
 
-    // Linked StockTicket after approval
     public Guid? LinkedStockTicketId { get; set; }
 
     public string? Notes { get; set; }
+
+    // Recount info
+    public int RecountNumber { get; set; }
+    public DateTime? RecountRequestedAt { get; set; }
+    public Guid? RecountRequestedByUserId { get; set; }
+    public string? RecountRequestedByUserName { get; set; }
+    public string? RecountReason { get; set; }
+
     public List<InventoryCheckDetailDto> Details { get; set; } = new();
 }
 
@@ -117,5 +124,73 @@ public class InventoryCheckListItemDto
     public int DetailCount { get; set; }
     public Guid BranchId { get; set; }
     public Guid CreatedByUserId { get; set; }
+    public string? CreatedByUserName { get; set; }
     public Guid? AssigneeUserId { get; set; }
+    public string? AssigneeUserName { get; set; }
+    public int RecountNumber { get; set; }
 }
+
+// Cancel DTO
+public class CancelInventoryCheckDto
+{
+    public string? Reason { get; set; }
+}
+
+// Request Recount DTO - bắt buộc có lý do
+public class RequestRecountDto
+{
+    [Required(ErrorMessage = "Lý do đếm lại là bắt buộc.")]
+    public string Reason { get; set; } = null!;
+}
+
+// DTO cho Reject/RequestRecount - để audit
+public class RejectRecountAuditDto
+{
+    public Guid? RejectedByUserId { get; set; }
+    public string? RejectedByUserName { get; set; }
+    public DateTime? RejectedAt { get; set; }
+    public string? RejectReason { get; set; }
+}
+
+#region Notification DTOs
+
+public class NotificationDto
+{
+    public Guid NotificationId { get; set; }
+    public string Type { get; set; } = null!;
+    public string TypeDisplay { get; set; } = null!;
+    public Guid? RecipientUserId { get; set; }
+    public string? RecipientUserName { get; set; }
+    public Guid BranchId { get; set; }
+    public Guid? InventoryCheckId { get; set; }
+    public string? InventoryCheckCode { get; set; }
+    public Guid TriggeredByUserId { get; set; }
+    public string? TriggeredByUserName { get; set; }
+    public string Message { get; set; } = null!;
+    public bool IsRead { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class NotificationListDto
+{
+    public List<NotificationDto> Items { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int UnreadCount { get; set; }
+    public int PageNumber { get; set; }
+    public int PageSize { get; set; }
+    public int TotalPages { get; set; }
+    public bool HasNextPage { get; set; }
+    public bool HasPreviousPage { get; set; }
+}
+
+public class MarkNotificationsReadDto
+{
+    public List<Guid>? NotificationIds { get; set; }
+
+    /// <summary>
+    /// Nếu true, đánh dấu TẤT CẢ notification của user là đã đọc.
+    /// </summary>
+    public bool MarkAllAsRead { get; set; } = false;
+}
+
+#endregion

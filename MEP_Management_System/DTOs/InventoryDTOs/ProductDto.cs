@@ -336,6 +336,9 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public decimal SystemQuantity { get; set; }
         public decimal Quantity { get; set; }
         public decimal ActualQuantity { get; set; }
+
+        public decimal CostPrice { get; set; }
+
     }
 
     public class InwardInventoryResponseDto
@@ -352,6 +355,8 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public Guid? SupplierId { get; set; }
         public DateTime? CreatedAt { get; set; }
         public List<InwardInventoryItemResponseDto> Items { get; set; } = new();
+
+        public decimal CostPrice { get; set; }
     }
 
     public class BulkToggleStatusRequest
@@ -366,6 +371,39 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public List<Guid> UpdatedIds { get; set; } = new();
         public List<Guid> NotFoundIds { get; set; } = new();
         public string NewStatus { get; set; } = null!;
+    }
+    #endregion
+
+    #region Confirm/Cancel DTOs
+    /// <summary>
+    /// Request body cho API Cancel phiếu nhập/xuất kho.
+    /// </summary>
+    public class CancelTicketDto
+    {
+        /// <summary>Lý do hủy phiếu (bắt buộc).</summary>
+        public string CancelReason { get; set; } = null!;
+    }
+
+    /// <summary>
+    /// Request body cho API Update Item trong phiếu PENDING.
+    /// </summary>
+    public class UpdateTicketItemDto
+    {
+        public Guid? ItemId { get; set; }
+        public Guid BranchProductId { get; set; }
+        public decimal Quantity { get; set; }
+        public decimal CostPrice { get; set; }
+        public string? Note { get; set; }
+    }
+
+    /// <summary>
+    /// Request body cho API Update phiếu (chỉ khi PENDING).
+    /// </summary>
+    public class UpdateTicketDto
+    {
+        public string? Reason { get; set; }
+        public string? Note { get; set; }
+        public List<UpdateTicketItemDto>? Items { get; set; }
     }
     #endregion
 }
