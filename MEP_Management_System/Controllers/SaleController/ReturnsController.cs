@@ -2,11 +2,11 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using AutoMapper;
+using MEP_Management_System.DTOs.SaleDTOs;
+using MEP_Management_System.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using MEP_Management_System.Models;
-using MEP_Management_System.DTOs.SaleDTOs;
 
 namespace MEP_Management_System.Controllers.SaleController;
 
