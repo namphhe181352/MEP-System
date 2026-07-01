@@ -146,13 +146,24 @@ public class ShiftsController : ControllerBase
             .FirstOrDefaultAsync(s => s.ShiftId == shiftId && s.UserId == userId && s.BranchId == branchId);
         if (shift == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Shift not found"));
 
+        // Calculate real-time if shift is OPEN, otherwise use saved values
+        var isOpen = shift.Status == "OPEN";
+        DateTime? filterEnd = isOpen ? DateTime.UtcNow : shift.EndedAt;
+
         var completedInvoices = await _context.Invoices
             .Where(i => i.UserId == userId && i.Status == "Completed" && i.CreatedAt >= shift.StartedAt &&
-                (!shift.EndedAt.HasValue || i.CreatedAt <= shift.EndedAt.Value))
+                (!filterEnd.HasValue || i.CreatedAt <= filterEnd.Value))
             .Include(i => i.Payments)
             .ToListAsync();
 
         var payments = completedInvoices.SelectMany(i => i.Payments).ToList();
+
+        // Calculate real-time values
+        var realTimeRevenue = completedInvoices.Sum(i => i.TotalAmount);
+        var realTimeOrders = completedInvoices.Count;
+        var realTimeCash = payments.Where(p => p.Method == "Cash" && p.Status == "Confirmed").Sum(p => p.Amount);
+        var realTimeTransfer = payments.Where(p => p.Method == "Transfer" && p.Status == "Confirmed").Sum(p => p.Amount);
+        var realTimeDebt = payments.Where(p => p.Method == "Debt" && p.Status == "Confirmed").Sum(p => p.Amount);
 
         var summary = new ShiftSummaryDto
         {
@@ -161,15 +172,15 @@ public class ShiftsController : ControllerBase
             StartedAt = shift.StartedAt,
             EndedAt = shift.EndedAt,
             OpeningBalance = shift.OpeningBalance,
-            ClosingBalance = (shift.OpeningBalance + (shift.TotalRevenue)) - (shift.Variance ?? 0),
-            TotalRevenue = shift.TotalRevenue,
-            TotalCash = payments.Where(p => p.Method == "Cash").Sum(p => p.Amount),
-            TotalTransfer = payments.Where(p => p.Method == "Transfer").Sum(p => p.Amount),
-            TotalDebt = payments.Where(p => p.Method == "Debt").Sum(p => p.Amount),
-            ExpectedCash = shift.ExpectedCash ?? 0,
+            ClosingBalance = isOpen ? (shift.OpeningBalance + realTimeCash) : ((shift.OpeningBalance + (shift.TotalRevenue)) - (shift.Variance ?? 0)),
+            TotalRevenue = isOpen ? realTimeRevenue : shift.TotalRevenue,
+            TotalCash = isOpen ? realTimeCash : payments.Where(p => p.Method == "Cash").Sum(p => p.Amount),
+            TotalTransfer = isOpen ? realTimeTransfer : payments.Where(p => p.Method == "Transfer").Sum(p => p.Amount),
+            TotalDebt = isOpen ? realTimeDebt : payments.Where(p => p.Method == "Debt").Sum(p => p.Amount),
+            ExpectedCash = isOpen ? (shift.OpeningBalance + realTimeCash) : (shift.ExpectedCash ?? 0),
             ActualCash = shift.ActualCash,
             Variance = shift.Variance,
-            TotalOrders = shift.TotalOrders,
+            TotalOrders = isOpen ? realTimeOrders : shift.TotalOrders,
             PaymentBreakdown = payments.GroupBy(p => p.Method).Select(g => new ShiftSummaryDto.PaymentMethodSummary
             {
                 Method = g.Key,

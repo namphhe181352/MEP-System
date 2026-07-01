@@ -4,12 +4,12 @@ using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
 using AutoMapper;
+using MEP_Management_System.DTOs.SaleDTOs;
+using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using MEP_Management_System.Models;
-using MEP_Management_System.DTOs.SaleDTOs;
-using MEP_Management_System.Services;
 
 namespace MEP_Management_System.Controllers.SaleController;
 
