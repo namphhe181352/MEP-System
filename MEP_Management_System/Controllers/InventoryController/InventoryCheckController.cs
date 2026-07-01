@@ -17,7 +17,7 @@ namespace MEP_Management_System.Controllers.InventoryController;
 
 [ApiController]
 [Route("api/[controller]")]
-[Tags("Quản lý Kho (Inventory)")]
+[Tags("Kiểm Kê Kho (Check Inventory)")]
 public class InventoryCheckController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
@@ -207,7 +207,7 @@ public class InventoryCheckController : ControllerBase
                     CreatedByUserName = ticket.CreatedByUser != null ? ticket.CreatedByUser.Username : null,
                     AssigneeUserId = ticket.AssigneeUserId,
                     AssigneeUserName = ticket.AssigneeUser != null ? ticket.AssigneeUser.Username : null,
-                    RecountNumber = ticket.RecountNumber
+                    RecountNumber = 0
                 })
                 .ToListAsync();
 

@@ -275,6 +275,33 @@ public partial class MEPDatabaseContext : DbContext
                 .HasColumnName("branch_id");
             entity.Property(e => e.CreatedByUserId)
                 .HasColumnName("created_by_user_id");
+            entity.Property(e => e.AssigneeUserId)
+                .HasColumnName("assignee_user_id");
+            entity.Property(e => e.FilledByUserId)
+                .HasColumnName("filled_by_user_id");
+            entity.Property(e => e.FilledAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("filled_at");
+            entity.Property(e => e.ApprovedByUserId)
+                .HasColumnName("approved_by_user_id");
+            entity.Property(e => e.ApprovedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("approved_at");
+            entity.Property(e => e.CancelledByUserId)
+                .HasColumnName("cancelled_by_user_id");
+            entity.Property(e => e.CancelledAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("cancelled_at");
+            entity.Property(e => e.CancelledReason)
+                .HasMaxLength(1000)
+                .HasColumnName("cancelled_reason");
+            entity.Property(e => e.LinkedStockTicketId)
+                .HasColumnName("linked_stock_ticket_id");
+            entity.Ignore(e => e.RecountNumber);
+            entity.Ignore(e => e.RecountRequestedAt);
+            entity.Ignore(e => e.RecountRequestedByUserId);
+            entity.Ignore(e => e.RecountRequestedByUser);
+            entity.Ignore(e => e.RecountReason);
             entity.Property(e => e.Notes)
                 .HasMaxLength(1000)
                 .HasColumnName("notes");
@@ -314,12 +341,6 @@ public partial class MEPDatabaseContext : DbContext
                 .HasForeignKey(d => d.CancelledByUserId)
                 .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("inventory_check_tickets_cancelled_by_user_id_fkey");
-
-            entity.HasOne(d => d.RecountRequestedByUser)
-                .WithMany()
-                .HasForeignKey(d => d.RecountRequestedByUserId)
-                .OnDelete(DeleteBehavior.SetNull)
-                .HasConstraintName("inventory_check_tickets_recount_requested_by_user_id_fkey");
 
             entity.HasOne(d => d.LinkedStockTicket)
                 .WithMany()
@@ -389,6 +410,16 @@ public partial class MEPDatabaseContext : DbContext
                 .HasColumnName("actual_quantity");
             entity.Property(e => e.Discrepancy)
                 .HasColumnName("discrepancy");
+            entity.Property(e => e.IsCounted)
+                .HasColumnName("is_counted");
+            entity.Property(e => e.ReasonNote)
+                .HasMaxLength(1000)
+                .HasColumnName("reason_note");
+            entity.Property(e => e.CountedByUserId)
+                .HasColumnName("counted_by_user_id");
+            entity.Property(e => e.CountedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("counted_at");
 
             entity.HasOne(d => d.Product)
                 .WithMany()
