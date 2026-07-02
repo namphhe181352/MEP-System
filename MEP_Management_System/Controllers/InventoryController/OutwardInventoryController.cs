@@ -4,6 +4,7 @@ using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
 using MEP_Management_System.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -21,11 +22,16 @@ namespace MEP_Management_System.Controllers.InventoryController
     {
         private readonly MEPDatabaseContext _context;
         private readonly ICurrentBranchAccessor _currentBranch;
+        private readonly IHttpContextAccessor _httpContextAccessor;
 
-        public OutwardInventoryController(MEPDatabaseContext context, ICurrentBranchAccessor currentBranch)
+        public OutwardInventoryController(
+            MEPDatabaseContext context,
+            ICurrentBranchAccessor currentBranch,
+            IHttpContextAccessor httpContextAccessor)
         {
             _context = context;
             _currentBranch = currentBranch;
+            _httpContextAccessor = httpContextAccessor;
         }
 
         private Guid? GetCurrentUserId()
@@ -238,6 +244,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         // Tạo phiếu mới với Status = PENDING (chưa cập nhật kho)
         // ============================================================
         [HttpPost]
+        [HasPermission(PermissionConstants.STOCK_OUTWARD_CREATE)]
         public async Task<IActionResult> CreateOutwardInventory(
             [FromBody] OutwardInventoryCreateDto dto,
             [FromQuery] Guid? branchId = null)
@@ -330,14 +337,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                         BranchId = resolvedBranchId.Value,
                         UserId = currentUserId.Value,
                         TicketType = GetTicketTypeName(dto.OutwardType),
-                        Status = "PENDING", // THAY ĐỔI: Từ COMPLETED -> PENDING
+                        Status = "PENDING",
                         Notes = !string.IsNullOrWhiteSpace(dto.Note) ? dto.Note : dto.Reason,
                         CreatedAt = currentTime
-                        // TODO: CompletedAt = null
-                        // TODO: CancelledAt = null
-                        // TODO: ConfirmedBy = null
-                        // TODO: CancelledBy = null
-                        // TODO: CancelReason = null
                     };
 
                     _context.StockTickets.Add(stockTicket);
@@ -351,8 +353,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                             TicketItemId = Guid.NewGuid(),
                             StockTicketId = stockTicket.StockTicketId,
                             BranchProductId = bp.BranchProductId,
-                            SystemQuantity = bp.ActualStock, // Tồn hiện tại (chưa trừ vì PENDING)
-                            ActualQuantity = bp.ActualStock, // Tồn sau khi xuất (chưa thay đổi vì PENDING)
+                            SystemQuantity = bp.ActualStock,
+                            ActualQuantity = bp.ActualStock,
                             Discrepancy = item.Quantity
                         };
 
@@ -469,11 +471,15 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (!string.IsNullOrWhiteSpace(dto.Reason))
                     stockTicket.Notes = dto.Reason;
 
+                // ============================================================
+                // BUG 2 FIX: Chỉ cho phép set CANCELLED, KHÔNG cho set COMPLETED
+                // Bypass /confirm sẽ không cập nhật được tồn kho
+                // ============================================================
                 if (!string.IsNullOrWhiteSpace(dto.Status))
                 {
                     var normalized = dto.Status.Trim().ToUpperInvariant();
-                    if (normalized is "PENDING" or "COMPLETED" or "CANCELLED")
-                        stockTicket.Status = normalized;
+                    if (normalized == "CANCELLED")
+                        stockTicket.Status = "CANCELLED";
                 }
 
                 await _context.SaveChangesAsync();
@@ -501,7 +507,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         // Xác nhận phiếu xuất kho - Kiểm tra tồn kho & cập nhật kho
         // ============================================================
         [HttpPost("{id:guid}/confirm")]
-        [HasPermission(PermissionConstants.STOCK_OUTWARD_UPDATE)]
+        [HasPermission(PermissionConstants.STOCK_OUTWARD_CONFIRM)]
         public async Task<IActionResult> ConfirmOutwardInventory(Guid id)
         {
             using var transaction = await _context.Database.BeginTransactionAsync();
@@ -587,6 +593,17 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Include(bp => bp.Product)
                     .ToDictionaryAsync(bp => bp.BranchProductId);
 
+                // ============================================================
+                // BUG 3 FIX: Race condition - Thêm row-level lock FOR UPDATE
+                // Khóa các dòng để ngăn 2 request đồng thời vượt qua validation
+                // ============================================================
+                if (branchProductIds.Any())
+                {
+                    var uuidArray = string.Join(",", branchProductIds.Select(id => $"'{id}'"));
+                    await _context.Database.ExecuteSqlRawAsync(
+                        $"SELECT 1 FROM branch_products WHERE branch_product_id IN ({uuidArray}) FOR UPDATE");
+                }
+
                 foreach (var item in stockTicket.StockTicketItems)
                 {
                     if (latestBranchProducts.TryGetValue(item.BranchProductId, out var bp))
@@ -634,9 +651,10 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 // Chuyển trạng thái sang COMPLETED
+                var currentUserId = GetCurrentUserId();
                 stockTicket.Status = "COMPLETED";
-                // TODO: stockTicket.CompletedAt = DateTime.UtcNow;
-                // TODO: stockTicket.ConfirmedBy = currentUserId;
+                stockTicket.CompletedAt = DateTime.UtcNow;
+                stockTicket.ConfirmedBy = currentUserId;
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -743,11 +761,17 @@ namespace MEP_Management_System.Controllers.InventoryController
                     }
                 }
 
+                // ============================================================
+                // BUG 1 FIX: Lưu trạng thái TRƯỚC KHI đổi để message chính xác
+                // ============================================================
+                var previousStatus = stockTicket.Status;
+
                 // PENDING hoặc COMPLETED (đã rollback): Đều chuyển sang CANCELLED
+                var currentUserId = GetCurrentUserId();
                 stockTicket.Status = "CANCELLED";
-                // TODO: stockTicket.CancelledAt = DateTime.UtcNow;
-                // TODO: stockTicket.CancelledBy = currentUserId;
-                // TODO: stockTicket.CancelReason = dto?.CancelReason;
+                stockTicket.CancelledAt = DateTime.UtcNow;
+                stockTicket.CancelledBy = currentUserId;
+                stockTicket.CancelReason = dto?.CancelReason;
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -755,7 +779,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = stockTicket.Status == "COMPLETED"
+                    Message = previousStatus == "COMPLETED"
                         ? "Hủy phiếu xuất kho và hoàn lại tồn kho thành công."
                         : "Hủy phiếu xuất kho thành công (phiếu chờ, chưa ảnh hưởng tồn kho).",
                     Data = new
@@ -779,8 +803,9 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         // ============================================================
-        // DELETE /api/outwardinventory/{id} (Legacy - giữ lại cho tương thích)
-        // Chuyển hướng sang /cancel
+        // DELETE /api/outwardinventory/{id}
+        // ⚠️ DEPRECATED: Chỉ giữ lại cho tương thích FE cũ.
+        // FE mới nên dùng: POST /api/outwardinventory/{id}/cancel
         // ============================================================
         [HttpDelete("{id:guid}")]
         [HasPermission(PermissionConstants.STOCK_OUTWARD_DELETE)]
@@ -810,6 +835,23 @@ namespace MEP_Management_System.Controllers.InventoryController
 
         private OutwardInventoryResponseDto MapToOutwardInventoryResponse(StockTicket stockTicket)
         {
+            // ============================================================
+            // THAY ĐỔI NGHIỆP VỤ: Tính CanConfirm dựa trên permission
+            // ============================================================
+            bool canConfirm = false;
+            if (stockTicket.Status == "PENDING")
+            {
+                // Owner luôn được confirm
+                bool isOwner = User.IsInRole(PermissionConstants.OWNER_ROLE);
+
+                // Hoặc có permission STOCK_OUTWARD_CONFIRM
+                bool hasConfirmPermission = User.HasClaim(
+                    c => c.Type == PermissionConstants.PERMISSION_CLAIM_TYPE
+                      && c.Value == PermissionConstants.STOCK_OUTWARD_CONFIRM);
+
+                canConfirm = isOwner || hasConfirmPermission;
+            }
+
             return new OutwardInventoryResponseDto
             {
                 StockTicketId = stockTicket.StockTicketId,
@@ -821,11 +863,12 @@ namespace MEP_Management_System.Controllers.InventoryController
                 UserName = stockTicket.User?.FullName ?? stockTicket.User?.Username,
                 Reason = stockTicket.Notes,
                 CreatedAt = stockTicket.CreatedAt,
-                // TODO: CompletedAt = stockTicket.CompletedAt,
-                // TODO: CancelledAt = stockTicket.CancelledAt,
-                // TODO: ConfirmedBy = stockTicket.ConfirmedBy,
-                // TODO: CancelledBy = stockTicket.CancelledBy,
-                // TODO: CancelReason = stockTicket.CancelReason,
+                CompletedAt = stockTicket.CompletedAt,
+                CancelledAt = stockTicket.CancelledAt,
+                ConfirmedBy = stockTicket.ConfirmedBy,
+                CancelledBy = stockTicket.CancelledBy,
+                CancelReason = stockTicket.CancelReason,
+                CanConfirm = canConfirm,
                 Items = stockTicket.StockTicketItems?.Select(item => new OutwardInventoryItemResponseDto
                 {
                     TicketItemId = item.TicketItemId,

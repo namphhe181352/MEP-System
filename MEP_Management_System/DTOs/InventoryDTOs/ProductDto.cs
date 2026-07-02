@@ -280,6 +280,16 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? Reason { get; set; }
         public DateTime? CreatedAt { get; set; }
 
+        // === Audit trail ===
+        public DateTime? CompletedAt { get; set; }
+        public Guid? ConfirmedBy { get; set; }
+        public DateTime? CancelledAt { get; set; }
+        public Guid? CancelledBy { get; set; }
+        public string? CancelReason { get; set; }
+
+        /// <summary>Chỉ true khi Status=PENDING VÀ user có quyền STOCK_OUTWARD_CONFIRM hoặc là Owner.</summary>
+        public bool CanConfirm { get; set; }
+
         public List<OutwardInventoryItemResponseDto> Items { get; set; } = new();
     }
     #endregion
@@ -354,8 +364,15 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? Note { get; set; }
         public Guid? SupplierId { get; set; }
         public DateTime? CreatedAt { get; set; }
-        public List<InwardInventoryItemResponseDto> Items { get; set; } = new();
 
+        // === Audit trail ===
+        public DateTime? CompletedAt { get; set; }
+        public Guid? ConfirmedBy { get; set; }
+        public DateTime? CancelledAt { get; set; }
+        public Guid? CancelledBy { get; set; }
+        public string? CancelReason { get; set; }
+
+        public List<InwardInventoryItemResponseDto> Items { get; set; } = new();
         public decimal CostPrice { get; set; }
     }
 

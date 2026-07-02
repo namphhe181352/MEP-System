@@ -234,6 +234,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         // Tạo phiếu mới với Status = PENDING (chưa cập nhật kho)
         // ============================================================
         [HttpPost]
+        [HasPermission(PermissionConstants.STOCK_INWARD_CREATE)]
         public async Task<IActionResult> CreateInwardInventory(
             [FromBody] InwardInventoryCreateDto dto,
             [FromQuery] Guid? branchId = null)
@@ -488,7 +489,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (!string.IsNullOrWhiteSpace(dto.Status))
                 {
                     var normalized = dto.Status.Trim().ToUpperInvariant();
-                    if (normalized is "PENDING" or "COMPLETED" or "CANCELLED")
+                    // Block "COMPLETED" — bắt buộc phải đi qua /confirm để cộng kho
+                    if (normalized is "PENDING" or "CANCELLED")
                         stockTicket.Status = normalized;
                 }
 
@@ -614,8 +616,8 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 // Chuyển trạng thái sang COMPLETED
                 stockTicket.Status = "COMPLETED";
-                // TODO: stockTicket.CompletedAt = DateTime.UtcNow;
-                // TODO: stockTicket.ConfirmedBy = currentUserId;
+                stockTicket.CompletedAt = DateTime.UtcNow;
+                stockTicket.ConfirmedBy = currentUserId;
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -758,11 +760,14 @@ namespace MEP_Management_System.Controllers.InventoryController
                     }
                 }
 
+                // Lưu trạng thái TRƯỚC KHI đổi để response message chính xác
+                var wasCompleted = stockTicket.Status == "COMPLETED";
+
                 // PENDING hoặc COMPLETED (đã rollback): Đều chuyển sang CANCELLED
                 stockTicket.Status = "CANCELLED";
-                // TODO: stockTicket.CancelledAt = DateTime.UtcNow;
-                // TODO: stockTicket.CancelledBy = currentUserId;
-                // TODO: stockTicket.CancelReason = dto?.CancelReason;
+                stockTicket.CancelledAt = DateTime.UtcNow;
+                stockTicket.CancelledBy = currentUserId;
+                stockTicket.CancelReason = dto?.CancelReason;
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -770,7 +775,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = stockTicket.Status == "COMPLETED"
+                    Message = wasCompleted
                         ? "Inward inventory cancelled and stock rolled back successfully"
                         : "Inward inventory cancelled successfully (pending ticket, no stock change)",
                     Data = new
@@ -794,8 +799,9 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         // ============================================================
-        // DELETE /api/inwardinventory/{id} (Legacy - giữ lại cho tương thích)
-        // Chuyển hướng sang /cancel
+        // DELETE /api/inwardinventory/{id}
+        // ⚠️ DEPRECATED: Chỉ giữ lại cho tương thích FE cũ.
+        // FE mới nên dùng: POST /api/inwardinventory/{id}/cancel
         // ============================================================
         [HttpDelete("{id:guid}")]
         [HasPermission(PermissionConstants.STOCK_INWARD_DELETE)]
@@ -838,11 +844,11 @@ namespace MEP_Management_System.Controllers.InventoryController
                 Reason = stockTicket.Notes,
                 Note = stockTicket.Notes,
                 CreatedAt = stockTicket.CreatedAt,
-                // TODO: CompletedAt = stockTicket.CompletedAt,
-                // TODO: CancelledAt = stockTicket.CancelledAt,
-                // TODO: ConfirmedBy = stockTicket.ConfirmedBy,
-                // TODO: CancelledBy = stockTicket.CancelledBy,
-                // TODO: CancelReason = stockTicket.CancelReason,
+                CompletedAt = stockTicket.CompletedAt,
+                CancelledAt = stockTicket.CancelledAt,
+                ConfirmedBy = stockTicket.ConfirmedBy,
+                CancelledBy = stockTicket.CancelledBy,
+                CancelReason = stockTicket.CancelReason,
                 Items = stockTicket.StockTicketItems?.Select(item => new InwardInventoryItemResponseDto
                 {
                     TicketItemId = item.TicketItemId,
