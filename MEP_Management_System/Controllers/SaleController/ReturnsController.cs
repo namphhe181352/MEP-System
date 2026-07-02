@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using AutoMapper;
+using MEP_Management_System.Authorization;
 using MEP_Management_System.DTOs.SaleDTOs;
 using MEP_Management_System.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -12,7 +13,7 @@ namespace MEP_Management_System.Controllers.SaleController;
 
 [ApiController]
 [Route("api/pos/returns")]
-[Authorize(Roles = "SalesStaff,Owner")]
+[HasPermission(PermissionConstants.SALE_VIEW)]
 [Tags("Đổi trả hàng (Return Order)")]
 public class ReturnsController : ControllerBase
 {

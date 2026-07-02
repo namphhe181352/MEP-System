@@ -15,7 +15,7 @@ namespace MEP_Management_System.Controllers.SaleController;
 
 [ApiController]
 [Route("api/pos/shifts")]
-[Authorize(Roles = "SalesStaff,Owner")]
+[HasPermission(PermissionConstants.SHIFT_VIEW)]
 public class ShiftsController : ControllerBase
 {
     private readonly Models.MEPDatabaseContext _context;
