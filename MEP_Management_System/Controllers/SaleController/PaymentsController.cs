@@ -15,7 +15,7 @@ namespace MEP_Management_System.Controllers.SaleController;
 
 [ApiController]
 [Route("api/pos")]
-[Authorize(Roles = "SalesStaff,Owner")]
+[HasPermission(PermissionConstants.PAYMENT_VIEW)]
 public class PaymentsController : ControllerBase
 {
     private readonly Models.MEPDatabaseContext _context;

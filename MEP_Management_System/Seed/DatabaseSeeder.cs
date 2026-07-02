@@ -45,6 +45,64 @@ public static class DatabaseSeeder
         await context.SaveChangesAsync();
 
         // ============================================================
+        // 1.5. PERMISSIONS (tạo permissions cho hệ thống RBAC mới)
+        // ============================================================
+        var permissions = new List<Permission>
+        {
+            // SUPPLIER
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000001"), PermissionCode = "SUPPLIER_VIEW", PermissionName = "Xem nhà cung cấp" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000002"), PermissionCode = "SUPPLIER_CREATE", PermissionName = "Tạo nhà cung cấp" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000003"), PermissionCode = "SUPPLIER_UPDATE", PermissionName = "Cập nhật nhà cung cấp" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000004"), PermissionCode = "SUPPLIER_DELETE", PermissionName = "Xóa nhà cung cấp" },
+            // SUPPLIER PAYMENT
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000005"), PermissionCode = "SUPPLIER_PAYMENT_VIEW", PermissionName = "Xem thanh toán NCC" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000006"), PermissionCode = "SUPPLIER_PAYMENT_CREATE", PermissionName = "Tạo thanh toán NCC" },
+            // PRODUCT
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000007"), PermissionCode = "PRODUCT_VIEW", PermissionName = "Xem sản phẩm" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000008"), PermissionCode = "PRODUCT_CREATE", PermissionName = "Tạo sản phẩm" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000009"), PermissionCode = "PRODUCT_UPDATE", PermissionName = "Cập nhật sản phẩm" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000010"), PermissionCode = "PRODUCT_DELETE", PermissionName = "Xóa sản phẩm" },
+            // STOCK / INVENTORY
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000011"), PermissionCode = "STOCK_VIEW", PermissionName = "Xem tồn kho" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000012"), PermissionCode = "STOCK_INWARD_CREATE", PermissionName = "Tạo nhập kho" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000013"), PermissionCode = "STOCK_INWARD_UPDATE", PermissionName = "Cập nhật nhập kho" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000014"), PermissionCode = "STOCK_INWARD_DELETE", PermissionName = "Xóa nhập kho" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000015"), PermissionCode = "STOCK_OUTWARD_CREATE", PermissionName = "Tạo xuất kho" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000016"), PermissionCode = "STOCK_OUTWARD_UPDATE", PermissionName = "Cập nhật xuất kho" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000017"), PermissionCode = "STOCK_OUTWARD_DELETE", PermissionName = "Xóa xuất kho" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000018"), PermissionCode = "STOCK_CHECK_VIEW", PermissionName = "Xem kiểm kho" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000019"), PermissionCode = "STOCK_CHECK_CREATE", PermissionName = "Tạo kiểm kho" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000020"), PermissionCode = "STOCK_CHECK_APPROVE", PermissionName = "Duyệt kiểm kho" },
+            // SALE / POS
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000021"), PermissionCode = "CUSTOMER_VIEW", PermissionName = "Xem khách hàng" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000022"), PermissionCode = "CUSTOMER_CREATE", PermissionName = "Tạo khách hàng" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000023"), PermissionCode = "CUSTOMER_UPDATE", PermissionName = "Cập nhật khách hàng" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000024"), PermissionCode = "CUSTOMER_DELETE", PermissionName = "Xóa khách hàng" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000025"), PermissionCode = "SALE_VIEW", PermissionName = "Xem bán hàng" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000026"), PermissionCode = "SALE_CREATE", PermissionName = "Tạo bán hàng" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000027"), PermissionCode = "SALE_UPDATE", PermissionName = "Cập nhật bán hàng" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000028"), PermissionCode = "SALE_DELETE", PermissionName = "Xóa bán hàng" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000029"), PermissionCode = "LOYALTY_VIEW", PermissionName = "Xem tích điểm" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000030"), PermissionCode = "PAYMENT_VIEW", PermissionName = "Xem thanh toán" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000031"), PermissionCode = "PAYMENT_CREATE", PermissionName = "Tạo thanh toán" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000032"), PermissionCode = "PRINT_VIEW", PermissionName = "In hóa đơn" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000033"), PermissionCode = "PROMOTION_VIEW", PermissionName = "Xem khuyến mãi" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000034"), PermissionCode = "SHIFT_VIEW", PermissionName = "Xem ca làm việc" },
+            // SYSTEM / OWNER
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000035"), PermissionCode = "OWNER_MANAGE", PermissionName = "Quản lý owner" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000036"), PermissionCode = "SYSTEM_MANAGE", PermissionName = "Quản lý hệ thống" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000037"), PermissionCode = "REPORT_VIEW", PermissionName = "Xem báo cáo" },
+            // STAFF
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000038"), PermissionCode = "STAFF_VIEW", PermissionName = "Xem nhân viên" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000039"), PermissionCode = "STAFF_CREATE", PermissionName = "Tạo nhân viên" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000040"), PermissionCode = "STAFF_UPDATE", PermissionName = "Cập nhật nhân viên" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000041"), PermissionCode = "STAFF_DELETE", PermissionName = "Xóa nhân viên" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000042"), PermissionCode = "STAFF_ASSIGN_BRANCH", PermissionName = "Gán chi nhánh" },
+        };
+        await context.Permissions.AddRangeAsync(permissions);
+        await context.SaveChangesAsync();
+
+        // ============================================================
         // 2. USER-ROLE MAPPING (gán role cho từng user)
         // ============================================================
         var userRoles = new[]
@@ -109,12 +167,20 @@ public static class DatabaseSeeder
             (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000010")),
             (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000011")),
             (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000012")),
-            // SalesStaff
-            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000001")),
-            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000003")),
-            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000009")),
-            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000012")),
-            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000008")),
+            // SalesStaff - Sale permissions
+            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000001")), // STOCK_VIEW
+            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000007")), // PRODUCT_VIEW
+            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000021")), // CUSTOMER_VIEW
+            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000022")), // CUSTOMER_CREATE
+            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000025")), // SALE_VIEW
+            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000026")), // SALE_CREATE
+            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000029")), // LOYALTY_VIEW
+            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000030")), // PAYMENT_VIEW
+            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000031")), // PAYMENT_CREATE
+            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000032")), // PRINT_VIEW
+            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000033")), // PROMOTION_VIEW
+            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000034")), // SHIFT_VIEW
+            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000037")), // REPORT_VIEW
             // InventoryStaff
             (Guid.Parse("10000000-0000-0000-0000-000000000004"), Guid.Parse("00000000-0000-0000-0000-000000000001")),
             (Guid.Parse("10000000-0000-0000-0000-000000000004"), Guid.Parse("00000000-0000-0000-0000-000000000002")),
