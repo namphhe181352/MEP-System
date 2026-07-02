@@ -71,9 +71,6 @@ public class SaleMappingProfile : Profile
             .ForMember(d => d.MembershipTier, o => o.Ignore())
             .ForMember(d => d.UpdatedAt, o => o.MapFrom(_ => DateTime.UtcNow));
 
-        // LoyaltyTransaction -> LoyaltyHistoryDto
-        CreateMap<LoyaltyTransaction, DTOs.SaleDTOs.LoyaltyPointsDto.LoyaltyHistoryDto>();
-
         // Receipt
         CreateMap<Receipt, DTOs.SaleDTOs.ReceiptDto>();
 
