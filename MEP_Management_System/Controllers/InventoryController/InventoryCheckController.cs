@@ -856,7 +856,7 @@ public class InventoryCheckController : ControllerBase
             // c) Thông báo cho Owner/người có quyền approve trong chi nhánh
             // Lấy danh sách Owner trong chi nhánh
             var ownerUserIds = await _context.UserPermissions
-                .Where(up => up.Permission != null && up.Permission.Code == PermissionConstants.STOCK_CHECK_APPROVE)
+                .Where(up => up.Permission != null && up.Permission.PermissionCode == PermissionConstants.STOCK_CHECK_APPROVE)
                 .Select(up => up.UserId)
                 .Distinct()
                 .ToListAsync();
