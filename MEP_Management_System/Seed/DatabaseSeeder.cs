@@ -82,7 +82,6 @@ public static class DatabaseSeeder
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000026"), PermissionCode = "SALE_CREATE", PermissionName = "Tạo bán hàng" },
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000027"), PermissionCode = "SALE_UPDATE", PermissionName = "Cập nhật bán hàng" },
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000028"), PermissionCode = "SALE_DELETE", PermissionName = "Xóa bán hàng" },
-            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000029"), PermissionCode = "LOYALTY_VIEW", PermissionName = "Xem tích điểm" },
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000030"), PermissionCode = "PAYMENT_VIEW", PermissionName = "Xem thanh toán" },
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000031"), PermissionCode = "PAYMENT_CREATE", PermissionName = "Tạo thanh toán" },
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000032"), PermissionCode = "PRINT_VIEW", PermissionName = "In hóa đơn" },
@@ -174,7 +173,6 @@ public static class DatabaseSeeder
             (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000022")), // CUSTOMER_CREATE
             (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000025")), // SALE_VIEW
             (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000026")), // SALE_CREATE
-            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000029")), // LOYALTY_VIEW
             (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000030")), // PAYMENT_VIEW
             (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000031")), // PAYMENT_CREATE
             (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000032")), // PRINT_VIEW

@@ -164,7 +164,6 @@ public class ShiftsController : ControllerBase
         var realTimeOrders = completedInvoices.Count;
         var realTimeCash = payments.Where(p => p.Method == "Cash" && p.Status == "Confirmed").Sum(p => p.Amount);
         var realTimeTransfer = payments.Where(p => p.Method == "Transfer" && p.Status == "Confirmed").Sum(p => p.Amount);
-        var realTimeDebt = payments.Where(p => p.Method == "Debt" && p.Status == "Confirmed").Sum(p => p.Amount);
 
         var summary = new ShiftSummaryDto
         {
@@ -177,7 +176,7 @@ public class ShiftsController : ControllerBase
             TotalRevenue = isOpen ? realTimeRevenue : shift.TotalRevenue,
             TotalCash = isOpen ? realTimeCash : payments.Where(p => p.Method == "Cash").Sum(p => p.Amount),
             TotalTransfer = isOpen ? realTimeTransfer : payments.Where(p => p.Method == "Transfer").Sum(p => p.Amount),
-            TotalDebt = isOpen ? realTimeDebt : payments.Where(p => p.Method == "Debt").Sum(p => p.Amount),
+            TotalDebt = 0, // Debt payment removed
             ExpectedCash = isOpen ? (shift.OpeningBalance + realTimeCash) : (shift.ExpectedCash ?? 0),
             ActualCash = shift.ActualCash,
             Variance = shift.Variance,

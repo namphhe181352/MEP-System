@@ -46,7 +46,6 @@ public static class PermissionConstants
     public const string SALE_CREATE = "SALE_CREATE";
     public const string SALE_UPDATE = "SALE_UPDATE";
     public const string SALE_DELETE = "SALE_DELETE";
-    public const string LOYALTY_VIEW = "LOYALTY_VIEW";
     public const string PAYMENT_VIEW = "PAYMENT_VIEW";
     public const string PAYMENT_CREATE = "PAYMENT_CREATE";
     public const string PRINT_VIEW = "PRINT_VIEW";

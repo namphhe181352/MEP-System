@@ -163,36 +163,6 @@ public class PaymentsController : ControllerBase
         return Ok(_mapper.Map<PaymentDto>(payment));
     }
 
-    // POST /api/pos/payments/debt
-    [HttpPost("payments/debt")]
-    public async Task<ActionResult<PaymentDto>> RecordDebt([FromBody] DebtPaymentRequest request)
-    {
-        var branchId = GetBranchId();
-        var customer = await _context.Customers.FindAsync(request.CustomerId);
-        if (customer == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Customer not found"));
-
-        var newDebt = (customer.CurrentDebt ?? 0) + request.Amount;
-        if (newDebt > (customer.DebtLimit ?? 0)) return UnprocessableEntity(ApiErrorResponse.Create("MSG-84", $"Debt exceeds limit. Current: {customer.CurrentDebt}, Limit: {customer.DebtLimit}, Requested: {request.Amount}"));
-
-        var payment = new Payment
-        {
-            PaymentId = Guid.NewGuid(),
-            InvoiceId = null,
-            Method = PaymentMethod.Debt,
-            Amount = request.Amount,
-            Status = "Confirmed",
-            PaidAt = DateTime.UtcNow,
-            CreatedAt = DateTime.UtcNow,
-            BranchId = branchId
-        };
-        _context.Payments.Add(payment);
-
-        customer.CurrentDebt = newDebt;
-        await _context.SaveChangesAsync();
-
-        return Created($"/api/pos/payments/{payment.PaymentId}", _mapper.Map<PaymentDto>(payment));
-    }
-
     private static (string qrString, DateTime expiresAt) GenerateVietQR(decimal amount)
     {
         var random = new Random();

@@ -5,5 +5,4 @@ public static class PaymentMethod
     public const string Cash = "Cash";
     public const string Transfer = "Transfer";
     public const string Combined = "Combined";
-    public const string Debt = "Debt";
 }

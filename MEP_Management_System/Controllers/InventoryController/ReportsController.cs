@@ -100,8 +100,8 @@ public class ReportsController : ControllerBase
                 CashCount = payments.Count(p => p.Method == "Cash"),
                 TransferAmount = payments.Where(p => p.Method == "Transfer").Sum(p => p.Amount),
                 TransferCount = payments.Count(p => p.Method == "Transfer"),
-                DebtAmount = payments.Where(p => p.Method == "Debt").Sum(p => p.Amount),
-                DebtCount = payments.Count(p => p.Method == "Debt"),
+                DebtAmount = 0,
+                DebtCount = 0,
                 CombinedAmount = payments.Where(p => p.Method == "Combined").Sum(p => p.Amount),
                 CombinedCount = payments.Count(p => p.Method == "Combined")
             };
