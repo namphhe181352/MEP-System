@@ -7,6 +7,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
     public class ProductUpsertDto
     {
         public Guid? ProductId { get; set; }
+        public Guid BranchProductId { get; set; }
         public string? Id { get; set; }
         public string ProductCode { get; set; } = null!;
         public string ProductName { get; set; } = null!;
@@ -157,6 +158,18 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string DefaultUnit { get; set; } = "Cái";
         public List<string> BrandSuggestions { get; set; } = new();
         public List<string> CategorySuggestions { get; set; } = new();
+    }
+
+    public class TaxonomyItemDto
+    {
+        public string Name { get; set; } = null!;
+        public int ProductCount { get; set; }
+    }
+
+    public class RenameTaxonomyDto
+    {
+        public string OldName { get; set; } = null!;
+        public string NewName { get; set; } = null!;
     }
 
 

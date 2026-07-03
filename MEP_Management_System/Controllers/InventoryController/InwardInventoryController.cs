@@ -33,6 +33,11 @@ namespace MEP_Management_System.Controllers.InventoryController
             return Guid.TryParse(userIdClaim, out Guid userId) ? userId : null;
         }
 
+        private bool HasGlobalAccess()
+        {
+            return User.IsInRole("Owner") ;
+        }
+
         private bool IsOwner() => User.IsInRole("Owner");
 
         private static string GetTicketTypeName(InwardInventoryType type)
@@ -239,15 +244,59 @@ namespace MEP_Management_System.Controllers.InventoryController
             [FromBody] InwardInventoryCreateDto dto,
             [FromQuery] Guid? branchId = null)
         {
-            // Resolve branchId
-            var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
-            if (resolvedBranchId == null)
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId == null)
             {
                 return Unauthorized(new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "JWT token is missing or invalid",
-                    Errors = new() { "Authorization header required" }
+                    Message = "Không xác định được định danh người dùng từ Token.",
+                    Errors = new() { "User identity missing." }
+                });
+            }
+
+            // ============================================================
+            // FIX: Ưu tiên DefaultBranchId từ users table
+            // Nếu không có thì mới fallback sang logic cũ
+            // ============================================================
+            var user = await _context.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.UserId == currentUserId.Value);
+
+            Guid? resolvedBranchId = null;
+
+            // Ưu tiên 1: DefaultBranchId từ user
+            if (user?.DefaultBranchId != null && user.DefaultBranchId != Guid.Empty)
+            {
+                resolvedBranchId = user.DefaultBranchId;
+            }
+            // Ưu tiên 2: branchId từ query param (Owner/Admin)
+            else if (HasGlobalAccess() && branchId.HasValue)
+            {
+                resolvedBranchId = branchId.Value;
+            }
+            // Ưu tiên 3: BranchId từ JWT token
+            else if (_currentBranch.GetBranchId().HasValue)
+            {
+                resolvedBranchId = _currentBranch.GetBranchId();
+            }
+            // Ưu tiên 4: Lấy chi nhánh active DUY NHẤT trong hệ thống
+            else
+            {
+                var activeBranch = await _context.Branches
+                    .AsNoTracking()
+                    .Where(b => b.IsActive == 1)
+                    .FirstOrDefaultAsync();
+                resolvedBranchId = activeBranch?.BranchId;
+            }
+
+            if (resolvedBranchId == null)
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy chi nhánh hợp lệ.",
+                    Errors = new() { "No valid branch found." }
                 });
             }
 
@@ -275,17 +324,6 @@ namespace MEP_Management_System.Controllers.InventoryController
                     Success = false,
                     Message = "Validation failed",
                     Errors = itemValidationErrors
-                });
-            }
-
-            var currentUserId = GetCurrentUserId();
-            if (currentUserId == null)
-            {
-                return Unauthorized(new ApiResponse<object>
-                {
-                    Success = false,
-                    Message = "JWT token is missing or invalid",
-                    Errors = new() { "User identity is missing from token." }
                 });
             }
 

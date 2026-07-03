@@ -42,7 +42,7 @@ namespace MEP_Management_System.Controllers.InventoryController
 
         private bool HasGlobalAccess()
         {
-            return User.IsInRole("Owner") || User.IsInRole("Admin");
+            return User.IsInRole("Owner");
         }
 
         private static string GetTicketTypeName(OutwardInventoryType type)
@@ -251,15 +251,59 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                Guid? resolvedBranchId = HasGlobalAccess() ? (branchId ?? _currentBranch.GetBranchId()) : _currentBranch.GetBranchId();
-
-                if (resolvedBranchId == null)
+                var currentUserId = GetCurrentUserId();
+                if (currentUserId == null)
                 {
                     return Unauthorized(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Không xác định được chi nhánh để tạo phiếu.",
-                        Errors = new() { "Branch context required." }
+                        Message = "Không xác định được định danh người dùng từ Token.",
+                        Errors = new() { "User identity missing." }
+                    });
+                }
+
+                // ============================================================
+                // FIX: Ưu tiên DefaultBranchId từ users table
+                // Nếu không có thì mới fallback sang logic cũ
+                // ============================================================
+                var user = await _context.Users
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(u => u.UserId == currentUserId.Value);
+
+                Guid? resolvedBranchId = null;
+
+                // Ưu tiên 1: DefaultBranchId từ user
+                if (user?.DefaultBranchId != null && user.DefaultBranchId != Guid.Empty)
+                {
+                    resolvedBranchId = user.DefaultBranchId;
+                }
+                // Ưu tiên 2: branchId từ query param (Owner/Admin)
+                else if (HasGlobalAccess() && branchId.HasValue)
+                {
+                    resolvedBranchId = branchId.Value;
+                }
+                // Ưu tiên 3: BranchId từ JWT token
+                else if (_currentBranch.GetBranchId().HasValue)
+                {
+                    resolvedBranchId = _currentBranch.GetBranchId();
+                }
+                // Ưu tiên 4: Lấy chi nhánh active DUY NHẤT trong hệ thống
+                else
+                {
+                    var activeBranch = await _context.Branches
+                        .AsNoTracking()
+                        .Where(b => b.IsActive == 1)
+                        .FirstOrDefaultAsync();
+                    resolvedBranchId = activeBranch?.BranchId;
+                }
+
+                if (resolvedBranchId == null)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy chi nhánh hợp lệ.",
+                        Errors = new() { "No valid branch found." }
                     });
                 }
 
@@ -270,17 +314,6 @@ namespace MEP_Management_System.Controllers.InventoryController
                         Success = false,
                         Message = "Dữ liệu không hợp lệ",
                         Errors = new() { "Yêu cầu có ít nhất 1 mặt hàng để xuất kho." }
-                    });
-                }
-
-                var currentUserId = GetCurrentUserId();
-                if (currentUserId == null)
-                {
-                    return Unauthorized(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "Không xác định được định danh người dùng từ Token.",
-                        Errors = new() { "User identity missing." }
                     });
                 }
 
