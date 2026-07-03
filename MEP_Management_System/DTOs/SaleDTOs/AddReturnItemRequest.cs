@@ -2,8 +2,8 @@ namespace MEP_Management_System.DTOs.SaleDTOs;
 
 public class AddReturnItemRequest
 {
-    /// <summary>ID sản phẩm (BranchProductId).</summary>
-    public Guid BranchProductId { get; set; }
+    /// <summary>ID sản phẩm (ProductId).</summary>
+    public Guid ProductId { get; set; }
 
     /// <summary>Số lượng muốn trả (≤ số lượng đã mua, BR-80).</summary>
     public decimal Quantity { get; set; }

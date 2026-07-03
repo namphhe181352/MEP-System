@@ -29,8 +29,11 @@ public class ReturnsController : ControllerBase
     private Guid GetBranchId() =>
         Guid.Parse(User.FindFirst("branchId")?.Value ?? throw new Exception("branchId not found in token"));
 
-    private Guid GetUserId() =>
-        Guid.Parse(User.FindFirst("userId")?.Value ?? throw new Exception("userId not found in token"));
+    private Guid GetUserId()
+    {
+        var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        return Guid.Parse(userIdStr ?? throw new Exception("userId not found in token"));
+    }
 
     private async Task<string> GenCodeAsync(string prefix)
     {
@@ -108,47 +111,68 @@ public class ReturnsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<ReturnOrderDto>> CreateReturn([FromBody] CreateReturnOrderRequest req)
     {
-        var branchId = GetBranchId();
-        var userId = GetUserId();
-
-        // BR-81: tìm hóa đơn gốc
-        var invoice = await _context.Invoices
-            .Include(i => i.Order).ThenInclude(o => o!.Branch)
-            .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct)
-            .FirstOrDefaultAsync(i => i.InvoiceId == req.InvoiceId && i.Order!.BranchId == branchId);
-
-        if (invoice == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Không tìm thấy hóa đơn gốc."));
-        if (invoice.Status != "Completed")
-            return BadRequest(ApiErrorResponse.Create("MSG-78", "Chỉ hóa đơn đã hoàn tất mới được đổi trả."));
-
-        // BR-80: kiểm tra cửa sổ 30 ngày
-        var invoiceDate = invoice.CreatedAt ?? DateTime.UtcNow;
-        if (invoiceDate.AddDays(30) < DateTime.UtcNow)
-            return BadRequest(ApiErrorResponse.Create("MSG-65", "Đã quá thời hạn 30 ngày kể từ ngày mua. Không thể đổi trả."));
-
-        // Kiểm tra chưa có return đang xử lý
-        var existing = await _context.ReturnOrders
-            .AnyAsync(r => r.OrderId == invoice.OrderId && r.Status == "Pending");
-        if (existing)
-            return BadRequest(ApiErrorResponse.Create("MSG-66", "Hóa đơn này đang có phiếu đổi trả đang xử lý."));
-
-        var entity = new ReturnOrder
+        try
         {
-            ReturnOrderId = Guid.NewGuid(),
-            ReturnCode = await GenCodeAsync("RET"),
-            OrderId = invoice.OrderId,
-            UserId = userId,
-            RefundMethod = req.RefundMethod?.ToUpper() ?? "CASH",
-            Status = "Pending",
-            Note = req.Note,
-            CreatedAt = DateTime.UtcNow
-        };
+            var branchId = GetBranchId();
+            var userId = GetUserId();
 
-        _context.ReturnOrders.Add(entity);
-        await _context.SaveChangesAsync();
+            // BR-81: tìm hóa đơn gốc
+            var invoice = await _context.Invoices
+                .Include(i => i.Order).ThenInclude(o => o!.Branch)
+                .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct)
+                .FirstOrDefaultAsync(i => i.InvoiceId == req.InvoiceId && i.Order!.BranchId == branchId);
 
-        var dto = _mapper.Map<ReturnOrderDto>(entity);
-        return CreatedAtAction(nameof(GetReturn), new { id = entity.ReturnOrderId }, dto);
+            if (invoice == null) 
+            {
+                Console.WriteLine("[Returns API 404]: Không tìm thấy hóa đơn gốc.");
+                return NotFound(ApiErrorResponse.Create("MSG-01", "Không tìm thấy hóa đơn gốc."));
+            }
+            if (invoice.Status != "Completed")
+            {
+                Console.WriteLine($"[Returns API 400]: Chỉ hóa đơn đã hoàn tất mới được đổi trả. Status hiện tại: {invoice.Status}");
+                return BadRequest(ApiErrorResponse.Create("MSG-78", "Chỉ hóa đơn đã hoàn tất mới được đổi trả."));
+            }
+
+            // BR-80: kiểm tra cửa sổ 30 ngày
+            var invoiceDate = invoice.CreatedAt ?? DateTime.UtcNow;
+            if (invoiceDate.AddDays(30) < DateTime.UtcNow)
+            {
+                Console.WriteLine($"[Returns API 400]: Quá 30 ngày. InvoiceDate: {invoiceDate}, Now: {DateTime.UtcNow}");
+                return BadRequest(ApiErrorResponse.Create("MSG-65", "Đã quá thời hạn 30 ngày kể từ ngày mua. Không thể đổi trả."));
+            }
+
+            // Kiểm tra chưa có return đang xử lý
+            var existing = await _context.ReturnOrders
+                .AnyAsync(r => r.OrderId == invoice.OrderId && r.Status == "Pending");
+            if (existing)
+            {
+                Console.WriteLine($"[Returns API 400]: Hóa đơn này đang có phiếu đổi trả đang xử lý (Pending).");
+                return BadRequest(ApiErrorResponse.Create("MSG-66", "Hóa đơn này đang có phiếu đổi trả đang xử lý."));
+            }
+
+            var entity = new ReturnOrder
+            {
+                ReturnOrderId = Guid.NewGuid(),
+                ReturnCode = await GenCodeAsync("RET"),
+                OrderId = invoice.OrderId,
+                UserId = userId,
+                RefundMethod = req.RefundMethod?.ToUpper() ?? "CASH",
+                Status = "Pending",
+                Note = req.Note,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.ReturnOrders.Add(entity);
+            await _context.SaveChangesAsync();
+
+            var dto = _mapper.Map<ReturnOrderDto>(entity);
+            return CreatedAtAction(nameof(GetReturn), new { id = entity.ReturnOrderId }, dto);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Returns API Error]: {ex}");
+            return StatusCode(500, new { message = ex.Message, stackTrace = ex.StackTrace, innerException = ex.InnerException?.Message });
+        }
     }
 
     // POST /api/pos/returns/{id}/items
@@ -168,15 +192,18 @@ public class ReturnsController : ControllerBase
         // Validate sản phẩm thuộc hóa đơn gốc
         var originalItems = await _context.InvoiceItems
             .Include(ii => ii.Invoice)
-            .Where(ii => ii.Invoice != null && ii.Invoice.OrderId == ret.OrderId && ii.BranchProductId == req.BranchProductId)
+            .Include(ii => ii.BranchProduct)
+            .Where(ii => ii.Invoice != null && ii.Invoice.OrderId == ret.OrderId && ii.BranchProduct!.ProductId == req.ProductId)
             .ToListAsync();
 
         if (!originalItems.Any())
             return BadRequest(ApiErrorResponse.Create("MSG-59", "Sản phẩm này không có trong hóa đơn gốc."));
 
+        var branchProductId = originalItems.First().BranchProductId;
+
         var totalBought = originalItems.Sum(ii => ii.Quantity);
         var totalReturned = await _context.ReturnItems
-            .Where(ri => ri.ReturnOrderId == id && ri.BranchProductId == req.BranchProductId)
+            .Where(ri => ri.ReturnOrderId == id && ri.BranchProductId == branchProductId)
             .SumAsync(ri => ri.Quantity);
 
         if (totalReturned + req.Quantity > totalBought)
@@ -185,20 +212,20 @@ public class ReturnsController : ControllerBase
         var avgPrice = originalItems.Sum(ii => ii.SellPrice * ii.Quantity) / totalBought;
         var refundLine = req.Quantity * avgPrice;
 
-        var item = new ReturnItem
+        var returnItem = new ReturnItem
         {
             ReturnItemId = Guid.NewGuid(),
             ReturnOrderId = id,
-            BranchProductId = req.BranchProductId,
+            BranchProductId = branchProductId,
             Quantity = req.Quantity,
             RefundAmount = refundLine,
             Reason = req.Reason?.ToUpper() ?? "OTHER"
         };
 
-        _context.ReturnItems.Add(item);
+        _context.ReturnItems.Add(returnItem);
         await _context.SaveChangesAsync();
 
-        return Ok(_mapper.Map<ReturnItemDto>(item));
+        return Ok(_mapper.Map<ReturnItemDto>(returnItem));
     }
 
     // POST /api/pos/returns/{id}/finalize
@@ -237,22 +264,26 @@ public class ReturnsController : ControllerBase
         // Nếu hoàn tiền mặt: tạo RefundRecord
         if (ret.RefundMethod == "CASH")
         {
-            var refund = new RefundRecord
+            var customerId = ret.Order?.CustomerId;
+            if (customerId != null && customerId != Guid.Empty)
             {
-                RefundId = Guid.NewGuid(),
-                RefundCode = $"RFD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString()[..4].ToUpper()}",
-                OrderId = ret.OrderId,
-                InvoiceId = (await _context.Invoices.FirstOrDefaultAsync(i => i.OrderId == ret.OrderId))?.InvoiceId,
-                CustomerId = ret.Order?.CustomerId ?? Guid.Empty,
-                UserId = ret.UserId,
-                RefundAmount = ret.RefundAmount,
-                RefundMethod = "CASH",
-                Status = "REFUNDED",
-                Reason = ret.Note,
-                ProcessedAt = DateTime.UtcNow,
-                CreatedAt = DateTime.UtcNow
-            };
-            _context.RefundRecords.Add(refund);
+                var refund = new RefundRecord
+                {
+                    RefundId = Guid.NewGuid(),
+                    RefundCode = $"RFD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString()[..4].ToUpper()}",
+                    OrderId = ret.OrderId,
+                    InvoiceId = (await _context.Invoices.FirstOrDefaultAsync(i => i.OrderId == ret.OrderId))?.InvoiceId,
+                    CustomerId = customerId.Value,
+                    UserId = ret.UserId,
+                    RefundAmount = ret.RefundAmount,
+                    RefundMethod = "CASH",
+                    Status = "REFUNDED",
+                    Reason = ret.Note,
+                    ProcessedAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _context.RefundRecords.Add(refund);
+            }
         }
 
         await _context.SaveChangesAsync();
