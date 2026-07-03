@@ -35,12 +35,29 @@ namespace MEP_Management_System.Controllers.InventoryController
             return userId;
         }
 
-        private async Task<Guid> GetCurrentBranchId()
+        private async Task<Guid?> GetCurrentBranchId()
         {
-            return await _context.Branches
+            // Ưu tiên 1: DefaultBranchId từ user
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+            if (Guid.TryParse(userIdStr, out Guid userId))
+            {
+                var user = await _context.Users
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(u => u.UserId == userId);
+
+                if (user?.DefaultBranchId != null && user.DefaultBranchId != Guid.Empty)
+                {
+                    return user.DefaultBranchId;
+                }
+            }
+
+            // Ưu tiên 2: Lấy chi nhánh active DUY NHẤT
+            var activeBranch = await _context.Branches
+                .AsNoTracking()
                 .Where(b => b.IsActive == 1)
-                .Select(b => b.BranchId)
-                .FirstAsync();
+                .FirstOrDefaultAsync();
+
+            return activeBranch?.BranchId;
         }
 
         private Guid? GetUserInfo()
@@ -64,6 +81,15 @@ namespace MEP_Management_System.Controllers.InventoryController
             try
             {
                 var branchId = await GetCurrentBranchId();
+                if (branchId == null)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy chi nhánh hợp lệ.",
+                        Errors = new() { "No valid branch found." }
+                    });
+                }
 
                 // Validate pagination
                 if (@params.PageSize < 1 || @params.PageSize > 1000)
@@ -178,6 +204,15 @@ namespace MEP_Management_System.Controllers.InventoryController
             {
                 // 🔐 Quyền đã kiểm tra bằng [HasPermission] ở attribute
                 var branchId = await GetCurrentBranchId();
+                if (branchId == null)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy chi nhánh hợp lệ.",
+                        Errors = new() { "No valid branch found." }
+                    });
+                }
 
                 if (string.IsNullOrWhiteSpace(term))
                 {
@@ -480,7 +515,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     var branchProduct = new BranchProduct
                     {
                         BranchProductId = Guid.NewGuid(),
-                        BranchId = branchId,
+                        BranchId = branchId.Value,
                         ProductId = product.ProductId,
                         ActualStock = dto.ActualStock,
                         AvailableStock = dto.AvailableStock,
@@ -918,6 +953,7 @@ namespace MEP_Management_System.Controllers.InventoryController
             {
                 // Identity
                 ProductId = p.ProductId,
+                BranchProductId = bp.BranchProductId,
                 Id = p.ProductId.ToString(),
                 ProductCode = p.ProductCode,
                 ProductName = p.ProductName,
@@ -1002,5 +1038,325 @@ namespace MEP_Management_System.Controllers.InventoryController
                 UpdatedByName = p.UpdatedByUser?.FullName ?? "Chưa cập nhật"
             };
         }
+
+
+        /// <summary>
+        /// GET /api/products/categories - Danh sách nhóm hàng (distinct) kèm số SP đang dùng
+        /// </summary>
+        [HttpGet("categories")]
+        [HasPermission(PermissionConstants.PRODUCT_VIEW)]
+        public async Task<IActionResult> GetCategories()
+        {
+            try
+            {
+                var result = await _context.Products
+                    .Where(p => p.CategoryName != null && p.CategoryName != "")
+                    .GroupBy(p => p.CategoryName)
+                    .Select(g => new TaxonomyItemDto
+                    {
+                        Name = g.Key!,
+                        ProductCount = g.Count()
+                    })
+                    .OrderBy(x => x.Name)
+                    .ToListAsync();
+
+                return Ok(new ApiResponse<List<TaxonomyItemDto>>
+                {
+                    Success = true,
+                    Message = "Lấy danh sách nhóm hàng thành công",
+                    Data = result
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi lấy danh sách nhóm hàng",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
+        /// GET /api/products/brands - Danh sách thương hiệu (distinct) kèm số SP đang dùng
+        /// </summary>
+        [HttpGet("brands")]
+        [HasPermission(PermissionConstants.PRODUCT_VIEW)]
+        public async Task<IActionResult> GetBrands()
+        {
+            try
+            {
+                var result = await _context.Products
+                    .Where(p => p.BrandName != null && p.BrandName != "")
+                    .GroupBy(p => p.BrandName)
+                    .Select(g => new TaxonomyItemDto
+                    {
+                        Name = g.Key!,
+                        ProductCount = g.Count()
+                    })
+                    .OrderBy(x => x.Name)
+                    .ToListAsync();
+
+                return Ok(new ApiResponse<List<TaxonomyItemDto>>
+                {
+                    Success = true,
+                    Message = "Lấy danh sách thương hiệu thành công",
+                    Data = result
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi lấy danh sách thương hiệu",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
+        /// PUT /api/products/categories/rename - Đổi tên nhóm hàng (bulk update mọi SP đang dùng tên cũ)
+        /// </summary>
+        [HttpPut("categories/rename")]
+        [HasPermission(PermissionConstants.PRODUCT_UPDATE)]
+        public async Task<IActionResult> RenameCategory([FromBody] RenameTaxonomyDto dto)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(dto.OldName) || string.IsNullOrWhiteSpace(dto.NewName))
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Dữ liệu không hợp lệ",
+                        Errors = new() { "oldName và newName là bắt buộc" }
+                    });
+                }
+
+                var newName = dto.NewName.Trim();
+                var oldName = dto.OldName.Trim();
+
+                var affectedProducts = await _context.Products
+                    .Where(p => p.CategoryName != null && p.CategoryName.ToLower() == oldName.ToLower())
+                    .ToListAsync();
+
+                if (!affectedProducts.Any())
+                {
+                    return NotFound(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy nhóm hàng",
+                        Errors = new() { $"Không có sản phẩm nào đang dùng nhóm hàng '{oldName}'" }
+                    });
+                }
+
+                var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+                var currentUserId = GetUserInfo();
+
+                foreach (var product in affectedProducts)
+                {
+                    product.CategoryName = newName;
+                    product.UpdatedAt = currentTime;
+                    product.UpdatedBy = currentUserId;
+                }
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = $"Đã đổi tên nhóm hàng '{oldName}' thành '{newName}' cho {affectedProducts.Count} sản phẩm",
+                    Data = new { UpdatedCount = affectedProducts.Count }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi đổi tên nhóm hàng",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
+        /// PUT /api/products/brands/rename - Đổi tên thương hiệu (bulk update mọi SP đang dùng tên cũ)
+        /// </summary>
+        [HttpPut("brands/rename")]
+        [HasPermission(PermissionConstants.PRODUCT_UPDATE)]
+        public async Task<IActionResult> RenameBrand([FromBody] RenameTaxonomyDto dto)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(dto.OldName) || string.IsNullOrWhiteSpace(dto.NewName))
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Dữ liệu không hợp lệ",
+                        Errors = new() { "oldName và newName là bắt buộc" }
+                    });
+                }
+
+                var newName = dto.NewName.Trim();
+                var oldName = dto.OldName.Trim();
+
+                var affectedProducts = await _context.Products
+                    .Where(p => p.BrandName != null && p.BrandName.ToLower() == oldName.ToLower())
+                    .ToListAsync();
+
+                if (!affectedProducts.Any())
+                {
+                    return NotFound(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy thương hiệu",
+                        Errors = new() { $"Không có sản phẩm nào đang dùng thương hiệu '{oldName}'" }
+                    });
+                }
+
+                var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+                var currentUserId = GetUserInfo();
+
+                foreach (var product in affectedProducts)
+                {
+                    product.BrandName = newName;
+                    product.UpdatedAt = currentTime;
+                    product.UpdatedBy = currentUserId;
+                }
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = $"Đã đổi tên thương hiệu '{oldName}' thành '{newName}' cho {affectedProducts.Count} sản phẩm",
+                    Data = new { UpdatedCount = affectedProducts.Count }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi đổi tên thương hiệu",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
+        /// DELETE /api/products/categories/{name} - Gỡ nhóm hàng khỏi tất cả SP đang dùng (set về null)
+        /// </summary>
+        [HttpDelete("categories/{name}")]
+        [HasPermission(PermissionConstants.PRODUCT_UPDATE)]
+        public async Task<IActionResult> DeleteCategory(string name)
+        {
+            try
+            {
+                var trimmed = name.Trim();
+
+                var affectedProducts = await _context.Products
+                    .Where(p => p.CategoryName != null && p.CategoryName.ToLower() == trimmed.ToLower())
+                    .ToListAsync();
+
+                if (!affectedProducts.Any())
+                {
+                    return NotFound(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy nhóm hàng",
+                        Errors = new() { $"Không có sản phẩm nào đang dùng nhóm hàng '{trimmed}'" }
+                    });
+                }
+
+                var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+                var currentUserId = GetUserInfo();
+
+                foreach (var product in affectedProducts)
+                {
+                    product.CategoryName = null;
+                    product.UpdatedAt = currentTime;
+                    product.UpdatedBy = currentUserId;
+                }
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = $"Đã gỡ nhóm hàng '{trimmed}' khỏi {affectedProducts.Count} sản phẩm",
+                    Data = new { UpdatedCount = affectedProducts.Count }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi xoá nhóm hàng",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
+        /// DELETE /api/products/brands/{name} - Gỡ thương hiệu khỏi tất cả SP đang dùng (set về null)
+        /// </summary>
+        [HttpDelete("brands/{name}")]
+        [HasPermission(PermissionConstants.PRODUCT_UPDATE)]
+        public async Task<IActionResult> DeleteBrand(string name)
+        {
+            try
+            {
+                var trimmed = name.Trim();
+
+                var affectedProducts = await _context.Products
+                    .Where(p => p.BrandName != null && p.BrandName.ToLower() == trimmed.ToLower())
+                    .ToListAsync();
+
+                if (!affectedProducts.Any())
+                {
+                    return NotFound(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy thương hiệu",
+                        Errors = new() { $"Không có sản phẩm nào đang dùng thương hiệu '{trimmed}'" }
+                    });
+                }
+
+                var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+                var currentUserId = GetUserInfo();
+
+                foreach (var product in affectedProducts)
+                {
+                    product.BrandName = null;
+                    product.UpdatedAt = currentTime;
+                    product.UpdatedBy = currentUserId;
+                }
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = $"Đã gỡ thương hiệu '{trimmed}' khỏi {affectedProducts.Count} sản phẩm",
+                    Data = new { UpdatedCount = affectedProducts.Count }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi xoá thương hiệu",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
     }
 }

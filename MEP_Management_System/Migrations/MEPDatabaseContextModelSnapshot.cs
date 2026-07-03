@@ -2167,6 +2167,27 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("branch_id");
 
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("cancel_reason");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("cancelled_at");
+
+                    b.Property<Guid?>("CancelledBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cancelled_by");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<Guid?>("ConfirmedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("confirmed_by");
+
                     b.Property<DateTime?>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp without time zone")
@@ -2200,6 +2221,10 @@ namespace MEP_Management_System.Migrations
                         .HasName("stock_tickets_pkey");
 
                     b.HasIndex("BranchId");
+
+                    b.HasIndex("CancelledBy");
+
+                    b.HasIndex("ConfirmedBy");
 
                     b.HasIndex("UserId");
 
@@ -3598,6 +3623,18 @@ namespace MEP_Management_System.Migrations
                         .IsRequired()
                         .HasConstraintName("stock_tickets_branch_id_fkey");
 
+                    b.HasOne("MEP_Management_System.Models.User", "CancelledByUser")
+                        .WithMany()
+                        .HasForeignKey("CancelledBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("stock_tickets_cancelled_by_fkey");
+
+                    b.HasOne("MEP_Management_System.Models.User", "ConfirmedByUser")
+                        .WithMany()
+                        .HasForeignKey("ConfirmedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("stock_tickets_confirmed_by_fkey");
+
                     b.HasOne("MEP_Management_System.Models.User", "User")
                         .WithMany("StockTickets")
                         .HasForeignKey("UserId")
@@ -3605,6 +3642,10 @@ namespace MEP_Management_System.Migrations
                         .HasConstraintName("stock_tickets_user_id_fkey");
 
                     b.Navigation("Branch");
+
+                    b.Navigation("CancelledByUser");
+
+                    b.Navigation("ConfirmedByUser");
 
                     b.Navigation("User");
                 });
