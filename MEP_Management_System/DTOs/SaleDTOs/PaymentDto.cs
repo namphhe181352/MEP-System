@@ -12,6 +12,10 @@ public class PaymentDto
     public decimal? CashReceived { get; set; }
     public decimal? ChangeAmount { get; set; }
     public string? VietQRString { get; set; }
+    public string? QRImageBase64 { get; set; }
+    public string? TransactionContent { get; set; }
+    public string? BankAccountNumber { get; set; }
+    public string? BankName { get; set; }
     public DateTime? QRExpiredAt { get; set; }
     public DateTime? PaidAt { get; set; }
     public DateTime CreatedAt { get; set; }

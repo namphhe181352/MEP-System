@@ -238,7 +238,7 @@ var isOwner = userRoles.Contains("Owner");
                 user.FullName,
                 userRoles,
                 allPermissions,
-                branchId: null
+                branchId: branchIdForToken
             );
 
             var responseDto = _mapper.Map<UserResponseDto>(user);

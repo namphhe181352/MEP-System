@@ -3,6 +3,7 @@ using MEP_Management_System.Models;
 using MEP_Management_System.Services;
 using MEP_Management_System.Services.InventoryService;
 using MEP_Management_System.Hubs;
+using MEP_Management_System.DTOs.SaleDTOs;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.OData;
@@ -47,6 +48,10 @@ var notifCfg = odataBuilder.EntitySet<SystemNotification>("SystemNotifications")
 notifCfg.EntityType.HasKey(n => n.NotificationId);
 var approvalsCfg = odataBuilder.EntitySet<StoreApproval>("StoreApprovals");
 approvalsCfg.EntityType.HasKey(a => a.ApprovalId);
+
+// Register VietQR Service
+builder.Services.Configure<VietQrOptions>(builder.Configuration.GetSection("VietQr"));
+builder.Services.AddHttpClient<VietQrService>();
 builder.Services.AddControllers().AddOData(options =>
     options.Select().Filter().OrderBy().Count().SetMaxTop(100)
            .AddRouteComponents("odata", odataBuilder.GetEdmModel()));

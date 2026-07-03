@@ -8,23 +8,23 @@ namespace MEP_Management_System.Controllers;
 
 [Authorize(Roles = "Admin")]
 [ApiController]
-[Route("api/admin/staff")]
+[Route("api/admin/owners")]
 [Tags("Admin (Admin)")]
-public class StaffAccountsController : ControllerBase
+public class OwnerAccountsController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
 
-    public StaffAccountsController(MEPDatabaseContext context)
+    public OwnerAccountsController(MEPDatabaseContext context)
     {
         _context = context;
     }
 
     /// <summary>
-    /// GET /api/admin/staff?search=&status=&page=&pageSize=
-    /// Returns paginated list of Staff accounts (Owner, SalesStaff, InventoryStaff)
+    /// GET /api/admin/owners?search=&status=&page=&pageSize=
+    /// Returns paginated list of Owner accounts
     /// </summary>
     [HttpGet]
-    public async Task<IActionResult> GetStaff(
+    public async Task<IActionResult> GetOwners(
         [FromQuery] string? search,
         [FromQuery] string? status,
         [FromQuery] int page = 1,
@@ -34,13 +34,11 @@ public class StaffAccountsController : ControllerBase
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 100) pageSize = 100;
 
-        var staffRoles = new[] { "Owner", "SalesStaff", "InventoryStaff" };
-
         var query = _context.Users
             .Include(u => u.Roles)
             .Include(u => u.StaffAssignments)
                 .ThenInclude(sa => sa.Branch)
-            .Where(u => u.Roles.Any(r => staffRoles.Contains(r.RoleName)))
+            .Where(u => u.Roles.Any(r => r.RoleName == "Owner"))
             .AsQueryable();
 
         // Filter by role name OR by "active" (IsActive=1)
@@ -168,23 +166,9 @@ public class StaffAccountsController : ControllerBase
     /// Creates a new Staff account. BR-44: email must have @system.local domain.
     /// </summary>
     [HttpPost]
-    public async Task<IActionResult> CreateStaff([FromBody] CreateStaffRequest dto)
+    public async Task<IActionResult> CreateOwner([FromBody] CreateStaffRequest dto)
     {
-        // BR-44: Staff email must have @system.local domain
-        if (string.IsNullOrWhiteSpace(dto.Email) ||
-            !dto.Email.Trim().EndsWith("@system.local", StringComparison.OrdinalIgnoreCase))
-        {
-            return BadRequest(new ErrorResponseDto
-            {
-                Error = new ErrorDetail
-                {
-                    Code = "MSG-BR44",
-                    Message = "Email nhân viên phải có domain @system.local."
-                }
-            });
-        }
-
-        var validRoles = new[] { "Owner", "SalesStaff", "InventoryStaff" };
+        var validRoles = new[] { "Owner" };
         if (!validRoles.Contains(dto.Role))
         {
             return BadRequest(new ErrorResponseDto
@@ -192,7 +176,7 @@ public class StaffAccountsController : ControllerBase
                 Error = new ErrorDetail
                 {
                     Code = "MSG-400",
-                    Message = $"Vai trò phải là một trong: {string.Join(", ", validRoles)}."
+                    Message = $"Vai trò phải là: Owner."
                 }
             });
         }

@@ -32,9 +32,10 @@ public class ReturnsController : ControllerBase
     private Guid GetUserId() =>
         Guid.Parse(User.FindFirst("userId")?.Value ?? throw new Exception("userId not found in token"));
 
-    private string GenCode(string prefix)
+    private async Task<string> GenCodeAsync(string prefix)
     {
-        var seq = _context.ReturnOrders.Count(r => r.CreatedAt >= DateTime.UtcNow.Date) + 1;
+        var today = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
+        var seq = await _context.ReturnOrders.CountAsync(r => r.CreatedAt >= today) + 1;
         return $"{prefix}-{DateTime.UtcNow:yyyyMMdd}-{seq:D4}";
     }
 
@@ -134,7 +135,7 @@ public class ReturnsController : ControllerBase
         var entity = new ReturnOrder
         {
             ReturnOrderId = Guid.NewGuid(),
-            ReturnCode = GenCode("RET"),
+            ReturnCode = await GenCodeAsync("RET"),
             OrderId = invoice.OrderId,
             UserId = userId,
             RefundMethod = req.RefundMethod?.ToUpper() ?? "CASH",

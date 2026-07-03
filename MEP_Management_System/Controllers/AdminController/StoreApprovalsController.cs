@@ -32,10 +32,15 @@ public class StoreApprovalsController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
-        var query = _context.StoreApprovals
+        IQueryable<StoreApproval> query = _context.StoreApprovals
             .Include(s => s.User)
-            .Include(s => s.ReviewedByUser)
-            .Where(s => s.Status.Equals(status, StringComparison.OrdinalIgnoreCase));
+            .Include(s => s.ReviewedByUser);
+        
+        if (!string.IsNullOrEmpty(status))
+        {
+            var statusLower = status.ToLower();
+            query = query.Where(s => s.Status.ToLower() == statusLower);
+        }
 
         var total = await query.CountAsync();
         var items = await query

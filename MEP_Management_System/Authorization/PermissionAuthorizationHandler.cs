@@ -27,8 +27,12 @@ public class PermissionAuthorizationHandler : AuthorizationHandler<PermissionReq
     {
         if (context.User.IsInRole(PermissionConstants.OWNER_ROLE))
         {
-            context.Succeed(requirement);
-            return;
+            // Owner được full quyền toàn bộ hệ thống Cửa hàng, NHƯNG tuyệt đối KHÔNG có quyền Admin (Trang quản trị cấp cao).
+            if (!requirement.PermissionCode.StartsWith("ADMIN_"))
+            {
+                context.Succeed(requirement);
+                return;
+            }
         }
 
         var userIdClaim = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
