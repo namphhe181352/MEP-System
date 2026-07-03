@@ -1285,6 +1285,17 @@ public partial class MEPDatabaseContext : DbContext
                 .HasColumnName("status");
             entity.Property(e => e.Notes).HasColumnName("notes");
 
+            // === Audit trail ===
+            entity.Property(e => e.CompletedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("completed_at");
+            entity.Property(e => e.ConfirmedBy).HasColumnName("confirmed_by");
+            entity.Property(e => e.CancelledAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("cancelled_at");
+            entity.Property(e => e.CancelledBy).HasColumnName("cancelled_by");
+            entity.Property(e => e.CancelReason).HasMaxLength(500).HasColumnName("cancel_reason");
+
             entity.HasIndex(e => e.TicketCode, "stock_tickets_ticket_code_key").IsUnique();
 
             entity.HasOne(d => d.Branch).WithMany(p => p.StockTickets)
@@ -1296,6 +1307,16 @@ public partial class MEPDatabaseContext : DbContext
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("stock_tickets_user_id_fkey");
+
+            entity.HasOne(d => d.ConfirmedByUser).WithMany()
+                .HasForeignKey(d => d.ConfirmedBy)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("stock_tickets_confirmed_by_fkey");
+
+            entity.HasOne(d => d.CancelledByUser).WithMany()
+                .HasForeignKey(d => d.CancelledBy)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("stock_tickets_cancelled_by_fkey");
         });
 
         modelBuilder.Entity<StockTicketItem>(entity =>
