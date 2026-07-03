@@ -28,14 +28,24 @@ public class ProductsController : ControllerBase
 
     // GET /api/pos/products
     [HttpGet]
-    public async Task<ActionResult<List<ProductPriceDto>>> GetProducts()
+    public async Task<ActionResult<List<ProductPriceDto>>> GetProducts([FromQuery] string? search)
     {
         var branchId = GetBranchId();
-        var products = await _context.BranchProducts
-            .Include(b => b.Product)
-            .Where(b => b.BranchId == branchId && b.IsActive == 1)
-            .Take(100)
-            .ToListAsync();
+        var query = _context.BranchProducts
+            .Include(b => b.Product).ThenInclude(p => p.MediaResources)
+            .Where(b => b.BranchId == branchId && b.IsActive == 1);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var searchLower = search.ToLower();
+            query = query.Where(b => b.Product != null && (
+                (b.Product.ProductName != null && b.Product.ProductName.ToLower().Contains(searchLower)) ||
+                (b.Product.ProductCode != null && b.Product.ProductCode.ToLower().Contains(searchLower)) ||
+                (b.Product.Barcode != null && b.Product.Barcode.ToLower().Contains(searchLower))
+            ));
+        }
+
+        var products = await query.Take(100).ToListAsync();
 
         return Ok(products.Select(b => new ProductPriceDto
         {
@@ -46,7 +56,9 @@ public class ProductsController : ControllerBase
             RetailPrice = b.SellPrice,
             FloorPrice = b.CostPrice,
             Unit = b.Product?.BaseUnit,
-            AvailableStock = b.AvailableStock
+            AvailableStock = b.AvailableStock,
+            ImageUrl = b.Product?.MediaResources?.Where(m => m.IsPrimary == 1).Select(m => m.MediaUrl).FirstOrDefault() 
+                    ?? b.Product?.MediaResources?.Select(m => m.MediaUrl).FirstOrDefault()
         }).ToList());
     }
 
@@ -56,7 +68,7 @@ public class ProductsController : ControllerBase
     {
         var branchId = GetBranchId();
         var bp = await _context.BranchProducts
-            .Include(b => b.Product)
+            .Include(b => b.Product).ThenInclude(p => p.MediaResources)
             .FirstOrDefaultAsync(b => b.BranchId == branchId && b.ProductId == productId && b.IsActive == 1);
 
         if (bp == null) return NotFound(ApiErrorResponse.Create("MSG-59", "Product not found"));
@@ -70,7 +82,9 @@ public class ProductsController : ControllerBase
             RetailPrice = bp.SellPrice,
             FloorPrice = bp.CostPrice,
             Unit = bp.Product?.BaseUnit,
-            AvailableStock = bp.AvailableStock
+            AvailableStock = bp.AvailableStock,
+            ImageUrl = bp.Product?.MediaResources?.Where(m => m.IsPrimary == 1).Select(m => m.MediaUrl).FirstOrDefault() 
+                    ?? bp.Product?.MediaResources?.Select(m => m.MediaUrl).FirstOrDefault()
         });
     }
 

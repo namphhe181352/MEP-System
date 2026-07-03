@@ -21,12 +21,14 @@ public class PaymentsController : ControllerBase
     private readonly Models.MEPDatabaseContext _context;
     private readonly IMapper _mapper;
     private readonly MepNotificationService _notifications;
+    private readonly VietQrService _vietQrService;
 
-    public PaymentsController(Models.MEPDatabaseContext context, IMapper mapper, MepNotificationService notifications)
+    public PaymentsController(Models.MEPDatabaseContext context, IMapper mapper, MepNotificationService notifications, VietQrService vietQrService)
     {
         _context = context;
         _mapper = mapper;
         _notifications = notifications;
+        _vietQrService = vietQrService;
     }
 
     private Guid GetBranchId() =>
@@ -84,7 +86,12 @@ public class PaymentsController : ControllerBase
 
         if (request.Method == PaymentMethod.Transfer)
         {
-            var vietQR = GenerateVietQR(request.Amount);
+            // Transaction Content e.g. MEP INV-1234
+            var invoiceCode = (await _context.Invoices.FindAsync(invoiceId))?.InvoiceCode ?? invoiceId.ToString().Substring(0, 8);
+            var content = $"MEP {invoiceCode}";
+            
+            var (qrBase64, transactionContent) = await _vietQrService.GenerateQrAsync(request.Amount, content);
+            
             var payment = new Payment
             {
                 PaymentId = Guid.NewGuid(),
@@ -92,14 +99,19 @@ public class PaymentsController : ControllerBase
                 Method = PaymentMethod.Transfer,
                 Amount = request.Amount,
                 Status = "Pending",
-                VietQRString = vietQR.qrString,
+                VietQRString = transactionContent, // Saving transaction content in VietQRString for matching
                 QRExpiredAt = DateTime.UtcNow.AddMinutes(5),
                 CreatedAt = DateTime.UtcNow,
                 BranchId = branchId
             };
             _context.Payments.Add(payment);
             await _context.SaveChangesAsync();
-            return Created($"/api/pos/payments/{payment.PaymentId}", _mapper.Map<PaymentDto>(payment));
+            
+            var dto = _mapper.Map<PaymentDto>(payment);
+            dto.QRImageBase64 = qrBase64;
+            dto.TransactionContent = transactionContent;
+            
+            return Created($"/api/pos/payments/{payment.PaymentId}", dto);
         }
 
         if (request.Method == PaymentMethod.Combined)
@@ -163,12 +175,13 @@ public class PaymentsController : ControllerBase
         return Ok(_mapper.Map<PaymentDto>(payment));
     }
 
-    private static (string qrString, DateTime expiresAt) GenerateVietQR(decimal amount)
+    // GET /api/pos/payments/{paymentId}/status
+    [HttpGet("payments/{paymentId:guid}/status")]
+    public async Task<ActionResult> GetPaymentStatus(Guid paymentId)
     {
-        var random = new Random();
-        var trace = random.Next(100000, 999999);
-        var qr = $"MEP|VP|{DateTime.UtcNow:yyyyMMddHHmmss}|{trace}|{amount:N0}|0|0|0";
-        return (qr, DateTime.UtcNow.AddMinutes(5));
+        var payment = await _context.Payments.FindAsync(paymentId);
+        if (payment == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Payment not found"));
+        return Ok(new { status = payment.Status });
     }
 }
 
