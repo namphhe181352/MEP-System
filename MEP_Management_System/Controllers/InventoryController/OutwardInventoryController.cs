@@ -251,6 +251,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
+                // Lấy currentUserId trước
                 var currentUserId = GetCurrentUserId();
                 if (currentUserId == null)
                 {
@@ -263,16 +264,16 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 // ============================================================
-                // FIX: Ưu tiên DefaultBranchId từ users table
-                // Nếu không có thì mới fallback sang logic cũ
+                // FIX: Resolve branchId - Ưu tiên DefaultBranchId từ users table
+                // Giống InwardInventory
                 // ============================================================
+                Guid? resolvedBranchId = null;
+
+                // Ưu tiên 1: DefaultBranchId từ user
                 var user = await _context.Users
                     .AsNoTracking()
                     .FirstOrDefaultAsync(u => u.UserId == currentUserId.Value);
 
-                Guid? resolvedBranchId = null;
-
-                // Ưu tiên 1: DefaultBranchId từ user
                 if (user?.DefaultBranchId != null && user.DefaultBranchId != Guid.Empty)
                 {
                     resolvedBranchId = user.DefaultBranchId;
