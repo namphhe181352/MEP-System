@@ -189,6 +189,18 @@ var isOwner = userRoles.Contains("Owner");
                 {
                     branchIdForToken = user.DefaultBranchId.ToString();
                 }
+                else if (branches.Any())
+                {
+                    branchIdForToken = branches.First().BranchId.ToString();
+                }
+                else
+                {
+                    var firstActiveBranch = await _context.Branches.FirstOrDefaultAsync(b => b.IsActive == 1);
+                    if (firstActiveBranch != null)
+                    {
+                        branchIdForToken = firstActiveBranch.BranchId.ToString();
+                    }
+                }
             }
             else
             {
