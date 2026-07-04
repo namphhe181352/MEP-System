@@ -22,6 +22,16 @@ public partial class StockTicket
 
     public string? Notes { get; set; }
 
+    // === Audit trail ===
+    public DateTime? CompletedAt { get; set; }
+    public Guid? ConfirmedBy { get; set; }
+    public DateTime? CancelledAt { get; set; }
+    public Guid? CancelledBy { get; set; }
+    public string? CancelReason { get; set; }
+
+    public virtual User? ConfirmedByUser { get; set; }
+    public virtual User? CancelledByUser { get; set; }
+
     public DateTime? CreatedAt { get; set; }
 
     public virtual Branch Branch { get; set; } = null!;
