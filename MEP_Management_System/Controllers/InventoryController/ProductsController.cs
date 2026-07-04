@@ -918,6 +918,7 @@ namespace MEP_Management_System.Controllers.InventoryController
             {
                 // Identity
                 ProductId = p.ProductId,
+                BranchProductId = bp.BranchProductId,
                 Id = p.ProductId.ToString(),
                 ProductCode = p.ProductCode,
                 ProductName = p.ProductName,

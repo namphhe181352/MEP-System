@@ -244,7 +244,8 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                Guid? resolvedBranchId = HasGlobalAccess() ? (branchId ?? _currentBranch.GetBranchId()) : _currentBranch.GetBranchId();
+                // Resolve branchId - giống InwardInventory
+                var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
 
                 if (resolvedBranchId == null)
                 {
