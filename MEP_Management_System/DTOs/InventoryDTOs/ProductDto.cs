@@ -7,7 +7,9 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
     public class ProductUpsertDto
     {
         public Guid? ProductId { get; set; }
-        public Guid BranchProductId { get; set; }
+
+        public Guid? BranchProductId { get; set; }
+
         public string? Id { get; set; }
         public string ProductCode { get; set; } = null!;
         public string ProductName { get; set; } = null!;
