@@ -48,6 +48,7 @@ public class InvoicesController : ControllerBase
         var query = _context.Orders
             .Where(o => o.BranchId == branchId)
             .Include(o => o.Invoices).ThenInclude(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct).ThenInclude(bp => bp.Product)
+            .Include(o => o.Invoices).ThenInclude(i => i.Payments)
             .Include(o => o.Customer)
             .Include(o => o.User)
             .AsQueryable();
@@ -77,6 +78,15 @@ public class InvoicesController : ControllerBase
                 var dto = _mapper.Map<InvoiceDto>(invoice);
                 dto.OrderId = order.OrderId;
                 dto.UserId = order.UserId;
+                dto.UserName = order.User?.FullName;
+
+                if (invoice.Payments != null && invoice.Payments.Any())
+                {
+                    dto.PaymentMethod = invoice.Payments.Count > 1 
+                        ? "Combined" 
+                        : invoice.Payments.First().Method.ToString();
+                }
+
                 items.Add(dto);
             }
         }
@@ -166,6 +176,7 @@ public class InvoicesController : ControllerBase
         var branchId = GetBranchId();
         var invoice = await _context.Invoices
             .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct).ThenInclude(bp => bp.Product)
+            .Include(i => i.Payments)
             .Include(i => i.Order).ThenInclude(o => o.Customer)
             .Include(i => i.Order).ThenInclude(o => o.User)
             .FirstOrDefaultAsync(i => i.InvoiceId == invoiceId && i.Order.BranchId == branchId);
@@ -175,6 +186,15 @@ public class InvoicesController : ControllerBase
         var dto = _mapper.Map<InvoiceDto>(invoice);
         dto.OrderId = invoice.OrderId;
         dto.UserId = invoice.UserId;
+        dto.UserName = invoice.Order?.User?.FullName;
+
+        if (invoice.Payments != null && invoice.Payments.Any())
+        {
+            dto.PaymentMethod = invoice.Payments.Count > 1 
+                ? "Combined" 
+                : invoice.Payments.First().Method.ToString();
+        }
+
         return Ok(dto);
     }
 
@@ -294,6 +314,7 @@ public class InvoicesController : ControllerBase
         var branchId = GetBranchId();
         var invoice = await _context.Invoices
             .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct).ThenInclude(bp => bp.Product)
+            .Include(i => i.Payments)
             .Include(i => i.Order).ThenInclude(o => o.Customer)
             .Include(i => i.Order).ThenInclude(o => o.User)
             .FirstOrDefaultAsync(i => i.InvoiceId == invoiceId && i.Order.BranchId == branchId);
@@ -304,9 +325,9 @@ public class InvoicesController : ControllerBase
 
         // Validate payment
         var totalAmount = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
-        var totalPaid = await _context.Payments
-            .Where(p => p.InvoiceId == invoiceId && p.Status == "Confirmed")
-            .SumAsync(p => p.Amount);
+        var totalPaid = invoice.Payments
+            .Where(p => p.Status == "Confirmed")
+            .Sum(p => p.Amount);
 
         if (totalPaid < totalAmount)
         {
@@ -356,6 +377,15 @@ public class InvoicesController : ControllerBase
 
         var dto = _mapper.Map<InvoiceDto>(invoice);
         dto.OrderId = invoice.OrderId;
+        dto.UserId = invoice.UserId;
+        dto.UserName = invoice.Order?.User?.FullName;
+
+        if (invoice.Payments != null && invoice.Payments.Any())
+        {
+            dto.PaymentMethod = invoice.Payments.Count > 1 
+                ? "Combined" 
+                : invoice.Payments.First().Method.ToString();
+        }
 
         // Real-time: query items fresh (not from change-tracked entity) for notification payload
         var stockUpdates = await _context.InvoiceItems
