@@ -140,7 +140,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (!string.IsNullOrWhiteSpace(@params.Status))
                 {
                     short statusValue = @params.Status.ToLower() == "active" ? (short)1 : (short)0;
-                    query = query.Where(bp => bp.Product.Status == statusValue);
+                    query = query.Where(bp => bp.IsActive == statusValue);
                 }
 
                 // Filter by supplier
@@ -1000,7 +1000,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 // Sales & Status
                 DirectSale = bp.DirectSale == 1 || bp.DirectSale == null,
                 SalesChannelLinked = p.SalesChannelLinked == 1,
-                IsActive = p.Status == 1,
+                IsActive = bp.IsActive == 1,
 
                 // Nested DTOs
                 Attributes = p.ProductAttributes.Select(a => new ProductAttributeDto
