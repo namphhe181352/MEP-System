@@ -52,7 +52,12 @@ approvalsCfg.EntityType.HasKey(a => a.ApprovalId);
 // Register VietQR Service
 builder.Services.Configure<VietQrOptions>(builder.Configuration.GetSection("VietQr"));
 builder.Services.AddHttpClient<VietQrService>();
-builder.Services.AddControllers().AddOData(options =>
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new UtcDateTimeConverter());
+    })
+    .AddOData(options =>
     options.Select().Filter().OrderBy().Count().SetMaxTop(100)
            .AddRouteComponents("odata", odataBuilder.GetEdmModel()));
 
@@ -186,3 +191,16 @@ app.MapHub<MepHub>("/r/mepHub");
 app.MapHub<PosHub>("/r/posHub");
 
 app.Run();
+
+public class UtcDateTimeConverter : System.Text.Json.Serialization.JsonConverter<DateTime>
+{
+    public override DateTime Read(ref System.Text.Json.Utf8JsonReader reader, Type typeToConvert, System.Text.Json.JsonSerializerOptions options)
+    {
+        return reader.GetDateTime();
+    }
+
+    public override void Write(System.Text.Json.Utf8JsonWriter writer, DateTime value, System.Text.Json.JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(DateTime.SpecifyKind(value, DateTimeKind.Utc));
+    }
+}
