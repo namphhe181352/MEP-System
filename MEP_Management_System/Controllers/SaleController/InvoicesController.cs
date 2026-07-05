@@ -302,6 +302,17 @@ public class InvoicesController : ControllerBase
         if (invoice.Status != "Draft") return BadRequest(ApiErrorResponse.Create("MSG-78", "Invoice already finalized"));
         if (!invoice.InvoiceItems.Any()) return BadRequest(ApiErrorResponse.Create("MSG-61", "Invoice must have at least 1 item"));
 
+        // Validate payment
+        var totalAmount = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
+        var totalPaid = await _context.Payments
+            .Where(p => p.InvoiceId == invoiceId && p.Status == "Confirmed")
+            .SumAsync(p => p.Amount);
+
+        if (totalPaid < totalAmount)
+        {
+            return BadRequest(ApiErrorResponse.Create("MSG-82", $"Thanh toán chưa đủ. Cần thanh toán {totalAmount}, nhưng mới nhận {totalPaid}."));
+        }
+
         // BR-90: Block finalize if any product is in a pending StockCheckTicket
         var productIds = invoice.InvoiceItems.Select(ii => ii.BranchProduct.ProductId).ToList();
         var hasPendingStockCheck = await _context.InventoryCheckTickets
