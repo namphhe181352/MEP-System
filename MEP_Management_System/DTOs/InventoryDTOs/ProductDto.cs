@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace MEP_Management_System.DTOs.InventoryDTOs
@@ -320,10 +320,10 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
     public class InwardInventoryItemDto
     {
         /// <summary>
-        /// ID linh hoạt: Có thể là BranchProductId (nếu sản phẩm đã liên kết chi nhánh)
-        /// hoặc ProductId gốc (nếu sản phẩm chưa từng có ở chi nhánh hiện tại).
+        /// ID linh hoạt: Có thể là BranchProductId, ProductId (Guid)
+        /// hoặc ProductCode (string, ví dụ: SP-001) từ Frontend.
         /// </summary>
-        public Guid Id { get; set; }
+        public string Id { get; set; } = null!;
 
         public decimal Quantity { get; set; }
 
