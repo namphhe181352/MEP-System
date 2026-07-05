@@ -11,6 +11,9 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 
+using MEP_Management_System.Hubs;
+using Microsoft.AspNetCore.SignalR;
+
 namespace MEP_Management_System.Controllers.InventoryController
 {
     [ApiController]
@@ -20,11 +23,16 @@ namespace MEP_Management_System.Controllers.InventoryController
     {
         private readonly MEPDatabaseContext _context;
         private readonly ICurrentBranchAccessor _currentBranch;
+        private readonly IHubContext<InventoryHub> _hub;
 
-        public InwardInventoryController(MEPDatabaseContext context, ICurrentBranchAccessor currentBranch)
+        public InwardInventoryController(
+            MEPDatabaseContext context, 
+            ICurrentBranchAccessor currentBranch,
+            IHubContext<InventoryHub> hub)
         {
             _context = context;
             _currentBranch = currentBranch;
+            _hub = hub;
         }
 
         private Guid? GetCurrentUserId()
@@ -39,6 +47,41 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         private bool IsOwner() => User.IsInRole("Owner");
+
+        private async Task BroadcastAndSaveNotification(
+            NotificationType type,
+            Guid branchId,
+            string message,
+            Guid triggeredByUserId)
+        {
+            var notif = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                Type = type,
+                RecipientUserId = null, // Broadcast
+                BranchId = branchId,
+                InventoryCheckId = null,
+                TriggeredByUserId = triggeredByUserId,
+                Message = message,
+                IsRead = false,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.Notifications.Add(notif);
+            await _context.SaveChangesAsync();
+
+            var groupName = $"Branch_{branchId}";
+            await _hub.Clients.Group(groupName).SendAsync("ReceiveInventoryNotification", new
+            {
+                notif.NotificationId,
+                notif.Type,
+                TypeDisplay = notif.Type.ToString(),
+                notif.Message,
+                notif.CreatedAt,
+                notif.IsRead,
+                notif.InventoryCheckId
+            });
+        }
 
         private static string GetTicketTypeName(InwardInventoryType type)
         {
@@ -423,6 +466,13 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
+
+                var userName = User.FindFirst("name")?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? "Người dùng";
+                await BroadcastAndSaveNotification(
+                    NotificationType.Created,
+                    resolvedBranchId.Value,
+                    $"{userName} vừa tạo phiếu nhập kho {stockTicket.TicketCode}.",
+                    currentUserId.Value);
 
                 return Ok(new ApiResponse<object>
                 {
