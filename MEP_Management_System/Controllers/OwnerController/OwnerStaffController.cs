@@ -348,7 +348,13 @@ public class OwnerStaffController : ControllerBase
                 });
             }
 
-            staffRole = await GetOrCreateRoleAsync(dto.DefaultRoleType);
+            var roleNameToSearch = dto.DefaultRoleType;
+            if (roleNameToSearch.Equals("SalesStaff", StringComparison.OrdinalIgnoreCase))
+                roleNameToSearch = "Sales Staff";
+            if (roleNameToSearch.Equals("InventoryStaff", StringComparison.OrdinalIgnoreCase))
+                roleNameToSearch = "Inventory Staff";
+
+            staffRole = await GetOrCreateRoleAsync(roleNameToSearch);
             await _context.Entry(staffRole).Collection(r => r.Permissions).LoadAsync();
 
             var rolePermissionCodes = staffRole.Permissions
