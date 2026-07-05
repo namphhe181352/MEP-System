@@ -358,10 +358,14 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 foreach (var item in dto.Items)
                 {
+                    Guid parsedId;
+                    bool isGuid = Guid.TryParse(item.Id, out parsedId);
+
                     // Tìm BranchProduct
                     var branchProduct = await _context.BranchProducts
                         .FirstOrDefaultAsync(bp =>
-                            (bp.BranchProductId == item.Id || bp.ProductId == item.Id)
+                            (isGuid && (bp.BranchProductId == parsedId || bp.ProductId == parsedId))
+                            || (!isGuid && bp.Product != null && bp.Product.ProductCode == item.Id)
                             && bp.BranchId == resolvedBranchId.Value);
 
                     Guid actualBranchProductId;
@@ -369,10 +373,11 @@ namespace MEP_Management_System.Controllers.InventoryController
                     if (branchProduct == null)
                     {
                         // Sản phẩm chưa có ở chi nhánh này -> tạo mới
-                        var product = await _context.Products.FirstOrDefaultAsync(p => p.ProductId == item.Id);
+                        var product = await _context.Products.FirstOrDefaultAsync(p => 
+                            (isGuid && p.ProductId == parsedId) || (!isGuid && p.ProductCode == item.Id));
                         if (product == null)
                         {
-                            throw new InvalidOperationException($"Product/BranchProduct with ID {item.Id} was not found in system.");
+                            throw new InvalidOperationException($"Product/BranchProduct with ID/Code '{item.Id}' was not found in system.");
                         }
 
                         branchProduct = new BranchProduct
