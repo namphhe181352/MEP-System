@@ -23,9 +23,7 @@ namespace MEP_Management_System.Controllers
             var roleId = Guid.Parse("10000000-0000-0000-0000-000000000004"); // InventoryStaff
 
             // Delete old
-            var oldPerms = await _context.RolePermissions.Where(rp => rp.RoleId == roleId).ToListAsync();
-            _context.RolePermissions.RemoveRange(oldPerms);
-            await _context.SaveChangesAsync();
+            await _context.Database.ExecuteSqlRawAsync("DELETE FROM role_permissions WHERE role_id = {0}", roleId);
 
             // Insert new correct permissions for InventoryStaff
             // 7: PRODUCT_VIEW, 8: PRODUCT_CREATE, 10: PRODUCT_DELETE
@@ -36,7 +34,9 @@ namespace MEP_Management_System.Controllers
             foreach (var p in perms)
             {
                 var permId = Guid.Parse($"00000000-0000-0000-0000-0000000000{p:D2}");
-                _context.RolePermissions.Add(new RolePermission { RoleId = roleId, PermissionId = permId });
+                await _context.Database.ExecuteSqlRawAsync(
+                    "INSERT INTO role_permissions (role_id, permission_id) VALUES ({0}, {1})",
+                    roleId, permId);
             }
 
             await _context.SaveChangesAsync();
