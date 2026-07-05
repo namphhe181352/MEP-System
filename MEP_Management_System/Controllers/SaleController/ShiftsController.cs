@@ -96,13 +96,13 @@ public class ShiftsController : ControllerBase
         var branchId = GetBranchId();
 
         var shift = await _context.Shifts
-            .FirstOrDefaultAsync(s => s.ShiftId == shiftId && s.UserId == userId && s.BranchId == branchId);
+            .FirstOrDefaultAsync(s => s.ShiftId == shiftId && s.BranchId == branchId);
         if (shift == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Shift not found"));
         if (shift.Status == "CLOSED") return BadRequest(ApiErrorResponse.Create("MSG-76", "Shift already closed"));
 
-        // Calculate revenue from this shift's completed invoices
+        // Calculate revenue from this shift's completed invoices (using shift.UserId, not the person ending it)
         var completedInvoices = await _context.Invoices
-            .Where(i => i.UserId == userId && i.Status == "Completed" && i.CreatedAt >= shift.StartedAt && i.CreatedAt <= DateTime.UtcNow)
+            .Where(i => i.UserId == shift.UserId && i.Status == "Completed" && i.CreatedAt >= shift.StartedAt && i.CreatedAt <= DateTime.UtcNow)
             .Include(i => i.Payments)
             .ToListAsync();
 
@@ -144,7 +144,7 @@ public class ShiftsController : ControllerBase
         var branchId = GetBranchId();
 
         var shift = await _context.Shifts
-            .FirstOrDefaultAsync(s => s.ShiftId == shiftId && s.UserId == userId && s.BranchId == branchId);
+            .FirstOrDefaultAsync(s => s.ShiftId == shiftId && s.BranchId == branchId);
         if (shift == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Shift not found"));
 
         // Calculate real-time if shift is OPEN, otherwise use saved values
@@ -152,7 +152,7 @@ public class ShiftsController : ControllerBase
         DateTime? filterEnd = isOpen ? DateTime.UtcNow : shift.EndedAt;
 
         var completedInvoices = await _context.Invoices
-            .Where(i => i.UserId == userId && i.Status == "Completed" && i.CreatedAt >= shift.StartedAt &&
+            .Where(i => i.UserId == shift.UserId && i.Status == "Completed" && i.CreatedAt >= shift.StartedAt &&
                 (!filterEnd.HasValue || i.CreatedAt <= filterEnd.Value))
             .Include(i => i.Payments)
             .ToListAsync();
@@ -202,7 +202,7 @@ public class ShiftsController : ControllerBase
         var branchId = GetBranchId();
 
         var query = _context.Shifts
-            .Where(s => s.UserId == userId && s.BranchId == branchId)
+            .Where(s => s.BranchId == branchId)
             .AsQueryable();
 
         if (from.HasValue) query = query.Where(s => s.StartedAt >= from.Value);
