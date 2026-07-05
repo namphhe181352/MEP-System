@@ -13,6 +13,9 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 
+using MEP_Management_System.Hubs;
+using Microsoft.AspNetCore.SignalR;
+
 namespace MEP_Management_System.Controllers.InventoryController
 {
     [ApiController]
@@ -23,15 +26,18 @@ namespace MEP_Management_System.Controllers.InventoryController
         private readonly MEPDatabaseContext _context;
         private readonly ICurrentBranchAccessor _currentBranch;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IHubContext<InventoryHub> _hub;
 
         public OutwardInventoryController(
             MEPDatabaseContext context,
             ICurrentBranchAccessor currentBranch,
-            IHttpContextAccessor httpContextAccessor)
+            IHttpContextAccessor httpContextAccessor,
+            IHubContext<InventoryHub> hub)
         {
             _context = context;
             _currentBranch = currentBranch;
             _httpContextAccessor = httpContextAccessor;
+            _hub = hub;
         }
 
         private Guid? GetCurrentUserId()
@@ -43,6 +49,41 @@ namespace MEP_Management_System.Controllers.InventoryController
         private bool HasGlobalAccess()
         {
             return User.IsInRole("Owner");
+        }
+
+        private async Task BroadcastAndSaveNotification(
+            NotificationType type,
+            Guid branchId,
+            string message,
+            Guid triggeredByUserId)
+        {
+            var notif = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                Type = type,
+                RecipientUserId = null, // Broadcast
+                BranchId = branchId,
+                InventoryCheckId = null,
+                TriggeredByUserId = triggeredByUserId,
+                Message = message,
+                IsRead = false,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.Notifications.Add(notif);
+            await _context.SaveChangesAsync();
+
+            var groupName = $"Branch_{branchId}";
+            await _hub.Clients.Group(groupName).SendAsync("ReceiveInventoryNotification", new
+            {
+                notif.NotificationId,
+                notif.Type,
+                TypeDisplay = notif.Type.ToString(),
+                notif.Message,
+                notif.CreatedAt,
+                notif.IsRead,
+                notif.InventoryCheckId
+            });
         }
 
         private static string GetTicketTypeName(OutwardInventoryType type)
@@ -320,7 +361,7 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 var branchProductIds = dto.Items.Select(i => i.BranchProductId).Distinct().ToList();
                 var branchProducts = await _context.BranchProducts
-                    .Where(bp => bp.BranchId == resolvedBranchId.Value && branchProductIds.Contains(bp.BranchProductId))
+                    .Where(bp => branchProductIds.Contains(bp.BranchProductId))
                     .Include(bp => bp.Product)
                     .ToListAsync();
 
@@ -330,7 +371,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     {
                         Success = false,
                         Message = "Yêu cầu không hợp lệ",
-                        Errors = new() { "Một hoặc nhiều sản phẩm không thuộc về chi nhánh đang chọn." }
+                        Errors = new() { "Một hoặc nhiều sản phẩm không tồn tại trong hệ thống." }
                     });
                 }
 
@@ -397,6 +438,13 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                     await _context.SaveChangesAsync();
                     await transaction.CommitAsync();
+
+                    var userName = User.FindFirst("name")?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? "Người dùng";
+                    await BroadcastAndSaveNotification(
+                        NotificationType.Created,
+                        resolvedBranchId.Value,
+                        $"{userName} vừa tạo phiếu xuất kho {stockTicket.TicketCode}.",
+                        currentUserId.Value);
 
                     return Ok(new ApiResponse<object>
                     {
