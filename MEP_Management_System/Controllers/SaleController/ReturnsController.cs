@@ -250,14 +250,14 @@ public class ReturnsController : ControllerBase
         ret.Status = "Completed";
         if (req?.Note != null) ret.Note = req.Note;
 
-        // Hoàn kho: tăng AvailableStock cho từng sản phẩm trả
+        // Hoàn kho: tăng AvailableStock và ActualStock cho từng sản phẩm trả
         foreach (var ri in ret.ReturnItems)
         {
             var bp = await _context.BranchProducts.FindAsync(ri.BranchProductId);
             if (bp != null)
             {
                 bp.AvailableStock += ri.Quantity;
-                bp.ReservedStock = Math.Max(0, bp.ReservedStock - ri.Quantity);
+                bp.ActualStock += ri.Quantity;
             }
         }
 
