@@ -1,4 +1,4 @@
-﻿using MEP_Management_System.DTOs.InventoryDTOs;
+using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -37,17 +37,16 @@ namespace MEP_Management_System.Services.InventoryService
             .GroupBy(x => x.ProductId)
              .ToDictionary(g => g.Key, g => new { Qty = g.Sum(x => x.Quantity), Val = g.Sum(x => x.Value) });
 
-            // 2. Lấy dữ liệu Xuất kho từ Orders (Trạng thái PAID/COMPLETED)
             // 2. Lấy dữ liệu Xuất kho từ Orders
             var outwardData = _context.OrderItems
                 .Where(oi => oi.Order.CreatedAt >= fromDate && oi.Order.CreatedAt <= toDate
-                          && (oi.Order.Status == "PAID" || oi.Order.Status == "COMPLETED")
+                          && (oi.Order.Status == "Completed")
                           && (request.BranchId == null || oi.Order.BranchId == request.BranchId))
                 .Select(oi => new
                 {
                     oi.BranchProduct.ProductId,
                     oi.Quantity,
-                    Value = oi.Quantity * oi.BranchProduct.CostPrice // <-- Bỏ ?? 0 ở đây
+                    Value = oi.Quantity * oi.BranchProduct.CostPrice
                 })
                 .GroupBy(x => x.ProductId)
                 .ToDictionary(g => g.Key, g => new { Qty = g.Sum(x => x.Quantity), Val = g.Sum(x => x.Value) }); // <-- Bỏ ?? 0M ở đây
