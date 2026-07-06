@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MEP_Management_System.Migrations
 {
     [DbContext(typeof(MEPDatabaseContext))]
-    [Migration("20260706163721_AddReturnTypeToReturnOrders")]
+    [Migration("20260706172014_AddReturnTypeToReturnOrders")]
     partial class AddReturnTypeToReturnOrders
     {
         /// <inheritdoc />
@@ -884,11 +884,6 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("branch_product_id");
 
-                    b.Property<decimal?>("ConvertValue")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("numeric(10,2)")
-                        .HasColumnName("convert_value");
-
                     b.Property<Guid>("InvoiceId")
                         .HasColumnType("uuid")
                         .HasColumnName("invoice_id");
@@ -897,11 +892,6 @@ namespace MEP_Management_System.Migrations
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)")
                         .HasColumnName("quantity");
-
-                    b.Property<string>("SelectedUnit")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("selected_unit");
 
                     b.Property<decimal>("SellPrice")
                         .HasPrecision(15, 2)
