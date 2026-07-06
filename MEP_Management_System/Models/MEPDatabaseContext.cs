@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 
@@ -678,12 +678,6 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.SellPrice)
                 .HasPrecision(15, 2)
                 .HasColumnName("sell_price");
-            entity.Property(e => e.SelectedUnit)
-                .HasMaxLength(50)
-                .HasColumnName("selected_unit");
-            entity.Property(e => e.ConvertValue)
-                .HasPrecision(10, 2)
-                .HasColumnName("convert_value");
 
             entity.HasOne(d => d.BranchProduct).WithMany()
                 .HasForeignKey(d => d.BranchProductId)
