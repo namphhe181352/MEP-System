@@ -157,6 +157,7 @@ public class ReturnsController : ControllerBase
                 OrderId = invoice.OrderId,
                 UserId = userId,
                 RefundMethod = req.RefundMethod?.ToUpper() ?? "CASH",
+                ReturnType = req.ReturnType?.ToUpper() ?? "REFUND",
                 Status = "Pending",
                 Note = req.Note,
                 CreatedAt = DateTime.UtcNow

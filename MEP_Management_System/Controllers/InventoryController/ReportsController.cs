@@ -62,7 +62,7 @@ public class ReportsController : ControllerBase
             // 1. Lấy đơn hàng trong ngày
             var orders = await _context.Orders
                 .Where(o => o.BranchId == branchId.Value
-                    && o.Status == "COMPLETED"
+                    && o.Status == "Completed"
                     && o.CreatedAt >= reportDate
                     && o.CreatedAt < nextDate)
                 .ToListAsync();
@@ -196,7 +196,7 @@ public class ReportsController : ControllerBase
             var salesOutward = await _context.OrderItems
                 .Include(oi => oi.Order)
                 .Where(oi => oi.Order.BranchId == branchId.Value
-                    && oi.Order.Status == "COMPLETED"
+                    && oi.Order.Status == "Completed"
                     && oi.Order.CreatedAt >= fromDate
                     && oi.Order.CreatedAt <= toDate)
                 .GroupBy(oi => oi.BranchProduct.ProductId)
@@ -313,7 +313,7 @@ public class ReportsController : ControllerBase
 
             var orders = await _context.Orders
                 .Where(o => o.BranchId == branchId.Value
-                    && o.Status == "COMPLETED"
+                    && o.Status == "Completed"
                     && o.CreatedAt >= fromDate
                     && o.CreatedAt <= toDate)
                 .Select(o => new { o.CreatedAt, o.TotalAmount })
@@ -598,7 +598,7 @@ public class ReportsController : ControllerBase
                 .Include(oi => oi.BranchProduct)
                     .ThenInclude(bp => bp.Product)
                 .Where(oi => oi.Order.BranchId == branchId.Value
-                    && oi.Order.Status == "COMPLETED"
+                    && oi.Order.Status == "Completed"
                     && oi.Order.CreatedAt >= fromDate
                     && oi.Order.CreatedAt <= toDate)
                 .ToListAsync();
