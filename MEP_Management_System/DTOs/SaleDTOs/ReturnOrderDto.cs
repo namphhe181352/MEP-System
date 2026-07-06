@@ -13,6 +13,7 @@ public class ReturnOrderDto
     public string? StaffName { get; set; }
     public decimal RefundAmount { get; set; }
     public string? RefundMethod { get; set; }
+    public string? ReturnType { get; set; }
     public string? Status { get; set; }
     public string? Note { get; set; }
     public DateTime? CreatedAt { get; set; }
