@@ -45,51 +45,68 @@ public class InvoicesController : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         var branchId = GetBranchId();
-        var query = _context.Orders
-            .Where(o => o.BranchId == branchId)
-            .Include(o => o.Invoices).ThenInclude(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct).ThenInclude(bp => bp.Product)
-            .Include(o => o.Invoices).ThenInclude(i => i.Payments)
-            .Include(o => o.Customer)
-            .Include(o => o.User)
-            .AsQueryable();
 
+        // Count query first (lightweight)
+        var countQuery = _context.Orders.Where(o => o.BranchId == branchId);
         if (!string.IsNullOrEmpty(status))
-            query = query.Where(o => o.Invoices.Any(i => i.Status == status));
+            countQuery = countQuery.Where(o => o.Invoices.Any(i => i.Status == status));
         if (dateFrom.HasValue)
-            query = query.Where(o => o.CreatedAt >= dateFrom.Value);
+            countQuery = countQuery.Where(o => o.CreatedAt >= dateFrom.Value);
         if (dateTo.HasValue)
-            query = query.Where(o => o.CreatedAt <= dateTo.Value);
+            countQuery = countQuery.Where(o => o.CreatedAt <= dateTo.Value);
         if (customerId.HasValue)
-            query = query.Where(o => o.CustomerId == customerId.Value);
+            countQuery = countQuery.Where(o => o.CustomerId == customerId.Value);
         if (staffId.HasValue)
-            query = query.Where(o => o.UserId == staffId.Value);
+            countQuery = countQuery.Where(o => o.UserId == staffId.Value);
+        var total = await countQuery.CountAsync();
 
-        var total = await query.CountAsync();
-        var orders = await query
+        // Projection query - only fetch needed fields (no entity tracking, no over-fetching)
+        var orderIds = await _context.Orders
+            .AsNoTracking()
+            .Where(o => o.BranchId == branchId)
+            .Where(o => !string.IsNullOrEmpty(status) ? o.Invoices.Any(i => i.Status == status) : true)
+            .Where(o => dateFrom.HasValue ? o.CreatedAt >= dateFrom.Value : true)
+            .Where(o => dateTo.HasValue ? o.CreatedAt <= dateTo.Value : true)
+            .Where(o => customerId.HasValue ? o.CustomerId == customerId.Value : true)
+            .Where(o => staffId.HasValue ? o.UserId == staffId.Value : true)
             .OrderByDescending(o => o.CreatedAt)
             .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(o => o.OrderId)
             .ToListAsync();
 
-        var items = new List<InvoiceDto>();
-        foreach (var order in orders)
-        {
-            foreach (var invoice in order.Invoices)
+        // Fetch invoices + related data in single optimized query
+        var invoiceData = await _context.Invoices
+            .AsNoTracking()
+            .Where(i => orderIds.Contains(i.OrderId))
+            .Select(i => new
             {
-                var dto = _mapper.Map<InvoiceDto>(invoice);
-                dto.OrderId = order.OrderId;
-                dto.UserId = order.UserId;
-                dto.UserName = order.User?.FullName;
+                Invoice = i,
+                i.OrderId,
+                i.Order.UserId,
+                UserName = i.Order.User != null ? i.Order.User.FullName : null,
+                i.Order.CustomerId,
+                CustomerName = i.Order.Customer != null ? i.Order.Customer.CustomerName : null,
+                i.InvoiceItems,
+                i.Payments
+            })
+            .ToListAsync();
 
-                if (invoice.Payments != null && invoice.Payments.Any())
-                {
-                    dto.PaymentMethod = invoice.Payments.Count > 1 
-                        ? "Combined" 
-                        : invoice.Payments.First().Method.ToString();
-                }
-
-                items.Add(dto);
+        var items = invoiceData.Select(data =>
+        {
+            var dto = _mapper.Map<InvoiceDto>(data.Invoice);
+            dto.OrderId = data.OrderId;
+            dto.UserId = data.UserId;
+            dto.UserName = data.UserName;
+            dto.CustomerId = data.CustomerId;
+            dto.CustomerName = data.CustomerName;
+            if (data.Payments != null && data.Payments.Any())
+            {
+                dto.PaymentMethod = data.Payments.Count > 1
+                    ? "Combined"
+                    : data.Payments.First().Method.ToString();
             }
-        }
+            return dto;
+        }).ToList();
 
         return Ok(new PageResultDto<InvoiceDto> { Items = items, PageNumber = page, PageSize = pageSize, TotalCount = total });
     }
@@ -508,26 +525,35 @@ public class InvoicesController : ControllerBase
         var branchId = GetBranchId();
         var cutoff = DateTime.UtcNow.AddDays(-7); // 7 days expiry
 
-        var query = _context.Invoices
-            .Where(i => i.Order.BranchId == branchId &&
-                        i.Status == "OnHold" &&
-                        i.HeldAt != null && i.HeldAt > cutoff)
-            .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct).ThenInclude(bp => bp.Product)
-            .Include(i => i.Order).ThenInclude(o => o.Customer)
-            .Include(i => i.Order).ThenInclude(o => o.User)
-            .AsQueryable();
+        // Count first
+        var total = await _context.Invoices
+            .Where(i => i.Order.BranchId == branchId && i.Status == "OnHold" && i.HeldAt != null && i.HeldAt > cutoff)
+            .CountAsync();
 
-        var total = await query.CountAsync();
-        var invoices = await query
+        // Projection with AsNoTracking - only fetch needed fields
+        var invoices = await _context.Invoices
+            .AsNoTracking()
+            .Where(i => i.Order.BranchId == branchId && i.Status == "OnHold" && i.HeldAt != null && i.HeldAt > cutoff)
             .OrderByDescending(i => i.HeldAt)
             .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(i => new
+            {
+                Invoice = i,
+                i.OrderId,
+                i.UserId,
+                UserName = i.Order.User != null ? i.Order.User.FullName : null,
+                CustomerName = i.Order.Customer != null ? i.Order.Customer.CustomerName : null,
+                i.InvoiceItems,
+                i.Payments
+            })
             .ToListAsync();
 
-        var dtos = invoices.Select(inv =>
+        var dtos = invoices.Select(data =>
         {
-            var dto = _mapper.Map<InvoiceDto>(inv);
-            dto.OrderId = inv.OrderId;
-            dto.UserId = inv.UserId;
+            var dto = _mapper.Map<InvoiceDto>(data.Invoice);
+            dto.OrderId = data.OrderId;
+            dto.UserId = data.UserId;
+            dto.UserName = data.UserName;
             return dto;
         }).ToList();
 

@@ -1,16 +1,23 @@
+using System;
+using System.ComponentModel.DataAnnotations;
+
 namespace MEP_Management_System.DTOs.SaleDTOs;
 
 public class CreateReturnOrderRequest
 {
-    /// <summary>ID hóa đơn gốc cần đổi/trả (BR-81).</summary>
+    [Required(ErrorMessage = "InvoiceId là bắt buộc.")]
     public Guid InvoiceId { get; set; }
 
-    /// <summary>Phương thức hoàn tiền: CASH | TRANSFER | EXCHANGE.</summary>
+    [Required(ErrorMessage = "Phương thức hoàn tiền là bắt buộc.")]
+    [RegularExpression(@"^(CASH|TRANSFER|EXCHANGE)$",
+        ErrorMessage = "Phương thức hoàn tiền không hợp lệ. Các giá trị hợp lệ: CASH, TRANSFER, EXCHANGE.")]
     public string RefundMethod { get; set; } = "CASH";
 
-    /// <summary>Loại đổi trả: EXCHANGE (đổi hàng) | REFUND (trả hàng).</summary>
+    [Required(ErrorMessage = "Loại đổi trả là bắt buộc.")]
+    [RegularExpression(@"^(REFUND|EXCHANGE)$",
+        ErrorMessage = "Loại đổi trả không hợp lệ. Các giá trị hợp lệ: REFUND, EXCHANGE.")]
     public string ReturnType { get; set; } = "REFUND";
 
-    /// <summary>Ghi chú (tùy chọn).</summary>
+    [StringLength(500, ErrorMessage = "Ghi chú không được vượt quá 500 ký tự.")]
     public string? Note { get; set; }
 }
