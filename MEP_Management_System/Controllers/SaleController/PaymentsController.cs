@@ -184,18 +184,3 @@ public class PaymentsController : ControllerBase
         return Ok(new { status = payment.Status });
     }
 }
-
-public class CreatePaymentRequest
-{
-    public string Method { get; set; } = null!;
-    public decimal Amount { get; set; }
-    public decimal? CashReceived { get; set; }
-    public System.Collections.Generic.List<PaymentLine>? PaymentLines { get; set; }
-}
-
-public class PaymentLine
-{
-    public string Method { get; set; } = null!;
-    public decimal Amount { get; set; }
-    public decimal? CashReceived { get; set; }
-}
