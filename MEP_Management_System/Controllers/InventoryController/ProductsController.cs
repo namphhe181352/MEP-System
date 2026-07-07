@@ -591,6 +591,23 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return BadRequest(new ApiResponse<object> { Success = false, Message = "Product code already exists", Errors = new() { $"Code '{dto.ProductCode}' exists" } });
                 }
 
+                // UOM: Không cho sửa BaseUnit khi sản phẩm đã có giao dịch
+                if (bp.Product.BaseUnit != dto.Unit)
+                {
+                    var hasTransaction = await _context.InvoiceItems
+                        .AnyAsync(ii => ii.BranchProduct != null && ii.BranchProduct.ProductId == id);
+
+                    if (hasTransaction)
+                    {
+                        return BadRequest(new ApiResponse<object>
+                        {
+                            Success = false,
+                            Message = "Không thể thay đổi đơn vị cơ bản khi sản phẩm đã có giao dịch.",
+                            Errors = new() { "Sản phẩm đã xuất hiện trong hóa đơn. Không thể thay đổi BaseUnit." }
+                        });
+                    }
+                }
+
                 var currentLocalTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
                 Guid? currentUserId = GetUserInfo();
