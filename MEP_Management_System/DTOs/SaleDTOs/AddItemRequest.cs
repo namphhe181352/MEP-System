@@ -14,4 +14,8 @@ public class AddItemRequest
 
     [Range(0, double.MaxValue, ErrorMessage = "Giá không được âm.")]
     public decimal? UnitPrice { get; set; }
+
+    /// <summary>Đơn vị bán (ví dụ: "Cuộn", "Mét"). Null = BaseUnit.</summary>
+    [StringLength(50)]
+    public string? SelectedUnit { get; set; }
 }
