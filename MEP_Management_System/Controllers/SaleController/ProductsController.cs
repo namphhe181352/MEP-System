@@ -26,41 +26,58 @@ public class ProductsController : ControllerBase
     private Guid GetBranchId() =>
         Guid.Parse(User.FindFirst("branchId")?.Value ?? throw new Exception("branchId not found in token"));
 
+    // P3 Fix: Helper method to map projection to DTO - inline projection to avoid EF Core memory leak
+    private static ProductPriceDto MapBranchProductToDto(BranchProduct b) =>
+        new()
+        {
+            ProductId = b.ProductId,
+            ProductName = b.Product?.ProductName,
+            ProductCode = b.Product?.ProductCode,
+            Barcode = b.Product?.Barcode,
+            RetailPrice = b.SellPrice,
+            FloorPrice = b.CostPrice,
+            Unit = b.Product?.BaseUnit,
+            AvailableStock = b.AvailableStock,
+            ImageUrl = b.Product?.MediaResources?.Where(m => m.IsPrimary == 1).Select(m => m.MediaUrl).FirstOrDefault(),
+            ConversionUnits = b.Product?.ProductConversionUnits
+                ?.Where(u => u.DirectSale == 1 || u.DirectSale == null)
+                .Select(u => new ConversionUnitDto
+                {
+                    ConversionId = u.ConversionId,
+                    UnitName = u.UnitName,
+                    ConvertValue = u.ConvertValue,
+                    Price = u.Price,
+                    DirectSale = u.DirectSale == 1
+                }).ToList() ?? new List<ConversionUnitDto>()
+        };
+
     // GET /api/pos/products
     [HttpGet]
     public async Task<ActionResult<List<ProductPriceDto>>> GetProducts([FromQuery] string? search)
     {
         var branchId = GetBranchId();
 
-        // Projection query - EF can traverse Product without explicit Include
-        var query = _context.BranchProducts
+        // Query with Include for related data
+        IQueryable<BranchProduct> query = _context.BranchProducts
             .AsNoTracking()
-            .Where(b => b.BranchId == branchId && b.IsActive == 1)
-            .Select(b => new ProductPriceDto
-            {
-                ProductId = b.ProductId,
-                ProductName = b.Product != null ? b.Product.ProductName : null,
-                ProductCode = b.Product != null ? b.Product.ProductCode : null,
-                Barcode = b.Product != null ? b.Product.Barcode : null,
-                RetailPrice = b.SellPrice,
-                FloorPrice = b.CostPrice,
-                Unit = b.Product != null ? b.Product.BaseUnit : null,
-                AvailableStock = b.AvailableStock,
-                ImageUrl = b.Product != null
-                    ? b.Product.MediaResources.Where(m => m.IsPrimary == 1).Select(m => m.MediaUrl).FirstOrDefault()
-                    : null
-            });
+            .Include(b => b.Product)
+            .ThenInclude(p => p!.ProductConversionUnits)
+            .Include(b => b.Product)
+            .ThenInclude(p => p!.MediaResources)
+            .Where(b => b.BranchId == branchId && b.IsActive == 1);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
             var searchLower = search.ToLower();
-            query = query.Where(p => p.ProductName != null && p.ProductName.ToLower().Contains(searchLower)
-                || p.ProductCode != null && p.ProductCode.ToLower().Contains(searchLower)
-                || p.Barcode != null && p.Barcode.ToLower().Contains(searchLower));
+            query = query.Where(b => (b.Product != null && b.Product.ProductName != null && b.Product.ProductName.ToLower().Contains(searchLower))
+                || (b.Product != null && b.Product.ProductCode != null && b.Product.ProductCode.ToLower().Contains(searchLower))
+                || (b.Product != null && b.Product.Barcode != null && b.Product.Barcode.ToLower().Contains(searchLower)));
         }
 
         var products = await query.Take(100).ToListAsync();
-        return Ok(products);
+        var result = products.Select(MapBranchProductToDto).ToList();
+
+        return Ok(result);
     }
 
     // GET /api/pos/products/{productId}/price
@@ -69,28 +86,19 @@ public class ProductsController : ControllerBase
     {
         var branchId = GetBranchId();
 
-        // Projection query - no Include needed
+        // Include Product and ConversionUnits for mapping
         var bp = await _context.BranchProducts
             .AsNoTracking()
+            .Include(b => b.Product)
+            .ThenInclude(p => p!.ProductConversionUnits)
+            .Include(b => b.Product)
+            .ThenInclude(p => p!.MediaResources)
             .Where(b => b.BranchId == branchId && b.ProductId == productId && b.IsActive == 1)
-            .Select(b => new ProductPriceDto
-            {
-                ProductId = b.ProductId,
-                ProductName = b.Product != null ? b.Product.ProductName : null,
-                ProductCode = b.Product != null ? b.Product.ProductCode : null,
-                Barcode = b.Product != null ? b.Product.Barcode : null,
-                RetailPrice = b.SellPrice,
-                FloorPrice = b.CostPrice,
-                Unit = b.Product != null ? b.Product.BaseUnit : null,
-                AvailableStock = b.AvailableStock,
-                ImageUrl = b.Product != null
-                    ? b.Product.MediaResources.Where(m => m.IsPrimary == 1).Select(m => m.MediaUrl).FirstOrDefault()
-                    : null
-            })
             .FirstOrDefaultAsync();
 
         if (bp == null) return NotFound(ApiErrorResponse.Create("MSG-59", "Product not found"));
-        return Ok(bp);
+
+        return Ok(MapBranchProductToDto(bp));
     }
 
     // GET /api/pos/products/{productId}/stock

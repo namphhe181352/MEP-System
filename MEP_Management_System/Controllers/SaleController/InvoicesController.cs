@@ -11,6 +11,7 @@ using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace MEP_Management_System.Controllers.SaleController;
 
@@ -23,12 +24,14 @@ public class InvoicesController : ControllerBase
     private readonly Models.MEPDatabaseContext _context;
     private readonly IMapper _mapper;
     private readonly MepNotificationService _notifications;
+    private readonly ILogger<InvoicesController> _logger;
 
-    public InvoicesController(Models.MEPDatabaseContext context, IMapper mapper, MepNotificationService notifications)
+    public InvoicesController(Models.MEPDatabaseContext context, IMapper mapper, MepNotificationService notifications, ILogger<InvoicesController> logger)
     {
         _context = context;
         _mapper = mapper;
         _notifications = notifications;
+        _logger = logger;
     }
 
     private Guid GetBranchId() =>
@@ -228,40 +231,83 @@ public class InvoicesController : ControllerBase
         if (invoice.Status != "Draft") return BadRequest(ApiErrorResponse.Create("MSG-60", "Cannot add items to a non-draft invoice"));
 
         var bp = await _context.BranchProducts
-            .Include(b => b.Product)
+            .Include(b => b.Product).ThenInclude(p => p.ProductConversionUnits)
             .FirstOrDefaultAsync(b => b.BranchId == branchId && b.ProductId == request.ProductId && b.IsActive == 1);
 
         if (bp == null) return NotFound(ApiErrorResponse.Create("MSG-59", "Product not found or inactive"));
-        if (bp.AvailableStock < request.Quantity) return BadRequest(ApiErrorResponse.Create("MSG-59", $"Insufficient stock. Available: {bp.AvailableStock}"));
 
-        var unitPrice = request.UnitPrice ?? bp.SellPrice;
-        if (unitPrice < bp.CostPrice) return BadRequest(ApiErrorResponse.Create("MSG-63", "Price override below floor price"));
+        // UOM: Xác định đơn vị và hệ số quy đổi
+        string selectedUnit = request.SelectedUnit ?? bp.Product.BaseUnit;
+        decimal convertValue = 1m;
+        decimal unitPrice = request.UnitPrice ?? bp.SellPrice;
 
-        var existingItem = invoice.InvoiceItems
-            .FirstOrDefault(ii => ii.BranchProductId == bp.BranchProductId && ii.SellPrice == unitPrice);
-        if (existingItem != null)
+        // Nếu chọn đơn vị quy đổi
+        if (!string.IsNullOrEmpty(request.SelectedUnit) && request.SelectedUnit != bp.Product.BaseUnit)
         {
-            existingItem.Quantity += request.Quantity;
+            var convUnit = bp.Product.ProductConversionUnits
+                .FirstOrDefault(u => u.UnitName == request.SelectedUnit);
+
+            if (convUnit == null)
+                return BadRequest(ApiErrorResponse.Create("MSG-59", $"Đơn vị '{request.SelectedUnit}' không hợp lệ cho sản phẩm này"));
+
+            convertValue = convUnit.ConvertValue;
+            unitPrice = convUnit.Price; // Giá của đơn vị quy đổi
         }
-        else
+
+        // Tính actual quantity (đã quy đổi về BaseUnit)
+        var actualQuantity = Math.Round(request.Quantity * convertValue, 2);
+
+        // P1 Fix: Sử dụng transaction để tránh race condition
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        try
         {
-            var item = new InvoiceItem
+            // Re-fetch stock trong transaction để tránh race condition
+            var currentStock = await _context.BranchProducts
+                .Where(b => b.BranchProductId == bp.BranchProductId)
+                .Select(b => b.AvailableStock)
+                .FirstAsync();
+
+            if (currentStock < actualQuantity)
+                return BadRequest(ApiErrorResponse.Create("MSG-59", $"Insufficient stock. Available: {currentStock} {bp.Product.BaseUnit}"));
+
+            if (unitPrice < bp.CostPrice) return BadRequest(ApiErrorResponse.Create("MSG-63", "Price override below floor price"));
+
+            var existingItem = invoice.InvoiceItems
+                .FirstOrDefault(ii => ii.BranchProductId == bp.BranchProductId && ii.SellPrice == unitPrice && ii.SelectedUnit == selectedUnit);
+            if (existingItem != null)
             {
-                InvoiceItemId = Guid.NewGuid(),
-                InvoiceId = invoiceId,
-                BranchProductId = bp.BranchProductId,
-                Quantity = request.Quantity,
-                SellPrice = unitPrice
-            };
-            _context.InvoiceItems.Add(item);
-            invoice.InvoiceItems.Add(item);
+                existingItem.Quantity += actualQuantity;
+            }
+            else
+            {
+                var item = new InvoiceItem
+                {
+                    InvoiceItemId = Guid.NewGuid(),
+                    InvoiceId = invoiceId,
+                    BranchProductId = bp.BranchProductId,
+                    Quantity = actualQuantity,
+                    SellPrice = unitPrice,
+                    SelectedUnit = selectedUnit,
+                    ConvertValue = convertValue
+                };
+                _context.InvoiceItems.Add(item);
+                invoice.InvoiceItems.Add(item);
+            }
+
+            await _context.SaveChangesAsync();
+            invoice.TotalAmount = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
+            await _context.SaveChangesAsync();
+
+            await transaction.CommitAsync();
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            _logger.LogError(ex, "Error adding item to invoice {InvoiceId}", invoiceId);
+            return StatusCode(500, ApiErrorResponse.Create("MSG-99", "Đã xảy ra lỗi khi thêm sản phẩm"));
         }
 
-        await _context.SaveChangesAsync();
-        invoice.TotalAmount = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
-        await _context.SaveChangesAsync();
-
-        var dto = _mapper.Map<InvoiceItemDto>(existingItem ?? await _context.InvoiceItems.Include(ii => ii.BranchProduct).ThenInclude(b => b.Product).FirstAsync(ii => ii.InvoiceId == invoiceId && ii.BranchProductId == bp.BranchProductId));
+        var dto = _mapper.Map<InvoiceItemDto>(invoice.InvoiceItems.First(ii => ii.BranchProductId == bp.BranchProductId && ii.SellPrice == unitPrice && ii.SelectedUnit == selectedUnit));
         return CreatedAtAction(null, dto);
     }
 

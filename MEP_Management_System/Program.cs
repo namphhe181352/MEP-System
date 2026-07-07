@@ -190,6 +190,13 @@ app.MapHub<InventoryHub>("/r/inventoryHub");
 app.MapHub<MepHub>("/r/mepHub");
 app.MapHub<PosHub>("/r/posHub");
 
+// Seed database on startup (only seeds if DB is empty)
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<MEPDatabaseContext>();
+    await MEP_Management_System.Seed.DatabaseSeeder.SeedAsync(context);
+}
+
 app.Run();
 
 public class UtcDateTimeConverter : System.Text.Json.Serialization.JsonConverter<DateTime>
