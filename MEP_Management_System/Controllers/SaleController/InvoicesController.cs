@@ -397,15 +397,15 @@ public class InvoicesController : ControllerBase
         if (invoice.Status != "Draft") return BadRequest(ApiErrorResponse.Create("MSG-78", "Invoice already finalized"));
         if (!invoice.InvoiceItems.Any()) return BadRequest(ApiErrorResponse.Create("MSG-61", "Invoice must have at least 1 item"));
 
-        // Validate payment
+        // Validate payment - chấp nhận cả Confirmed và Pending (Transfer đã tạo QR)
         var totalAmount = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
         var totalPaid = invoice.Payments
-            .Where(p => p.Status == "Confirmed")
+            .Where(p => p.Status == "Confirmed" || p.Status == "Pending")
             .Sum(p => p.Amount);
 
         if (totalPaid < totalAmount)
         {
-            return BadRequest(ApiErrorResponse.Create("MSG-82", $"Thanh toán chưa đủ. Cần thanh toán {totalAmount}, nhưng mới nhận {totalPaid}."));
+            return BadRequest(ApiErrorResponse.Create("MSG-82", $"Thanh toán chưa đủ. Cần thanh toán {totalAmount:N0} VNĐ, nhưng mới nhận {totalPaid:N0} VNĐ."));
         }
 
         // BR-90: Block finalize if any product is in a pending StockCheckTicket
@@ -428,12 +428,13 @@ public class InvoicesController : ControllerBase
                 return BadRequest(ApiErrorResponse.Create("MSG-59", $"Insufficient stock for product. Available: {item.BranchProduct.AvailableStock}"));
         }
 
-        // Deduct stock
+        // Deduct stock - POS bán lẻ: trừ cả ActualStock và AvailableStock
+        // (AvailableStock là stored field, không phải computed property)
         foreach (var item in invoice.InvoiceItems)
         {
             var actualQty = item.Quantity * (item.ConvertValue ?? 1m);
-            item.BranchProduct.AvailableStock -= actualQty;
             item.BranchProduct.ActualStock -= actualQty;
+            item.BranchProduct.AvailableStock -= actualQty;
         }
 
         invoice.Status = "Completed";
