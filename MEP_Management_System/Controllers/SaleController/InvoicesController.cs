@@ -276,7 +276,7 @@ public class InvoicesController : ControllerBase
                 .FirstOrDefault(ii => ii.BranchProductId == bp.BranchProductId && ii.SellPrice == unitPrice && ii.SelectedUnit == selectedUnit);
             if (existingItem != null)
             {
-                existingItem.Quantity += actualQuantity;
+                existingItem.Quantity += request.Quantity;
             }
             else
             {
@@ -285,7 +285,7 @@ public class InvoicesController : ControllerBase
                     InvoiceItemId = Guid.NewGuid(),
                     InvoiceId = invoiceId,
                     BranchProductId = bp.BranchProductId,
-                    Quantity = actualQuantity,
+                    Quantity = request.Quantity,
                     SellPrice = unitPrice,
                     SelectedUnit = selectedUnit,
                     ConvertValue = convertValue
@@ -331,7 +331,7 @@ public class InvoicesController : ControllerBase
     {
         var branchId = GetBranchId();
         var products = await _context.BranchProducts
-            .Include(b => b.Product)
+            .Include(b => b.Product).ThenInclude(p => p.ProductConversionUnits)
             .Where(b => b.BranchId == branchId && b.IsActive == 1 &&
                 (request.Keyword == null || b.Product.ProductName.Contains(request.Keyword) || (b.Product.ProductCode != null && b.Product.ProductCode.Contains(request.Keyword))))
             .Take(20)
@@ -345,7 +345,18 @@ public class InvoicesController : ControllerBase
             Barcode = b.Product.Barcode,
             RetailPrice = b.SellPrice,
             FloorPrice = b.CostPrice,
-            Unit = b.Product.BaseUnit
+            Unit = b.Product.BaseUnit,
+            AvailableStock = b.AvailableStock,
+            ConversionUnits = b.Product.ProductConversionUnits
+                .Where(c => c.DirectSale == 1) // Chỉ lấy đơn vị bán trực tiếp
+                .Select(c => new ConversionUnitDto
+                {
+                    ConversionId = c.ConversionId,
+                    UnitName = c.UnitName,
+                    ConvertValue = c.ConvertValue,
+                    Price = c.Price,
+                    DirectSale = c.DirectSale == 1
+                }).ToList()
         }).ToList();
 
         return Ok(result);
@@ -412,15 +423,17 @@ public class InvoicesController : ControllerBase
         // Validate stock
         foreach (var item in invoice.InvoiceItems)
         {
-            if (item.BranchProduct.AvailableStock < item.Quantity)
+            var actualQty = item.Quantity * (item.ConvertValue ?? 1m);
+            if (item.BranchProduct.AvailableStock < actualQty)
                 return BadRequest(ApiErrorResponse.Create("MSG-59", $"Insufficient stock for product. Available: {item.BranchProduct.AvailableStock}"));
         }
 
         // Deduct stock
         foreach (var item in invoice.InvoiceItems)
         {
-            item.BranchProduct.AvailableStock -= item.Quantity;
-            item.BranchProduct.ActualStock -= item.Quantity;
+            var actualQty = item.Quantity * (item.ConvertValue ?? 1m);
+            item.BranchProduct.AvailableStock -= actualQty;
+            item.BranchProduct.ActualStock -= actualQty;
         }
 
         invoice.Status = "Completed";
