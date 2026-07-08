@@ -89,6 +89,7 @@ public class InvoicesController : ControllerBase
                 UserName = i.Order.User != null ? i.Order.User.FullName : null,
                 i.Order.CustomerId,
                 CustomerName = i.Order.Customer != null ? i.Order.Customer.CustomerName : null,
+                DiscountAmount = i.Order.DiscountAmount ?? 0,
                 i.InvoiceItems,
                 i.Payments
             })
@@ -102,6 +103,20 @@ public class InvoicesController : ControllerBase
             dto.UserName = data.UserName;
             dto.CustomerId = data.CustomerId;
             dto.CustomerName = data.CustomerName;
+            // AutoMapper tính TotalAmount từ Invoice.InvoiceItems nhưng khi dùng Select() trong EF,
+            // navigation property không được load → InvoiceItems là null → TotalAmount = 0.
+            // Nên phải tính thủ công từ data.InvoiceItems (đã được EF populate riêng).
+            if (data.InvoiceItems != null && data.InvoiceItems.Any())
+            {
+                var subtotal = data.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
+                var vatAmount = Math.Round(subtotal * 0.08m, 2);
+                var discountAmount = data.DiscountAmount;
+                dto.Subtotal = subtotal;
+                dto.TaxAmount = vatAmount;
+                dto.DiscountAmount = discountAmount;
+                dto.TotalAmount = subtotal + vatAmount - discountAmount;
+                dto.Items = _mapper.Map<List<DTOs.SaleDTOs.InvoiceItemDto>>(data.InvoiceItems);
+            }
             if (data.Payments != null && data.Payments.Any())
             {
                 dto.PaymentMethod = data.Payments.Count > 1
@@ -120,6 +135,12 @@ public class InvoicesController : ControllerBase
     {
         var branchId = GetBranchId();
         var userId = GetUserId();
+
+        // Validate: user must have an open shift before creating invoice
+        var openShift = await _context.Shifts
+            .FirstOrDefaultAsync(s => s.UserId == userId && s.BranchId == branchId && s.Status == "OPEN");
+        if (openShift == null)
+            return BadRequest(ApiErrorResponse.Create("MSG-76", "Vui lòng mở ca bán trước khi tạo đơn hàng"));
 
         var now = DateTime.UtcNow;
         var todayPrefixInv = $"INV-{now.Year}-";
@@ -398,7 +419,9 @@ public class InvoicesController : ControllerBase
         if (!invoice.InvoiceItems.Any()) return BadRequest(ApiErrorResponse.Create("MSG-61", "Invoice must have at least 1 item"));
 
         // Validate payment - chấp nhận cả Confirmed và Pending (Transfer đã tạo QR)
-        var totalAmount = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
+        var subtotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
+        var vatAmount = Math.Round(subtotal * 0.08m, 2);
+        var totalAmount = subtotal + vatAmount - (invoice.Order.DiscountAmount ?? 0);
         var totalPaid = invoice.Payments
             .Where(p => p.Status == "Confirmed" || p.Status == "Pending")
             .Sum(p => p.Amount);
@@ -439,7 +462,7 @@ public class InvoicesController : ControllerBase
 
         invoice.Status = "Completed";
         invoice.Order.Status = "Completed";
-        invoice.TotalAmount = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
+        invoice.TotalAmount = totalAmount;
 
         // Update customer stats
         if (invoice.Order.Customer != null)
