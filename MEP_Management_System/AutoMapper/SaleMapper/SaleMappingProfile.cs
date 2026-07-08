@@ -78,7 +78,11 @@ public class SaleMappingProfile : Profile
 
         // ReturnOrder
         CreateMap<ReturnOrder, DTOs.SaleDTOs.ReturnOrderDto>()
-            .ForMember(d => d.InvoiceCode, o => o.MapFrom(s => s.Order != null ? s.Order.OrderCode : null))
+            // InvoiceCode = mã hóa đơn gốc (lấy từ invoice đầu tiên của order, không phải orderCode)
+            .ForMember(d => d.InvoiceCode, o => o.MapFrom(s =>
+                s.Order != null && s.Order.Invoices != null && s.Order.Invoices.Any()
+                    ? s.Order.Invoices.First().InvoiceCode
+                    : null))
             .ForMember(d => d.StaffName, o => o.MapFrom(s => s.User != null ? s.User.FullName : null))
             .ForMember(d => d.Items, o => o.MapFrom(s => s.ReturnItems));
 
