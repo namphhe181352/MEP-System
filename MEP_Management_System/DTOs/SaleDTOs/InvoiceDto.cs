@@ -14,6 +14,7 @@ public class InvoiceDto
     public string? UserName { get; set; }
     public decimal Subtotal { get; set; }
     public decimal DiscountAmount { get; set; }
+    public decimal? DiscountPercent { get; set; }
     public string? PromotionCode { get; set; }
     public decimal TaxAmount { get; set; }
     public decimal TotalAmount { get; set; }
