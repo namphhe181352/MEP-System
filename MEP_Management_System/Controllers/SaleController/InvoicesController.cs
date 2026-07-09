@@ -96,7 +96,8 @@ public class InvoicesController : ControllerBase
                 UserName = i.Order.User != null ? i.Order.User.FullName : null,
                 i.Order.CustomerId,
                 CustomerName = i.Order.Customer != null ? i.Order.Customer.CustomerName : null,
-                DiscountAmount = i.Order.DiscountAmount ?? 0,
+                DiscountAmount = i.DiscountAmount,
+                DiscountPercent = i.DiscountPercent,
                 i.InvoiceItems,
                 i.Payments
             })
@@ -116,12 +117,10 @@ public class InvoicesController : ControllerBase
             if (data.InvoiceItems != null && data.InvoiceItems.Any())
             {
                 var subtotal = data.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
-                var vatAmount = Math.Round(subtotal * 0.08m, 2);
-                var discountAmount = data.DiscountAmount;
                 dto.Subtotal = subtotal;
-                dto.TaxAmount = vatAmount;
-                dto.DiscountAmount = discountAmount;
-                dto.TotalAmount = subtotal + vatAmount - discountAmount;
+                dto.DiscountAmount = data.DiscountAmount;
+                dto.DiscountPercent = data.DiscountPercent;
+                dto.TotalAmount = subtotal - data.DiscountAmount;
                 dto.Items = _mapper.Map<List<DTOs.SaleDTOs.InvoiceItemDto>>(data.InvoiceItems);
             }
             if (data.Payments != null && data.Payments.Any())
@@ -237,6 +236,16 @@ public class InvoicesController : ControllerBase
         dto.OrderId = invoice.OrderId;
         dto.UserId = invoice.UserId;
         dto.UserName = invoice.Order?.User?.FullName;
+
+        // Tính TotalAmount = SubTotal - Discount
+        if (invoice.InvoiceItems != null && invoice.InvoiceItems.Any())
+        {
+            var subtotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
+            dto.Subtotal = subtotal;
+            dto.DiscountAmount = invoice.DiscountAmount;
+            dto.DiscountPercent = invoice.DiscountPercent;
+            dto.TotalAmount = subtotal - invoice.DiscountAmount;
+        }
 
         if (invoice.Payments != null && invoice.Payments.Any())
         {
@@ -427,10 +436,11 @@ public class InvoicesController : ControllerBase
         if (invoice.Status != "Draft") return BadRequest(ApiErrorResponse.Create("MSG-78", "Invoice already finalized"));
         if (!invoice.InvoiceItems.Any()) return BadRequest(ApiErrorResponse.Create("MSG-61", "Invoice must have at least 1 item"));
 
+        // Tính tier discount TRƯỚC validation
+        var subTotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
+        var (discountPercent, discountAmount, totalAmount) = await _orderDiscountService.CalculateDiscountAsync(subTotal);
+
         // Validate payment - chấp nhận cả Confirmed và Pending (Transfer đã tạo QR)
-        var subtotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
-        var vatAmount = Math.Round(subtotal * 0.08m, 2);
-        var totalAmount = subtotal + vatAmount - (invoice.Order.DiscountAmount ?? 0);
         var totalPaid = invoice.Payments
             .Where(p => p.Status == "Confirmed" || p.Status == "Pending")
             .Sum(p => p.Amount);
@@ -472,16 +482,11 @@ public class InvoicesController : ControllerBase
         invoice.Status = "Completed";
         invoice.Order.Status = "Completed";
 
-
-        // Tính tổng tiền TRƯỚC chiết khấu
-        var subTotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
+        // Lưu các giá trị đã tính ở trên vào invoice
         invoice.SubTotalAmount = subTotal;
-
-        // Tính chiết khấu theo tổng giá trị đơn hàng
-        var (discountPercent, discountAmount, finalTotal) = await _orderDiscountService.CalculateDiscountAsync(subTotal);
         invoice.DiscountPercent = discountPercent;
         invoice.DiscountAmount = discountAmount;
-        invoice.TotalAmount = finalTotal;
+        invoice.TotalAmount = totalAmount;
 
 
         // Update customer stats
