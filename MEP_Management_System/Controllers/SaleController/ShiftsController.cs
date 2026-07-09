@@ -202,7 +202,7 @@ public class ShiftsController : ControllerBase
         var branchId = GetBranchId();
 
         var query = _context.Shifts
-            .Where(s => s.BranchId == branchId)
+            .Where(s => s.BranchId == branchId && s.UserId == userId)
             .AsQueryable();
 
         if (from.HasValue) query = query.Where(s => s.StartedAt >= from.Value);

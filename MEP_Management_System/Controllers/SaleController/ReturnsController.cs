@@ -212,7 +212,16 @@ public class ReturnsController : ControllerBase
             return BadRequest(ApiErrorResponse.Create("MSG-66", $"Số lượng trả vượt quá số lượng đã mua. Tối đa: {totalBought - totalReturned}"));
 
         var avgPrice = originalItems.Sum(ii => ii.SellPrice * ii.Quantity) / totalBought;
-        var refundLine = req.Quantity * avgPrice;
+        var grossRefundLine = req.Quantity * avgPrice;
+
+        // Áp dụng chiết khấu theo tỷ lệ của hóa đơn gốc
+        var originalInvoice = originalItems.First().Invoice;
+        var invoiceSubtotal = originalItems.Sum(ii => ii.Quantity * ii.SellPrice);
+        var discountRatio = invoiceSubtotal > 0 && originalInvoice != null
+            ? Math.Min(1m, Math.Max(0m, originalInvoice.DiscountAmount / invoiceSubtotal))
+            : 0m;
+        var discountPortion = grossRefundLine * discountRatio;
+        var refundLine = Math.Max(0, grossRefundLine - discountPortion);
 
         var returnItem = new ReturnItem
         {
