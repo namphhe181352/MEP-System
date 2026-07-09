@@ -1026,6 +1026,9 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("branch_product_id");
 
+                    b.Property<decimal?>("ConvertValue")
+                        .HasColumnType("numeric");
+
                     b.Property<Guid>("InvoiceId")
                         .HasColumnType("uuid")
                         .HasColumnName("invoice_id");
@@ -1034,6 +1037,9 @@ namespace MEP_Management_System.Migrations
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)")
                         .HasColumnName("quantity");
+
+                    b.Property<string>("SelectedUnit")
+                        .HasColumnType("text");
 
                     b.Property<decimal>("SellPrice")
                         .HasPrecision(15, 2)
@@ -2122,6 +2128,11 @@ namespace MEP_Management_System.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
                         .HasColumnName("return_code");
+
+                    b.Property<string>("ReturnType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("return_type");
 
                     b.Property<string>("Status")
                         .HasMaxLength(50)

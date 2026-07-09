@@ -55,6 +55,7 @@ public class ReturnsController : ControllerBase
         var branchId = GetBranchId();
         var query = _context.ReturnOrders
             .Include(r => r.Order).ThenInclude(o => o!.Branch)
+            .Include(r => r.Order).ThenInclude(o => o!.Invoices) // để map InvoiceCode
             .Include(r => r.User)
             .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product)
             .Where(r => r.Order!.BranchId == branchId)
@@ -157,6 +158,7 @@ public class ReturnsController : ControllerBase
                 OrderId = invoice.OrderId,
                 UserId = userId,
                 RefundMethod = req.RefundMethod?.ToUpper() ?? "CASH",
+                ReturnType = req.ReturnType?.ToUpper() ?? "REFUND",
                 Status = "Pending",
                 Note = req.Note,
                 CreatedAt = DateTime.UtcNow
