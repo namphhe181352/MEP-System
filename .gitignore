@@ -26,3 +26,8 @@ API_DOCUMENTATION_INVENTORY_CHECK.md
 DATABASE_GUIDE.md
 .agents
 admin-rbac.md
+GEMINI.md
+.gemini
+.mcp.json
+.codegraph
+skills-lock.json

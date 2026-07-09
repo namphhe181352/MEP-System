@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 
@@ -1196,6 +1196,9 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.RefundMethod)
                 .HasMaxLength(50)
                 .HasColumnName("refund_method");
+            entity.Property(e => e.ReturnType)
+                .HasMaxLength(50)
+                .HasColumnName("return_type");
             entity.Property(e => e.Status)
                 .HasMaxLength(50)
                 .HasColumnName("status");
