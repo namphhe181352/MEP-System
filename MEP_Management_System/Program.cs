@@ -31,6 +31,7 @@ builder.Services.AddSingleton<JwtHelper>();
 builder.Services.AddScoped<INotificationSender, LogNotificationSender>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentBranchAccessor, CurrentBranchAccessor>();
+builder.Services.AddScoped<IOrderDiscountService, OrderDiscountService>();
 
 // OData
 var odataBuilder = new ODataConventionModelBuilder();

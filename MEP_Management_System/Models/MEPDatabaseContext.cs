@@ -36,6 +36,8 @@ public partial class MEPDatabaseContext : DbContext
 
     public virtual DbSet<InvoiceItem> InvoiceItems { get; set; }
 
+    public virtual DbSet<OrderDiscountTier> OrderDiscountTiers { get; set; }
+
     public virtual DbSet<Order> Orders { get; set; }
 
     public virtual DbSet<OrderItem> OrderItems { get; set; }
@@ -104,6 +106,10 @@ public partial class MEPDatabaseContext : DbContext
 
     public virtual DbSet<ViolationReport> ViolationReports { get; set; }
     public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
+
+    // === EXPENSE MODULE ===
+    public virtual DbSet<ExpenseCategory> ExpenseCategories { get; set; }
+    public virtual DbSet<ExpenseVoucher> ExpenseVouchers { get; set; }
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         if (!optionsBuilder.IsConfigured)
@@ -647,6 +653,19 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.Note).HasColumnName("note");
             entity.Property(e => e.HoldNote).HasMaxLength(500).HasColumnName("hold_note");
             entity.Property(e => e.HeldAt).HasColumnType("timestamp without time zone").HasColumnName("held_at");
+
+            // Các cột chiết khấu theo tổng giá trị đơn hàng
+            entity.Property(e => e.SubTotalAmount)
+                .HasPrecision(18, 2)
+                .HasColumnName("sub_total_amount")
+                .HasDefaultValue(0m);
+            entity.Property(e => e.DiscountPercent)
+                .HasPrecision(5, 2)
+                .HasColumnName("discount_percent");
+            entity.Property(e => e.DiscountAmount)
+                .HasPrecision(18, 2)
+                .HasColumnName("discount_amount")
+                .HasDefaultValue(0m);
 
             entity.HasIndex(e => e.InvoiceCode, "invoices_invoice_code_key").IsUnique();
 
@@ -2153,6 +2172,175 @@ public partial class MEPDatabaseContext : DbContext
 
 
         OnModelCreatingPartial(modelBuilder);
+
+        // ============================================================
+        // EXPENSE MODULE - Fluent API
+        // ============================================================
+        modelBuilder.Entity<ExpenseCategory>(entity =>
+        {
+            entity.HasKey(e => e.CategoryId).HasName("expense_categories_pkey");
+            entity.ToTable("expense_categories");
+
+            entity.Property(e => e.CategoryId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("category_id");
+            entity.Property(e => e.CategoryName)
+                .IsRequired()
+                .HasMaxLength(100)
+                .HasColumnName("category_name");
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue((short)1)
+                .HasColumnName("is_active");
+            entity.Property(e => e.CreatedBy)
+                .HasColumnName("created_by");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+
+            entity.HasIndex(e => e.CategoryName)
+                .IsUnique()
+                .HasDatabaseName("expense_categories_category_name_key");
+
+            entity.HasOne(d => d.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.CreatedBy)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("expense_categories_created_by_fkey");
+        });
+
+        modelBuilder.Entity<ExpenseVoucher>(entity =>
+        {
+            entity.HasKey(e => e.VoucherId).HasName("expense_vouchers_pkey");
+            entity.ToTable("expense_vouchers");
+
+            entity.Property(e => e.VoucherId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("voucher_id");
+            entity.Property(e => e.VoucherCode)
+                .IsRequired()
+                .HasMaxLength(50)
+                .HasColumnName("voucher_code");
+            entity.Property(e => e.BranchId)
+                .HasColumnName("branch_id");
+            entity.Property(e => e.CategoryId)
+                .HasColumnName("category_id");
+            entity.Property(e => e.SupplierId)
+                .HasColumnName("supplier_id");
+            entity.Property(e => e.Amount)
+                .HasPrecision(18, 2)
+                .HasColumnName("amount");
+            entity.Property(e => e.Reason)
+                .IsRequired()
+                .HasMaxLength(500)
+                .HasColumnName("reason");
+            entity.Property(e => e.Note)
+                .HasColumnName("note");
+            entity.Property(e => e.Status)
+                .HasMaxLength(20)
+                .HasDefaultValue("PENDING")
+                .HasColumnName("status");
+            entity.Property(e => e.CreatedBy)
+                .HasColumnName("created_by");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.Property(e => e.ConfirmedBy)
+                .HasColumnName("confirmed_by");
+            entity.Property(e => e.CompletedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("completed_at");
+            entity.Property(e => e.CancelledBy)
+                .HasColumnName("cancelled_by");
+            entity.Property(e => e.CancelledAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("cancelled_at");
+            entity.Property(e => e.CancelReason)
+                .HasMaxLength(500)
+                .HasColumnName("cancel_reason");
+
+            entity.HasIndex(e => e.VoucherCode)
+                .IsUnique()
+                .HasDatabaseName("expense_vouchers_voucher_code_key");
+
+            entity.HasIndex(e => e.BranchId)
+                .HasDatabaseName("ix_expense_vouchers_branch_id");
+
+            entity.HasIndex(e => e.Status)
+                .HasDatabaseName("ix_expense_vouchers_status");
+
+            entity.HasIndex(e => e.CategoryId)
+                .HasDatabaseName("ix_expense_vouchers_category_id");
+
+            entity.HasOne(d => d.Branch)
+                .WithMany()
+                .HasForeignKey(d => d.BranchId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("expense_vouchers_branch_id_fkey");
+
+            entity.HasOne(d => d.Category)
+                .WithMany(p => p.ExpenseVouchers)
+                .HasForeignKey(d => d.CategoryId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("expense_vouchers_category_id_fkey");
+
+            entity.HasOne(d => d.Supplier)
+                .WithMany()
+                .HasForeignKey(d => d.SupplierId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("expense_vouchers_supplier_id_fkey");
+
+            entity.HasOne(d => d.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.CreatedBy)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("expense_vouchers_created_by_fkey");
+
+            entity.HasOne(d => d.ConfirmedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.ConfirmedBy)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("expense_vouchers_confirmed_by_fkey");
+
+            entity.HasOne(d => d.CancelledByUser)
+                .WithMany()
+                .HasForeignKey(d => d.CancelledBy)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("expense_vouchers_cancelled_by_fkey");
+        });
+
+        // ============================================================
+        // ORDER DISCOUNT TIER - Chiết khấu theo tổng giá trị đơn hàng
+        // ============================================================
+        modelBuilder.Entity<OrderDiscountTier>(entity =>
+        {
+            entity.HasKey(e => e.OrderDiscountTierId).HasName("order_discount_tiers_pkey");
+            entity.ToTable("order_discount_tiers");
+
+            entity.Property(e => e.OrderDiscountTierId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("order_discount_tier_id");
+            entity.Property(e => e.MinOrderValue)
+                .IsRequired()
+                .HasPrecision(18, 2)
+                .HasColumnName("min_order_value");
+            entity.Property(e => e.DiscountPercent)
+                .IsRequired()
+                .HasPrecision(5, 2)
+                .HasColumnName("discount_percent");
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue(true)
+                .HasColumnName("is_active");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("updated_at");
+
+            entity.HasIndex(e => e.MinOrderValue)
+                .IsUnique()
+                .HasDatabaseName("ix_order_discount_tiers_min_order_value");
+        });
     }
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder);
