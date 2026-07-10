@@ -283,7 +283,9 @@ namespace MEP_Management_System.Controllers.InventoryController
 
             if (user?.DefaultBranchId is Guid defaultBranchId && defaultBranchId != Guid.Empty)
             {
+
                 return defaultBranchId;
+
             }
 
             // Ưu tiên 3: BranchId từ JWT token
