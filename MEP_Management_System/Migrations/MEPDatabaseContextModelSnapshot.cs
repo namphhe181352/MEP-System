@@ -960,6 +960,18 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<decimal>("DiscountAmount")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("discount_amount");
+
+                    b.Property<decimal?>("DiscountPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("discount_percent");
+
                     b.Property<DateTime?>("HeldAt")
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("held_at");
@@ -991,6 +1003,13 @@ namespace MEP_Management_System.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
                         .HasColumnName("status");
+
+                    b.Property<decimal>("SubTotalAmount")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("sub_total_amount");
 
                     b.Property<decimal>("TotalAmount")
                         .HasPrecision(15, 2)
@@ -1296,6 +1315,48 @@ namespace MEP_Management_System.Migrations
                         .IsUnique();
 
                     b.ToTable("orders", (string)null);
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.OrderDiscountTier", b =>
+                {
+                    b.Property<Guid>("OrderDiscountTierId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_discount_tier_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<decimal>("DiscountPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("discount_percent");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<decimal>("MinOrderValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("min_order_value");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("OrderDiscountTierId")
+                        .HasName("order_discount_tiers_pkey");
+
+                    b.HasIndex("MinOrderValue")
+                        .IsUnique()
+                        .HasDatabaseName("ix_order_discount_tiers_min_order_value");
+
+                    b.ToTable("order_discount_tiers", (string)null);
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.OrderItem", b =>
@@ -2359,6 +2420,10 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("status");
 
+                    b.Property<Guid?>("SupplierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("supplier_id");
+
                     b.Property<string>("TicketCode")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
@@ -2368,6 +2433,11 @@ namespace MEP_Management_System.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
                         .HasColumnName("ticket_type");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)")
+                        .HasColumnName("total_amount");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
@@ -2381,6 +2451,8 @@ namespace MEP_Management_System.Migrations
                     b.HasIndex("CancelledBy");
 
                     b.HasIndex("ConfirmedBy");
+
+                    b.HasIndex("SupplierId");
 
                     b.HasIndex("UserId");
 
@@ -3854,6 +3926,12 @@ namespace MEP_Management_System.Migrations
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("stock_tickets_confirmed_by_fkey");
 
+                    b.HasOne("MEP_Management_System.Models.Supplier", "Supplier")
+                        .WithMany("StockTickets")
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("stock_tickets_supplier_id_fkey");
+
                     b.HasOne("MEP_Management_System.Models.User", "User")
                         .WithMany("StockTickets")
                         .HasForeignKey("UserId")
@@ -3865,6 +3943,8 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("CancelledByUser");
 
                     b.Navigation("ConfirmedByUser");
+
+                    b.Navigation("Supplier");
 
                     b.Navigation("User");
                 });
@@ -4262,6 +4342,8 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Products");
 
                     b.Navigation("PurchaseOrders");
+
+                    b.Navigation("StockTickets");
 
                     b.Navigation("SupplierPayments");
 
