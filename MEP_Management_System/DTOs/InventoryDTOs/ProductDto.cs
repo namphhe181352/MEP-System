@@ -168,6 +168,11 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public int ProductCount { get; set; }
     }
 
+    public class CreateTaxonomyDto
+    {
+        public string Name { get; set; } = null!;
+    }
+
     public class RenameTaxonomyDto
     {
         public string OldName { get; set; } = null!;
