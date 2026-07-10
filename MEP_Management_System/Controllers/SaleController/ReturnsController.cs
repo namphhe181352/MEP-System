@@ -70,7 +70,7 @@ public class ReturnsController : ControllerBase
             query = query.Where(r => relatedOrders.Contains(r.OrderId));
         }
         if (!string.IsNullOrEmpty(status))
-            query = query.Where(r => r.Status == status.ToUpper());
+            query = query.Where(r => r.Status.ToLower() == status.ToLower());
         if (dateFrom.HasValue)
             query = query.Where(r => r.CreatedAt >= dateFrom.Value);
         if (dateTo.HasValue)
