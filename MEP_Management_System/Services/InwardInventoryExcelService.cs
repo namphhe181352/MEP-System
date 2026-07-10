@@ -428,7 +428,9 @@ namespace MEP_Management_System.Services
 
             if (user?.DefaultBranchId is Guid defaultBranchId && defaultBranchId != Guid.Empty)
             {
+
                 return defaultBranchId;
+
             }
 
             // Lấy từ ICurrentBranch
