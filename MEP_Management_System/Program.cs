@@ -32,6 +32,7 @@ builder.Services.AddScoped<INotificationSender, LogNotificationSender>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentBranchAccessor, CurrentBranchAccessor>();
 builder.Services.AddScoped<IOrderDiscountService, OrderDiscountService>();
+builder.Services.AddScoped<IInwardInventoryExcelService, InwardInventoryExcelService>();
 
 // OData
 var odataBuilder = new ODataConventionModelBuilder();

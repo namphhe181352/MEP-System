@@ -7,6 +7,7 @@ using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,6 +16,7 @@ namespace MEP_Management_System.Controllers.InventoryController;
 [ApiController]
 [Route("api/reports")]
 [Tags("Báo cáo (Reports)")]
+[Authorize]
 public class ReportsController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
@@ -32,6 +34,43 @@ public class ReportsController : ControllerBase
         return Guid.TryParse(userClaim, out var userId) ? userId : null;
     }
 
+    private bool IsOwner() => User.IsInRole("Owner");
+
+    /// <summary>
+    /// Lấy branchId từ DefaultBranchId của user hiện tại (ưu tiên cao nhất).
+    /// Nếu không có thì lấy từ JWT token.
+    /// </summary>
+    private async Task<Guid?> ResolveBranchIdAsync(Guid? requestedBranchId = null)
+    {
+        var userId = GetUserId();
+        if (userId == null) return null;
+
+        // Ưu tiên 1: DefaultBranchId từ User (nếu có)
+        var user = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.UserId == userId.Value);
+
+        if (user?.DefaultBranchId != null && user.DefaultBranchId != Guid.Empty)
+        {
+            return user.DefaultBranchId;
+        }
+
+        // Ưu tiên 2: BranchId từ JWT token (ICurrentBranchAccessor)
+        var jwtBranchId = _currentBranch.GetBranchId();
+        if (jwtBranchId.HasValue)
+        {
+            return jwtBranchId.Value;
+        }
+
+        // Ưu tiên 3: Lấy chi nhánh active duy nhất trong hệ thống
+        var activeBranch = await _context.Branches
+            .AsNoTracking()
+            .Where(b => b.IsActive == 1)
+            .FirstOrDefaultAsync();
+
+        return activeBranch?.BranchId;
+    }
+
     #region Nhóm 1: Báo cáo ưu tiên
 
     /// <summary>
@@ -42,14 +81,14 @@ public class ReportsController : ControllerBase
     {
         try
         {
-            var branchId = request.BranchId ?? _currentBranch.GetBranchId();
+            var branchId = await ResolveBranchIdAsync(request.BranchId);
             if (branchId == null)
             {
                 return Unauthorized(new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Không tìm thấy thông tin chi nhánh trong Token.",
-                    Errors = new() { "branchId claim is required." }
+                    Message = "Không tìm thấy thông tin chi nhánh.",
+                    Errors = new() { "Không xác định được chi nhánh từ user hiện tại." }
                 });
             }
 
@@ -145,105 +184,151 @@ public class ReportsController : ControllerBase
     {
         try
         {
-            var branchId = request.BranchId ?? _currentBranch.GetBranchId();
+            var branchId = await ResolveBranchIdAsync(request.BranchId);
             if (branchId == null)
             {
                 return Unauthorized(new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Không tìm thấy thông tin chi nhánh trong Token.",
-                    Errors = new() { "branchId claim is required." }
+                    Message = "Không tìm thấy thông tin chi nhánh.",
+                    Errors = new() { "Không xác định được chi nhánh từ user hiện tại." }
                 });
             }
 
             var branch = await _context.Branches.FirstOrDefaultAsync(b => b.BranchId == branchId);
 
-            // Lấy danh sách sản phẩm trong kho
-            var products = await _context.BranchProducts
+            var fromDate = request.FromDate.Date;
+            var toDate = request.ToDate.Date.AddDays(1).AddTicks(-1);
+
+            // Lấy danh sách sản phẩm trong kho (có filter category/product)
+            var productsQuery = _context.BranchProducts
                 .Include(bp => bp.Product)
-                .Where(bp => bp.BranchId == branchId.Value)
-                .ToListAsync();
+                .Where(bp => bp.BranchId == branchId.Value);
 
             // Lọc theo nhóm sản phẩm nếu có
             if (!string.IsNullOrEmpty(request.CategoryId?.ToString()))
             {
-                products = products.Where(p => p.Product?.CategoryName == request.CategoryId.ToString()).ToList();
+                productsQuery = productsQuery.Where(bp => bp.Product != null && bp.Product.CategoryName == request.CategoryId.ToString());
             }
 
             // Lọc theo sản phẩm nếu có
             if (request.ProductId.HasValue)
             {
-                products = products.Where(p => p.ProductId == request.ProductId.Value).ToList();
+                productsQuery = productsQuery.Where(bp => bp.ProductId == request.ProductId.Value);
             }
 
-            var fromDate = request.FromDate.Date;
-            var toDate = request.ToDate.Date.AddDays(1).AddTicks(-1);
+            var products = await productsQuery.ToListAsync();
 
-            // Lấy phiếu nhập trong kỳ
-            var inwardTickets = await _context.StockTickets
-                .Include(st => st.StockTicketItems)
+            // ===== TÍNH TỒN ĐẦU KỲ ĐÚNG CÁCH =====
+            // Tồn đầu kỳ = Tổng nhập TRƯỚC kỳ - Tổng xuất TRƯỚC kỳ
+
+            // Nhập TRƯỚC fromDate (đầu kỳ)
+            var inwardBeforePeriod = await _context.StockTickets
+                .Where(st => st.BranchId == branchId.Value
+                    && st.Status == "COMPLETED"
+                    && (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST")
+                    && st.CreatedAt < fromDate)
+                .SelectMany(st => st.StockTicketItems)
+                .GroupBy(sti => sti.BranchProductId)
+                .Select(g => new { BranchProductId = g.Key, TotalInward = g.Sum(sti => sti.Discrepancy) })
+                .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalInward);
+
+            // Xuất (bán hàng) TRƯỚC fromDate
+            var salesBeforePeriod = await _context.OrderItems
+                .Include(oi => oi.Order)
+                .Where(oi => oi.Order.BranchId == branchId.Value
+                    && oi.Order.Status == "Completed"
+                    && oi.Order.CreatedAt < fromDate)
+                .GroupBy(oi => oi.BranchProductId)
+                .Select(g => new { BranchProductId = g.Key, TotalOutward = g.Sum(oi => oi.Quantity) })
+                .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalOutward);
+
+            // Xuất kho (phiếu xuất) TRƯỚC fromDate
+            var outwardTicketsBeforePeriod = await _context.StockTickets
+                .Where(st => st.BranchId == branchId.Value
+                    && st.Status == "COMPLETED"
+                    && (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER")
+                    && st.CreatedAt < fromDate)
+                .SelectMany(st => st.StockTicketItems)
+                .GroupBy(sti => sti.BranchProductId)
+                .Select(g => new { BranchProductId = g.Key, TotalOutward = g.Sum(sti => sti.Discrepancy) })
+                .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalOutward);
+
+            // ===== TÍNH NHẬP/XUẤT TRONG KỲ =====
+            // Nhập trong kỳ
+            var inwardInPeriod = await _context.StockTickets
                 .Where(st => st.BranchId == branchId.Value
                     && st.Status == "COMPLETED"
                     && (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST")
                     && st.CreatedAt >= fromDate
                     && st.CreatedAt <= toDate)
                 .SelectMany(st => st.StockTicketItems)
-                .GroupBy(sti => sti.BranchProduct.ProductId)
-                .Select(g => new { ProductId = g.Key, TotalInward = g.Sum(sti => sti.ActualQuantity) })
-                .ToDictionaryAsync(x => x.ProductId, x => x.TotalInward);
+                .GroupBy(sti => sti.BranchProductId)
+                .Select(g => new { BranchProductId = g.Key, TotalInward = g.Sum(sti => sti.Discrepancy) })
+                .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalInward);
 
-            // Lấy phiếu xuất trong kỳ (bao gồm đơn hàng bán)
-            var salesOutward = await _context.OrderItems
+            // Xuất (bán hàng) trong kỳ
+            var salesInPeriod = await _context.OrderItems
                 .Include(oi => oi.Order)
                 .Where(oi => oi.Order.BranchId == branchId.Value
                     && oi.Order.Status == "Completed"
                     && oi.Order.CreatedAt >= fromDate
                     && oi.Order.CreatedAt <= toDate)
-                .GroupBy(oi => oi.BranchProduct.ProductId)
-                .Select(g => new { ProductId = g.Key, TotalOutward = g.Sum(oi => oi.Quantity) })
-                .ToDictionaryAsync(x => x.ProductId, x => x.TotalOutward);
+                .GroupBy(oi => oi.BranchProductId)
+                .Select(g => new { BranchProductId = g.Key, TotalOutward = g.Sum(oi => oi.Quantity) })
+                .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalOutward);
 
-            var outwardFromTickets = await _context.StockTickets
-                .Include(st => st.StockTicketItems)
+            // Xuất kho trong kỳ
+            var outwardTicketsInPeriod = await _context.StockTickets
                 .Where(st => st.BranchId == branchId.Value
                     && st.Status == "COMPLETED"
                     && (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER")
                     && st.CreatedAt >= fromDate
                     && st.CreatedAt <= toDate)
                 .SelectMany(st => st.StockTicketItems)
-                .GroupBy(sti => sti.BranchProduct.ProductId)
-                .Select(g => new { ProductId = g.Key, TotalOutward = g.Sum(sti => sti.ActualQuantity) })
-                .ToDictionaryAsync(x => x.ProductId, x => x.TotalOutward);
+                .GroupBy(sti => sti.BranchProductId)
+                .Select(g => new { BranchProductId = g.Key, TotalOutward = g.Sum(sti => sti.Discrepancy) })
+                .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalOutward);
 
             var items = new List<StockMovementItemDto>();
             decimal totalOpeningValue = 0, totalInwardValue = 0, totalOutwardValue = 0, totalClosingValue = 0;
 
             foreach (var bp in products)
             {
-                var productId = bp.ProductId;
+                var branchProductId = bp.BranchProductId;
 
-                // Tồn đầu kỳ = Tồn cuối hiện tại - Nhập trong kỳ + Xuất trong kỳ
-                var inwardInPeriod = inwardTickets.GetValueOrDefault(productId, 0);
-                var outwardInPeriod = (salesOutward.GetValueOrDefault(productId, 0) + outwardFromTickets.GetValueOrDefault(productId, 0));
-                var currentStock = bp.ActualStock;
-                var openingStock = currentStock - inwardInPeriod + outwardInPeriod;
+                // Tính tồn đầu kỳ đúng cách
+                var inwardBefore = inwardBeforePeriod.GetValueOrDefault(branchProductId, 0);
+                var salesBefore = salesBeforePeriod.GetValueOrDefault(branchProductId, 0);
+                var outwardBefore = outwardTicketsBeforePeriod.GetValueOrDefault(branchProductId, 0);
+                var openingStock = inwardBefore - (salesBefore + outwardBefore);
+
+                // Tính nhập/xuất trong kỳ
+                var inwardIn = inwardInPeriod.GetValueOrDefault(branchProductId, 0);
+                var salesOut = salesInPeriod.GetValueOrDefault(branchProductId, 0);
+                var outwardOut = outwardTicketsInPeriod.GetValueOrDefault(branchProductId, 0);
+                var inwardInPeriod2 = inwardIn;
+                var outwardInPeriod2 = salesOut + outwardOut;
+
+                // Tồn cuối = Tồn đầu kỳ + Nhập trong kỳ - Xuất trong kỳ
+                var closingStock = openingStock + inwardInPeriod2 - outwardInPeriod2;
 
                 var openingValue = openingStock * bp.CostPrice;
-                var inwardValue = inwardInPeriod * bp.CostPrice;
-                var outwardValue = outwardInPeriod * bp.CostPrice;
-                var closingValue = currentStock * bp.CostPrice;
+                var inwardValue = inwardInPeriod2 * bp.CostPrice;
+                var outwardValue = outwardInPeriod2 * bp.CostPrice;
+                var closingValue = closingStock * bp.CostPrice;
 
                 items.Add(new StockMovementItemDto
                 {
-                    ProductId = productId,
+                    ProductId = bp.ProductId,
                     ProductCode = bp.Product?.ProductCode ?? "",
                     ProductName = bp.Product?.ProductName ?? "",
                     CategoryName = bp.Product?.CategoryName ?? "",
                     BaseUnit = bp.Product?.BaseUnit ?? "",
                     OpeningStock = openingStock,
-                    InwardQuantity = inwardInPeriod,
-                    OutwardQuantity = outwardInPeriod,
-                    ClosingStock = currentStock,
+                    InwardQuantity = inwardInPeriod2,
+                    OutwardQuantity = outwardInPeriod2,
+                    ClosingStock = closingStock,
                     OpeningValue = openingValue,
                     InwardValue = inwardValue,
                     OutwardValue = outwardValue,
@@ -295,14 +380,14 @@ public class ReportsController : ControllerBase
     {
         try
         {
-            var branchId = request.BranchId ?? _currentBranch.GetBranchId();
+            var branchId = await ResolveBranchIdAsync(request.BranchId);
             if (branchId == null)
             {
                 return Unauthorized(new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Không tìm thấy thông tin chi nhánh trong Token.",
-                    Errors = new() { "branchId claim is required." }
+                    Message = "Không tìm thấy thông tin chi nhánh.",
+                    Errors = new() { "Không xác định được chi nhánh từ user hiện tại." }
                 });
             }
 
@@ -496,14 +581,14 @@ public class ReportsController : ControllerBase
     {
         try
         {
-            var branchId = request.BranchId ?? _currentBranch.GetBranchId();
+            var branchId = await ResolveBranchIdAsync(request.BranchId);
             if (branchId == null)
             {
                 return Unauthorized(new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Không tìm thấy thông tin chi nhánh trong Token.",
-                    Errors = new() { "branchId claim is required." }
+                    Message = "Không tìm thấy thông tin chi nhánh.",
+                    Errors = new() { "Không xác định được chi nhánh từ user hiện tại." }
                 });
             }
 
@@ -576,14 +661,14 @@ public class ReportsController : ControllerBase
     {
         try
         {
-            var branchId = request.BranchId ?? _currentBranch.GetBranchId();
+            var branchId = await ResolveBranchIdAsync(request.BranchId);
             if (branchId == null)
             {
                 return Unauthorized(new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Không tìm thấy thông tin chi nhánh trong Token.",
-                    Errors = new() { "branchId claim is required." }
+                    Message = "Không tìm thấy thông tin chi nhánh.",
+                    Errors = new() { "Không xác định được chi nhánh từ user hiện tại." }
                 });
             }
 
@@ -703,14 +788,14 @@ public class ReportsController : ControllerBase
     {
         try
         {
-            var branchId = _currentBranch.GetBranchId();
+            var branchId = await ResolveBranchIdAsync(null);
             if (branchId == null)
             {
                 return Unauthorized(new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Không tìm thấy thông tin chi nhánh trong Token.",
-                    Errors = new() { "branchId claim is required." }
+                    Message = "Không tìm thấy thông tin chi nhánh.",
+                    Errors = new() { "Không xác định được chi nhánh từ user hiện tại." }
                 });
             }
 
