@@ -353,6 +353,16 @@ namespace MEP_Management_System.Controllers.InventoryController
                 });
             }
 
+            if (dto.InwardType == InwardInventoryType.Purchase && (!dto.SupplierId.HasValue || dto.SupplierId == Guid.Empty))
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Validation failed",
+                    Errors = new() { "SupplierId is required for Purchase inward inventory." }
+                });
+            }
+
             var itemValidationErrors = new List<string>();
             foreach (var item in dto.Items)
             {
@@ -386,6 +396,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     TicketCode = ticketCode,
                     BranchId = resolvedBranchId.Value,
                     UserId = currentUserId.Value,
+                    SupplierId = dto.InwardType == InwardInventoryType.Purchase ? dto.SupplierId : null,
                     TicketType = GetTicketTypeName(dto.InwardType),
                     Status = "PENDING", // THAY ĐỔI: Từ COMPLETED -> PENDING
                     Notes = dto.Note ?? dto.Reason,
@@ -398,6 +409,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 };
 
                 _context.StockTickets.Add(stockTicket);
+
+                decimal totalAmount = 0;
 
                 foreach (var item in dto.Items)
                 {
@@ -412,6 +425,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                             && bp.BranchId == resolvedBranchId.Value);
 
                     Guid actualBranchProductId;
+                    var effectiveCostPrice = item.CostPrice > 0 ? item.CostPrice : (branchProduct?.CostPrice ?? 0);
 
                     if (branchProduct == null)
                     {
@@ -428,7 +442,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                             BranchProductId = Guid.NewGuid(),
                             BranchId = resolvedBranchId.Value,
                             ProductId = product.ProductId,
-                            CostPrice = item.CostPrice > 0 ? item.CostPrice : 0,
+                            CostPrice = effectiveCostPrice,
                             SellPrice = 0,
                             ActualStock = 0,
                             ReservedStock = 0,
@@ -448,7 +462,13 @@ namespace MEP_Management_System.Controllers.InventoryController
                         {
                             branchProduct.CostPrice = item.CostPrice;
                         }
+                        else if (branchProduct.CostPrice <= 0)
+                        {
+                            branchProduct.CostPrice = effectiveCostPrice;
+                        }
                     }
+
+                    totalAmount += item.Quantity * effectiveCostPrice;
 
                     // Tạo ticket item với số lượng tồn hiện tại (chưa cộng thêm)
                     var ticketItem = new StockTicketItem
@@ -711,6 +731,10 @@ namespace MEP_Management_System.Controllers.InventoryController
                 stockTicket.Status = "COMPLETED";
                 stockTicket.CompletedAt = DateTime.UtcNow;
                 stockTicket.ConfirmedBy = currentUserId;
+                if (stockTicket.TicketType == "PURCHASE" && stockTicket.TotalAmount == 0)
+                {
+                    stockTicket.TotalAmount = stockTicket.StockTicketItems.Sum(item => item.Discrepancy * (item.BranchProduct?.CostPrice ?? 0));
+                }
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -933,6 +957,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 Status = stockTicket.Status ?? string.Empty,
                 BranchId = stockTicket.BranchId,
                 UserId = stockTicket.UserId,
+                SupplierId = stockTicket.SupplierId,
                 UserName = stockTicket.User?.FullName ?? stockTicket.User?.Username,
                 Reason = stockTicket.Notes,
                 Note = stockTicket.Notes,

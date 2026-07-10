@@ -81,7 +81,7 @@ public class ReportsController : ControllerBase
     {
         try
         {
-            var branchId = await ResolveBranchIdAsync(request.BranchId);
+            var branchId = await ResolveBranchIdAsync();
             if (branchId == null)
             {
                 return Unauthorized(new ApiResponse<object>
@@ -152,7 +152,7 @@ public class ReportsController : ControllerBase
                 BranchName = branch?.BranchName,
                 TotalRevenue = orders.Sum(o => o.TotalAmount),
                 TotalOrders = orders.Count,
-                AverageOrderValue = orders.Count > 0 ? orders.Sum(o => o.TotalAmount) / orders.Count : 0,
+                AverageOrderValue = orders.Count > 0 ? orders.Sum(o => o.TotalAmount) / orders.Count : 0m,
                 PaymentBreakdown = paymentBreakdown,
                 InwardTicketCount = inwardTickets,
                 OutwardTicketCount = outwardTickets
@@ -184,7 +184,7 @@ public class ReportsController : ControllerBase
     {
         try
         {
-            var branchId = await ResolveBranchIdAsync(request.BranchId);
+            var branchId = await ResolveBranchIdAsync();
             if (branchId == null)
             {
                 return Unauthorized(new ApiResponse<object>
@@ -206,9 +206,13 @@ public class ReportsController : ControllerBase
                 .Where(bp => bp.BranchId == branchId.Value);
 
             // Lọc theo nhóm sản phẩm nếu có
-            if (!string.IsNullOrEmpty(request.CategoryId?.ToString()))
+            var requestedCategoryName = request.CategoryName?.Trim();
+
+            if (!string.IsNullOrWhiteSpace(requestedCategoryName))
             {
-                productsQuery = productsQuery.Where(bp => bp.Product != null && bp.Product.CategoryName == request.CategoryId.ToString());
+                productsQuery = productsQuery.Where(bp => bp.Product != null
+                    && bp.Product.CategoryName != null
+                    && bp.Product.CategoryName.Equals(requestedCategoryName, StringComparison.OrdinalIgnoreCase));
             }
 
             // Lọc theo sản phẩm nếu có
@@ -380,7 +384,7 @@ public class ReportsController : ControllerBase
     {
         try
         {
-            var branchId = await ResolveBranchIdAsync(request.BranchId);
+            var branchId = await ResolveBranchIdAsync();
             if (branchId == null)
             {
                 return Unauthorized(new ApiResponse<object>
@@ -395,28 +399,43 @@ public class ReportsController : ControllerBase
 
             var fromDate = request.FromDate.Date;
             var toDate = request.ToDate.Date.AddDays(1).AddTicks(-1);
+            var fromDateUtc = DateTime.SpecifyKind(fromDate, DateTimeKind.Utc);
+            var toDateUtc = DateTime.SpecifyKind(toDate, DateTimeKind.Utc);
+            var grouping = string.IsNullOrWhiteSpace(request.TimeGrouping)
+                ? "day"
+                : request.TimeGrouping.Trim().ToLowerInvariant();
 
-            var orders = await _context.Orders
-                .Where(o => o.BranchId == branchId.Value
-                    && o.Status == "Completed"
-                    && o.CreatedAt >= fromDate
-                    && o.CreatedAt <= toDate)
-                .Select(o => new { o.CreatedAt, o.TotalAmount })
+            var normalizedGrouping = grouping switch
+            {
+                "day" or "daily" => "day",
+                "week" or "weekly" => "week",
+                "month" or "monthly" => "month",
+                _ => "day"
+            };
+
+            var orders = await _context.Invoices
+                .Where(i => i.Order != null
+                    && i.Order.BranchId == branchId.Value
+                    && (i.Status == "Completed" || i.Status == "COMPLETED")
+                    && i.CreatedAt.HasValue
+                    && i.CreatedAt >= fromDate
+                    && i.CreatedAt <= toDate)
+                .Select(i => new { CreatedAt = i.CreatedAt!.Value, Revenue = i.TotalAmount })
                 .ToListAsync();
 
             var chartData = new List<ReportRevenueChartPointDto>();
             var tableData = new List<RevenueTimeItemDto>();
 
-            if (request.TimeGrouping.ToLower() == "day")
+            if (normalizedGrouping == "day")
             {
                 // Group by ngày
                 var dailyData = orders
-                    .GroupBy(o => o.CreatedAt!.Value.Date)
+                    .GroupBy(o => o.CreatedAt.Date)
                     .OrderBy(g => g.Key)
                     .Select(g => new
                     {
                         Date = g.Key,
-                        Revenue = g.Sum(x => x.TotalAmount),
+                        Revenue = g.Sum(x => x.Revenue),
                         OrderCount = g.Count()
                     })
                     .ToList();
@@ -426,7 +445,7 @@ public class ReportsController : ControllerBase
                 {
                     var growth = prevRevenue.HasValue && prevRevenue.Value > 0
                         ? ((day.Revenue - prevRevenue.Value) / prevRevenue.Value) * 100
-                        : 0;
+                        : 0m;
 
                     chartData.Add(new ReportRevenueChartPointDto
                     {
@@ -441,24 +460,23 @@ public class ReportsController : ControllerBase
                         TimeKey = day.Date.ToString("dd/MM/yyyy"),
                         Revenue = day.Revenue,
                         Orders = day.OrderCount,
-                        AverageValue = day.OrderCount > 0 ? day.Revenue / day.OrderCount : 0,
+                        AverageValue = day.OrderCount > 0 ? day.Revenue / day.OrderCount : 0m,
                         GrowthPercent = growth
                     });
 
                     prevRevenue = day.Revenue;
                 }
             }
-            else if (request.TimeGrouping.ToLower() == "week")
+            else if (normalizedGrouping == "week")
             {
                 // Group by tuần
                 var weeklyData = orders
-                    .Where(o => o.CreatedAt.HasValue)
-                    .GroupBy(o => GetWeekNumber(o.CreatedAt!.Value))
+                    .GroupBy(o => GetWeekNumber(o.CreatedAt))
                     .OrderBy(g => g.Key)
                     .Select(g => new
                     {
                         Week = g.Key,
-                        Revenue = g.Sum(x => x.TotalAmount),
+                        Revenue = g.Sum(x => x.Revenue),
                         OrderCount = g.Count(),
                         StartDate = g.Min(x => x.CreatedAt)
                     })
@@ -469,7 +487,7 @@ public class ReportsController : ControllerBase
                 {
                     var growth = prevRevenue.HasValue && prevRevenue.Value > 0
                         ? ((week.Revenue - prevRevenue.Value) / prevRevenue.Value) * 100
-                        : 0;
+                        : 0m;
 
                     chartData.Add(new ReportRevenueChartPointDto
                     {
@@ -480,29 +498,28 @@ public class ReportsController : ControllerBase
 
                     tableData.Add(new RevenueTimeItemDto
                     {
-                        Date = week.StartDate ?? DateTime.MinValue,
+                        Date = week.StartDate,
                         TimeKey = $"Tuần {week.Week}",
                         Revenue = week.Revenue,
                         Orders = week.OrderCount,
-                        AverageValue = week.OrderCount > 0 ? week.Revenue / week.OrderCount : 0,
+                        AverageValue = week.OrderCount > 0 ? week.Revenue / week.OrderCount : 0m,
                         GrowthPercent = growth
                     });
 
                     prevRevenue = week.Revenue;
                 }
             }
-            else if (request.TimeGrouping.ToLower() == "month")
+            else if (normalizedGrouping == "month")
             {
                 // Group by tháng
                 var monthlyData = orders
-                    .Where(o => o.CreatedAt.HasValue)
-                    .GroupBy(o => new { o.CreatedAt!.Value.Year, o.CreatedAt!.Value.Month })
+                    .GroupBy(o => new { o.CreatedAt.Year, o.CreatedAt.Month })
                     .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
                     .Select(g => new
                     {
                         Year = g.Key.Year,
                         Month = g.Key.Month,
-                        Revenue = g.Sum(x => x.TotalAmount),
+                        Revenue = g.Sum(x => x.Revenue),
                         OrderCount = g.Count(),
                         StartDate = g.Min(x => x.CreatedAt)
                     })
@@ -514,7 +531,7 @@ public class ReportsController : ControllerBase
                     var monthName = new DateTime(month.Year, month.Month, 1).ToString("MMMM", new System.Globalization.CultureInfo("vi-VN"));
                     var growth = prevRevenue.HasValue && prevRevenue.Value > 0
                         ? ((month.Revenue - prevRevenue.Value) / prevRevenue.Value) * 100
-                        : 0;
+                        : 0m;
 
                     chartData.Add(new ReportRevenueChartPointDto
                     {
@@ -525,11 +542,11 @@ public class ReportsController : ControllerBase
 
                     tableData.Add(new RevenueTimeItemDto
                     {
-                        Date = month.StartDate ?? DateTime.MinValue,
+                        Date = month.StartDate,
                         TimeKey = $"{monthName} {month.Year}",
                         Revenue = month.Revenue,
                         Orders = month.OrderCount,
-                        AverageValue = month.OrderCount > 0 ? month.Revenue / month.OrderCount : 0,
+                        AverageValue = month.OrderCount > 0 ? month.Revenue / month.OrderCount : 0m,
                         GrowthPercent = growth
                     });
 
@@ -546,9 +563,9 @@ public class ReportsController : ControllerBase
                 TimeGrouping = request.TimeGrouping,
                 ChartData = chartData,
                 TableData = tableData,
-                TotalRevenue = orders.Sum(o => o.TotalAmount),
+                TotalRevenue = orders.Sum(o => o.Revenue),
                 TotalOrders = orders.Count,
-                AverageOrderValue = orders.Count > 0 ? orders.Sum(o => o.TotalAmount) / orders.Count : 0
+                AverageOrderValue = orders.Count > 0 ? orders.Sum(o => o.Revenue) / orders.Count : 0m
             };
 
             return Ok(new ApiResponse<RevenueByTimeReportDto>
@@ -581,7 +598,7 @@ public class ReportsController : ControllerBase
     {
         try
         {
-            var branchId = await ResolveBranchIdAsync(request.BranchId);
+            var branchId = await ResolveBranchIdAsync();
             if (branchId == null)
             {
                 return Unauthorized(new ApiResponse<object>
@@ -623,8 +640,8 @@ public class ReportsController : ControllerBase
                     CategoryName = p.CategoryName ?? "",
                     CurrentStock = p.ActualStock,
                     MinimumStock = p.MinimumStock ?? 0,
-                    Shortage = p.ActualStock - (p.MinimumStock ?? 0),
-                    Severity = GetSeverity(p.ActualStock, p.MinimumStock ?? 0)
+                    Shortage = p.ActualStock - (p.MinimumStock ?? 0m),
+                    Severity = GetSeverity(p.ActualStock, p.MinimumStock ?? 0m)
                 })
                 .OrderBy(x => x.Shortage) // Ưu tiên thiếu nhiều nhất
                 .ToList();
@@ -661,7 +678,7 @@ public class ReportsController : ControllerBase
     {
         try
         {
-            var branchId = await ResolveBranchIdAsync(request.BranchId);
+            var branchId = await ResolveBranchIdAsync();
             if (branchId == null)
             {
                 return Unauthorized(new ApiResponse<object>
@@ -677,35 +694,47 @@ public class ReportsController : ControllerBase
             var fromDate = request.FromDate.Date;
             var toDate = request.ToDate.Date.AddDays(1).AddTicks(-1);
 
-            // Lấy chi tiết đơn hàng với thông tin BranchProduct để lấy CostPrice
-            var orderItems = await _context.OrderItems
-                .Include(oi => oi.Order)
-                .Include(oi => oi.BranchProduct)
+            // Lấy chi tiết từ InvoiceItems (dữ liệu bán hàng thực tế)
+            var invoiceItems = await _context.InvoiceItems
+                .Include(ii => ii.Invoice)
+                .Include(ii => ii.BranchProduct)
                     .ThenInclude(bp => bp.Product)
-                .Where(oi => oi.Order.BranchId == branchId.Value
-                    && oi.Order.Status == "Completed"
-                    && oi.Order.CreatedAt >= fromDate
-                    && oi.Order.CreatedAt <= toDate)
+                .Where(ii => ii.Invoice != null
+                    && ii.Invoice.Order != null
+                    && ii.Invoice.Order.BranchId == branchId.Value
+                    && (ii.Invoice.Status == "Completed" || ii.Invoice.Status == "COMPLETED")
+                    && ii.Invoice.CreatedAt.HasValue
+                    && ii.Invoice.CreatedAt.Value >= fromDate
+                    && ii.Invoice.CreatedAt.Value <= toDate)
                 .ToListAsync();
 
+            // Debug
+            Console.WriteLine($"[ProductProfitReport] branchId={branchId.Value}, fromDate={fromDate}, toDate={toDate}, invoiceItems.Count={invoiceItems.Count}");
+
             // Lọc theo nhóm sản phẩm nếu có
-            var filteredItems = orderItems;
-            if (!string.IsNullOrEmpty(request.CategoryId?.ToString()))
+            var filteredItems = invoiceItems;
+            var requestedCategoryName = request.CategoryName?.Trim();
+
+            if (!string.IsNullOrWhiteSpace(requestedCategoryName))
             {
-                filteredItems = orderItems
-                    .Where(oi => oi.BranchProduct.Product?.CategoryName == request.CategoryId.ToString())
+                var normalizedCategory = requestedCategoryName.Trim().ToLowerInvariant();
+                filteredItems = invoiceItems
+                    .Where(ii => ii.BranchProduct != null
+                        && ii.BranchProduct.Product != null
+                        && !string.IsNullOrWhiteSpace(ii.BranchProduct.Product.CategoryName)
+                        && ii.BranchProduct.Product.CategoryName.Trim().ToLowerInvariant() == normalizedCategory)
                     .ToList();
             }
 
             // Group by ProductId
             var productData = filteredItems
-                .GroupBy(oi => new
+                .GroupBy(ii => new
                 {
-                    oi.BranchProduct.ProductId,
-                    oi.BranchProduct.Product.ProductCode,
-                    oi.BranchProduct.Product.ProductName,
-                    oi.BranchProduct.Product.CategoryName,
-                    oi.BranchProduct.CostPrice
+                    ii.BranchProduct.ProductId,
+                    ii.BranchProduct.Product.ProductCode,
+                    ii.BranchProduct.Product.ProductName,
+                    ii.BranchProduct.Product.CategoryName,
+                    ii.BranchProduct.CostPrice
                 })
                 .Select(g => new
                 {
@@ -713,9 +742,9 @@ public class ReportsController : ControllerBase
                     g.Key.ProductCode,
                     g.Key.ProductName,
                     g.Key.CategoryName,
-                    QuantitySold = g.Sum(oi => oi.Quantity),
-                    Revenue = g.Sum(oi => oi.Quantity * oi.SellPrice),
-                    Cost = g.Sum(oi => oi.Quantity * g.Key.CostPrice)
+                    QuantitySold = g.Sum(ii => ii.Quantity),
+                    Revenue = g.Sum(ii => ii.Quantity * ii.SellPrice),
+                    Cost = g.Sum(ii => ii.Quantity * g.Key.CostPrice)
                 })
                 .ToList();
 
@@ -730,12 +759,13 @@ public class ReportsController : ControllerBase
                     Revenue = p.Revenue,
                     Cost = p.Cost,
                     Profit = p.Revenue - p.Cost,
-                    ProfitMargin = p.Revenue > 0 ? ((p.Revenue - p.Cost) / p.Revenue) * 100 : 0
+                    ProfitMargin = p.Revenue > 0 ? ((p.Revenue - p.Cost) / p.Revenue) * 100m : 0m
                 })
                 .ToList();
 
             // Sort theo yêu cầu
-            items = request.SortBy.ToLower() switch
+            var sortBy = string.IsNullOrWhiteSpace(request.SortBy) ? "revenue" : request.SortBy.Trim().ToLowerInvariant();
+            items = sortBy switch
             {
                 "profit" => items.OrderByDescending(x => x.Profit).ToList(),
                 "quantity" => items.OrderByDescending(x => x.QuantitySold).ToList(),
@@ -743,10 +773,12 @@ public class ReportsController : ControllerBase
             };
 
             // Phân trang
+            var pageNumber = request.PageNumber <= 0 ? 1 : request.PageNumber;
+            var pageSize = request.PageSize <= 0 ? 50 : request.PageSize;
             var totalCount = items.Count;
             var pagedItems = items
-                .Skip((request.PageNumber - 1) * request.PageSize)
-                .Take(request.PageSize)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
                 .ToList();
 
             return Ok(new ApiResponse<ProductProfitReportDto>
@@ -759,12 +791,12 @@ public class ReportsController : ControllerBase
                     ToDate = request.ToDate,
                     BranchId = branchId.Value,
                     BranchName = branch?.BranchName,
-                    SortBy = request.SortBy,
+                    SortBy = sortBy,
                     Items = pagedItems,
                     TotalRevenue = items.Sum(x => x.Revenue),
                     TotalCost = items.Sum(x => x.Cost),
                     TotalProfit = items.Sum(x => x.Profit),
-                    AverageProfitMargin = items.Count > 0 ? items.Average(x => x.ProfitMargin) : 0,
+                    AverageProfitMargin = items.Count > 0 ? items.Average(x => x.ProfitMargin) : 0m,
                     TotalQuantitySold = (int)items.Sum(x => x.QuantitySold)
                 }
             });
@@ -799,10 +831,7 @@ public class ReportsController : ControllerBase
                 });
             }
 
-            // Lấy thông tin NCC
-            var supplier = await _context.Suppliers
-                .FirstOrDefaultAsync(s => s.SupplierId == request.SupplierId);
-
+            var supplier = await _context.Suppliers.FirstOrDefaultAsync(s => s.SupplierId == request.SupplierId);
             if (supplier == null)
             {
                 return NotFound(new ApiResponse<object>
@@ -813,56 +842,172 @@ public class ReportsController : ControllerBase
                 });
             }
 
-            // Lấy danh sách PurchaseOrder của NCC này (chưa thanh toán = debt)
-            var purchaseQuery = _context.PurchaseOrders
-                .Where(po => po.SupplierId == request.SupplierId);
+            // Lay du lieu purchase orders
+            var purchaseOrders = await _context.PurchaseOrders
+                .Where(po => po.SupplierId == request.SupplierId)
+                .Select(po => new { po.PurchaseOrderId, po.OrderCode, po.TotalAmount, po.Status, po.CreatedAt })
+                .ToListAsync();
 
-            if (request.PurchaseFromDate.HasValue)
-                purchaseQuery = purchaseQuery.Where(po => po.CreatedAt >= request.PurchaseFromDate.Value);
-            if (request.PurchaseToDate.HasValue)
-                purchaseQuery = purchaseQuery.Where(po => po.CreatedAt <= request.PurchaseToDate.Value.AddDays(1).AddTicks(-1));
+            // Lay du lieu stock tickets
+            var stockTickets = await _context.StockTickets
+                .Where(st => st.SupplierId == request.SupplierId && st.TicketType == "PURCHASE")
+                .Select(st => new { st.StockTicketId, st.TicketCode, TotalAmount = (decimal?)st.TotalAmount, st.Status, CreatedAt = (DateTime?)(st.CompletedAt ?? st.CreatedAt) })
+                .ToListAsync();
 
-            var purchaseOrders = await purchaseQuery
+            // Tinh tong no (PO APPROVED/PENDING + StockTicket COMPLETED)
+            var poDebt = purchaseOrders.Where(po => po.Status == "APPROVED" || po.Status == "PENDING").Sum(po => po.TotalAmount ?? 0m);
+            var stDebt = stockTickets.Where(st => st.Status == "COMPLETED").Sum(st => st.TotalAmount ?? 0m);
+            var totalDebt = poDebt + stDebt;
+
+            // Tong mua hang
+            var totalPurchaseAllTime = purchaseOrders.Sum(po => po.TotalAmount ?? 0m) + stockTickets.Sum(st => st.TotalAmount ?? 0m);
+
+            // So don hang cho (PO PENDING/APPROVED + StockTicket PENDING)
+            var poPending = purchaseOrders.Count(po => po.Status == "PENDING" || po.Status == "APPROVED");
+            var stPending = stockTickets.Count(st => st.Status == "PENDING");
+            int pendingOrders = poPending + stPending;
+
+            // Tat ca thanh toan
+            var allPayments = await _context.SupplierPayments
+                .Where(sp => sp.SupplierId == request.SupplierId)
+                .ToListAsync();
+            var totalPaidAllTime = allPayments.Sum(sp => sp.Amount);
+
+            // Tinh cong no theo thang
+            var monthlyDebts = new List<MonthlyDebtInfoDto>();
+            var culture = new System.Globalization.CultureInfo("vi-VN");
+
+            if (request.Year.HasValue)
+            {
+                var year = request.Year.Value;
+                var month = request.Month;
+
+                // Loc purchase orders theo nam/thang
+                var filteredPO = purchaseOrders
+                    .Where(po => po.CreatedAt.HasValue && po.CreatedAt.Value.Year == year)
+                    .ToList();
+                if (month.HasValue)
+                    filteredPO = filteredPO.Where(po => po.CreatedAt.Value.Month == month.Value).ToList();
+
+                // Loc stock tickets theo nam/thang
+                var filteredST = stockTickets
+                    .Where(st => st.CreatedAt.HasValue && st.CreatedAt.Value.Year == year)
+                    .ToList();
+                if (month.HasValue)
+                    filteredST = filteredST.Where(st => st.CreatedAt.Value.Month == month.Value).ToList();
+
+                // Gop lai
+                var allPurchases = filteredPO.Select(po => new { TotalAmount = po.TotalAmount ?? 0m, CreatedAt = po.CreatedAt })
+                    .Concat(filteredST.Select(st => new { TotalAmount = st.TotalAmount ?? 0m, CreatedAt = st.CreatedAt }))
+                    .Where(x => x.CreatedAt.HasValue)
+                    .ToList();
+
+                // Group theo thang
+                var purchasesByMonth = allPurchases
+                    .Where(x => x.CreatedAt.HasValue)
+                    .GroupBy(x => new { Year = x.CreatedAt!.Value.Year, Month = x.CreatedAt.Value.Month })
+                    .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
+                    .ToList();
+
+                foreach (var group in purchasesByMonth)
+                {
+                    var monthName = new DateTime(group.Key.Year, group.Key.Month, 1).ToString("MMMM yyyy", culture);
+                    var totalPurchase = group.Sum(x => x.TotalAmount);
+
+                    var paymentsInMonth = allPayments
+                        .Where(sp => sp.CreatedAt.Year == group.Key.Year && sp.CreatedAt.Month == group.Key.Month)
+                        .Sum(sp => sp.Amount);
+
+                    monthlyDebts.Add(new MonthlyDebtInfoDto
+                    {
+                        Year = group.Key.Year,
+                        Month = group.Key.Month,
+                        MonthName = monthName,
+                        TotalPurchase = totalPurchase,
+                        TotalPaid = paymentsInMonth,
+                        RemainingDebt = totalPurchase - paymentsInMonth,
+                        OrderCount = group.Count()
+                    });
+                }
+            }
+
+            // Ngay loc
+            DateTime? fromDate = null;
+            DateTime? toDate = null;
+            if (request.Year.HasValue)
+            {
+                if (request.Month.HasValue)
+                {
+                    fromDate = new DateTime(request.Year.Value, request.Month.Value, 1);
+                    toDate = fromDate.Value.AddMonths(1).AddTicks(-1);
+                }
+                else
+                {
+                    fromDate = new DateTime(request.Year.Value, 1, 1);
+                    toDate = new DateTime(request.Year.Value, 12, 31, 23, 59, 59);
+                }
+            }
+
+            // Lay lich su mua hang
+            var poHistory = await _context.PurchaseOrders
+                .Where(po => po.SupplierId == request.SupplierId)
+                .Where(po => !fromDate.HasValue || po.CreatedAt >= fromDate.Value)
+                .Where(po => !toDate.HasValue || po.CreatedAt <= toDate.Value)
                 .OrderByDescending(po => po.CreatedAt)
-                .Select(po => new
-                {
-                    po.PurchaseOrderId,
-                    po.OrderCode,
-                    po.CreatedAt,
-                    po.TotalAmount,
-                    po.Status
-                })
+                .Select(po => new { Id = po.PurchaseOrderId, Code = po.OrderCode, CreatedAt = po.CreatedAt, TotalAmount = po.TotalAmount, Status = po.Status })
                 .ToListAsync();
 
-            // Tính công nợ
-            var totalDebt = purchaseOrders
-                .Where(po => po.Status == "APPROVED" || po.Status == "PENDING")
-                .Sum(po => po.TotalAmount ?? 0);
+            var stHistory = await _context.StockTickets
+                .Where(st => st.SupplierId == request.SupplierId && st.TicketType == "PURCHASE")
+                .Where(st => !fromDate.HasValue || (st.CompletedAt ?? st.CreatedAt) >= fromDate.Value)
+                .Where(st => !toDate.HasValue || (st.CompletedAt ?? st.CreatedAt) <= toDate.Value)
+                .OrderByDescending(st => st.CompletedAt ?? st.CreatedAt)
+                .Select(st => new { Id = st.StockTicketId, Code = st.TicketCode, CreatedAt = (DateTime?)(st.CompletedAt ?? st.CreatedAt), TotalAmount = (decimal?)st.TotalAmount, Status = st.Status })
+                .ToListAsync();
 
-            var totalPurchaseAmount = purchaseOrders.Sum(po => po.TotalAmount ?? 0);
-            var pendingOrders = purchaseOrders.Count(po => po.Status == "PENDING" || po.Status == "APPROVED");
+            var purchaseHistory = poHistory.Select(po => new PurchaseHistoryItemDto
+            {
+                PurchaseOrderId = po.Id,
+                OrderCode = po.Code ?? "",
+                CreatedAt = po.CreatedAt ?? DateTime.MinValue,
+                TotalAmount = po.TotalAmount ?? 0m,
+                Status = po.Status ?? ""
+            }).ToList();
 
-            // Lấy thanh toán cho NCC
-            var paymentQuery = _context.SupplierPayments
-                .Where(sp => sp.SupplierId == request.SupplierId);
+            var stHistoryDto = stHistory.Select(st => new PurchaseHistoryItemDto
+            {
+                PurchaseOrderId = st.Id,
+                OrderCode = st.Code ?? "",
+                CreatedAt = st.CreatedAt ?? DateTime.MinValue,
+                TotalAmount = st.TotalAmount ?? 0m,
+                Status = st.Status ?? ""
+            }).ToList();
 
-            if (request.PaymentFromDate.HasValue)
-                paymentQuery = paymentQuery.Where(sp => sp.CreatedAt >= request.PaymentFromDate.Value);
-            if (request.PaymentToDate.HasValue)
-                paymentQuery = paymentQuery.Where(sp => sp.CreatedAt <= request.PaymentToDate.Value.AddDays(1).AddTicks(-1));
+            purchaseHistory.AddRange(stHistoryDto);
+            purchaseHistory = purchaseHistory.OrderByDescending(x => x.CreatedAt).ToList();
 
-            var payments = await paymentQuery
+            var totalPurchaseAmount = purchaseHistory.Sum(x => x.TotalAmount);
+            int totalPurchaseOrders = purchaseHistory.Count;
+
+            // Lay lich su thanh toan
+            var paymentHistory = await _context.SupplierPayments
+                .Where(sp => sp.SupplierId == request.SupplierId)
+                .Where(sp => !fromDate.HasValue || sp.CreatedAt >= fromDate.Value)
+                .Where(sp => !toDate.HasValue || sp.CreatedAt <= toDate.Value)
                 .OrderByDescending(sp => sp.CreatedAt)
-                .Select(sp => new
-                {
-                    sp.PaymentId,
-                    sp.CreatedAt,
-                    sp.Amount,
-                    sp.Note
-                })
+                .Select(sp => new { sp.PaymentId, sp.CreatedAt, sp.Amount, sp.Note })
                 .ToListAsync();
 
-            var totalPaid = payments.Sum(p => p.Amount);
+            var paymentHistoryDto = paymentHistory.Select(p => new SupplierPaymentHistoryItemDto
+            {
+                PaymentId = p.PaymentId,
+                CreatedAt = p.CreatedAt,
+                Amount = p.Amount,
+                Note = p.Note
+            }).ToList();
+
+            var totalPaid = paymentHistoryDto.Sum(x => x.Amount);
+            int totalPayments = paymentHistoryDto.Count;
 
             var result = new SupplierDetailReportDto
             {
@@ -874,28 +1019,16 @@ public class ReportsController : ControllerBase
                 DebtInfo = new SupplierDebtInfoDto
                 {
                     TotalDebt = totalDebt,
-                    TotalPaid = totalPaid,
-                    RemainingDebt = totalDebt - totalPaid,
+                    TotalPaid = totalPaidAllTime,
+                    RemainingDebt = totalDebt - totalPaidAllTime,
                     PendingOrders = pendingOrders
                 },
-                PurchaseHistory = purchaseOrders.Select(po => new PurchaseHistoryItemDto
-                {
-                    PurchaseOrderId = po.PurchaseOrderId,
-                    OrderCode = po.OrderCode ?? "",
-                    CreatedAt = po.CreatedAt ?? DateTime.MinValue,
-                    TotalAmount = po.TotalAmount ?? 0,
-                    Status = po.Status ?? ""
-                }).ToList(),
-                TotalPurchaseOrders = purchaseOrders.Count,
+                MonthlyDebts = monthlyDebts,
+                PurchaseHistory = purchaseHistory,
+                TotalPurchaseOrders = totalPurchaseOrders,
                 TotalPurchaseAmount = totalPurchaseAmount,
-                PaymentHistory = payments.Select(p => new SupplierPaymentHistoryItemDto
-                {
-                    PaymentId = p.PaymentId,
-                    CreatedAt = p.CreatedAt,
-                    Amount = p.Amount,
-                    Note = p.Note
-                }).ToList(),
-                TotalPayments = payments.Count,
+                PaymentHistory = paymentHistoryDto,
+                TotalPayments = totalPayments,
                 TotalPaidAmount = totalPaid
             };
 

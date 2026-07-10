@@ -41,6 +41,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                 // 🌟 TỐI ƯU 1: Bỏ .AsQueryable() vì truy vấn được thực thi ngay sau block filter này
                 var supplierQuery = _context.Suppliers
                     .Include(s => s.PurchaseOrders)
+                    .Include(s => s.StockTickets.Where(t => t.TicketType == "PURCHASE" && t.Status == "COMPLETED"))
                     // Tích hợp thêm dữ liệu phiếu chi thực tế để tính toán công nợ chính xác
                     .Include(s => s.SupplierPayments.Where(p => p.IsDeleted == 0))
                     .Where(s => s.Status == 1);
@@ -72,17 +73,27 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         .Where(po => po.CreatedAt < currentMonth && (po.Status == "APPROVED" || po.Status == "COMPLETED"))
                         .Sum(po => po.TotalAmount ?? 0);
 
+                    decimal openingStockTicketDebt = s.StockTickets
+                        .Where(t => t.CompletedAt.HasValue && t.CompletedAt.Value < currentMonth)
+                        .Sum(t => t.TotalAmount);
+
                     decimal openingPaid = s.SupplierPayments
                         .Where(p => p.PaymentDate < currentMonth)
                         .Sum(p => p.Amount);
 
-                    decimal openingDebt = openingPurchased - openingPaid;
+                    decimal openingDebt = openingPurchased + openingStockTicketDebt - openingPaid;
 
                     // 2. Phát sinh mua trong kỳ (Tháng hiện tại)
                     decimal purchasedInPeriod = s.PurchaseOrders
                         .Where(po => po.CreatedAt >= currentMonth
                                   && (po.Status == "COMPLETED" || po.Status == "APPROVED"))
                         .Sum(po => po.TotalAmount ?? 0);
+
+                    decimal stockTicketPurchasedInPeriod = s.StockTickets
+                        .Where(t => t.CompletedAt.HasValue && t.CompletedAt.Value >= currentMonth)
+                        .Sum(t => t.TotalAmount);
+
+                    purchasedInPeriod += stockTicketPurchasedInPeriod;
 
                     // 3. Thực tế đã trả trong kỳ (Tháng hiện tại - lấy từ bảng SupplierPayment thay vì giả lập PO)
                     decimal paidInPeriod = s.SupplierPayments
