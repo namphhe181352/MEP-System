@@ -99,6 +99,7 @@ public class ReturnsController : ControllerBase
         var branchId = GetBranchId();
         var r = await _context.ReturnOrders
             .Include(r => r.Order).ThenInclude(o => o!.Branch)
+            .Include(r => r.Order).ThenInclude(o => o!.Invoices)
             .Include(r => r.User)
             .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product)
             .FirstOrDefaultAsync(r => r.ReturnOrderId == id && r.Order!.BranchId == branchId);
