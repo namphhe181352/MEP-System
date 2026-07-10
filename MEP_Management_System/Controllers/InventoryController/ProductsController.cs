@@ -1134,6 +1134,103 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         /// <summary>
+        /// POST /api/products/categories - Thêm mới nhóm hàng (category)
+        /// </summary>
+        [HttpPost("categories")]
+        [HasPermission(PermissionConstants.PRODUCT_CREATE)]
+        public async Task<IActionResult> CreateCategory([FromBody] CreateTaxonomyDto dto)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(dto.Name))
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Tên nhóm hàng là bắt buộc."
+                    });
+                }
+
+                var trimmedName = dto.Name.Trim();
+                var exists = await _context.Products.AnyAsync(p => p.CategoryName != null && p.CategoryName.ToLower() == trimmedName.ToLower());
+                if (exists)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = $"Nhóm hàng '{trimmedName}' đã tồn tại."
+                    });
+                }
+
+                // Không cần tạo record trong bảng riêng, chỉ cần trả về thông báo thành công
+                // Category sẽ được tạo khi có sản phẩm đầu tiên sử dụng tên này
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = $"Nhóm hàng '{trimmedName}' đã được thêm.",
+                    Data = new { Name = trimmedName }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi thêm nhóm hàng",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
+        /// POST /api/products/brands - Thêm mới thương hiệu (brand)
+        /// </summary>
+        [HttpPost("brands")]
+        [HasPermission(PermissionConstants.PRODUCT_CREATE)]
+        public async Task<IActionResult> CreateBrand([FromBody] CreateTaxonomyDto dto)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(dto.Name))
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Tên thương hiệu là bắt buộc."
+                    });
+                }
+
+                var trimmedName = dto.Name.Trim();
+                var exists = await _context.Products.AnyAsync(p => p.BrandName != null && p.BrandName.ToLower() == trimmedName.ToLower());
+                if (exists)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = $"Thương hiệu '{trimmedName}' đã tồn tại."
+                    });
+                }
+
+                // Brand sẽ được tạo khi có sản phẩm đầu tiên sử dụng tên này
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = $"Thương hiệu '{trimmedName}' đã được thêm.",
+                    Data = new { Name = trimmedName }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi thêm thương hiệu",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
         /// PUT /api/products/categories/rename - Đổi tên nhóm hàng (bulk update mọi SP đang dùng tên cũ)
         /// </summary>
         [HttpPut("categories/rename")]
