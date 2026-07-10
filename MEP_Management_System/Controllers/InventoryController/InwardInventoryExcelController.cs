@@ -7,8 +7,10 @@ using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Services;
 using MEP_Management_System.Authorization;
+using MEP_Management_System.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using ClosedXML.Excel;
 
 namespace MEP_Management_System.Controllers.InventoryController
@@ -279,7 +281,7 @@ namespace MEP_Management_System.Controllers.InventoryController
 
             if (user?.DefaultBranchId != null && user.DefaultBranchId != Guid.Empty)
             {
-                return user.DefaultBranchId;
+                return user.DefaultBranchId.Value;
             }
 
             // Ưu tiên 3: BranchId từ JWT token

@@ -409,7 +409,7 @@ namespace MEP_Management_System.Services
                     BranchName = branch?.BranchName,
                     SuccessRowCount = preview.ValidRows.Count,
                     TotalValue = totalValue,
-                    CreatedAt = stockTicket.CreatedAt
+                    CreatedAt = stockTicket.CreatedAt ?? DateTime.UtcNow
                 };
             }
             catch (Exception ex)
@@ -428,7 +428,7 @@ namespace MEP_Management_System.Services
 
             if (user?.DefaultBranchId != null && user.DefaultBranchId != Guid.Empty)
             {
-                return user.DefaultBranchId;
+                return user.DefaultBranchId.Value;
             }
 
             // Lấy từ ICurrentBranch
