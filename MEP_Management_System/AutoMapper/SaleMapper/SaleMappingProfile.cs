@@ -83,6 +83,9 @@ public class SaleMappingProfile : Profile
                 s.Order != null && s.Order.Invoices != null && s.Order.Invoices.Any()
                     ? s.Order.Invoices.First().InvoiceCode
                     : null))
+            .ForMember(d => d.CustomerId, o => o.MapFrom(s => s.Order != null ? s.Order.CustomerId : (Guid?)null))
+            .ForMember(d => d.CustomerName, o => o.MapFrom(s =>
+                s.Order != null && s.Order.Customer != null ? s.Order.Customer.CustomerName : null))
             .ForMember(d => d.StaffName, o => o.MapFrom(s => s.User != null ? s.User.FullName : null))
             .ForMember(d => d.Items, o => o.MapFrom(s => s.ReturnItems));
 
