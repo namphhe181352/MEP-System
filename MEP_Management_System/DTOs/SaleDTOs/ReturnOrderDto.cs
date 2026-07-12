@@ -9,6 +9,8 @@ public class ReturnOrderDto
     public string? ReturnCode { get; set; }
     public Guid OrderId { get; set; }
     public string? InvoiceCode { get; set; }
+    public Guid? CustomerId { get; set; }
+    public string? CustomerName { get; set; }
     public Guid UserId { get; set; }
     public string? StaffName { get; set; }
     public decimal RefundAmount { get; set; }
