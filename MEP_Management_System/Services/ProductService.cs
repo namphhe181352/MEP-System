@@ -138,5 +138,86 @@ namespace MEP_Management_System.Services
 
             return dto;
         }
+
+        public async Task<ProductUpsertDto?> GetProductByCodeAsync(string productCode, ClaimsPrincipal currentUser)
+        {
+            var branchId = await ResolveBranchIdAsync(currentUser);
+            if (!branchId.HasValue) return null;
+
+            var product = await _context.Products
+                .FirstOrDefaultAsync(p => p.ProductCode == productCode);
+
+            if (product == null) return null;
+
+            var branchProduct = await _context.BranchProducts
+                .Where(bp => bp.BranchId == branchId.Value && bp.ProductId == product.ProductId)
+                .FirstOrDefaultAsync();
+
+            var dto = new ProductUpsertDto
+            {
+                ProductId = product.ProductId,
+                ProductName = product.ProductName,
+                ProductCode = product.ProductCode,
+                Barcode = product.Barcode,
+                Unit = product.BaseUnit,
+                BrandName = product.BrandName,
+                CategoryName = product.CategoryName,
+                SupplierId = product.SupplierId,
+                ItemType = product.ItemType,
+                ActualStock = branchProduct?.ActualStock ?? 0,
+                ReservedStock = branchProduct?.ReservedStock ?? 0,
+                AvailableStock = branchProduct?.AvailableStock ?? 0,
+                MinimumStock = branchProduct?.MinimumStock,
+                MaximumStock = branchProduct?.MaximumStock
+            };
+
+            return dto;
+        }
+
+        public async Task<List<ProductUpsertDto>> SearchProductsAsync(string keyword, ClaimsPrincipal currentUser)
+        {
+            var branchId = await ResolveBranchIdAsync(currentUser);
+            if (!branchId.HasValue) return new List<ProductUpsertDto>();
+
+            var lowerKeyword = keyword.ToLower();
+
+            var products = await _context.Products
+                .Where(p => (p.ProductName != null && p.ProductName.ToLower().Contains(lowerKeyword)) ||
+                           (p.ProductCode != null && p.ProductCode.ToLower().Contains(lowerKeyword)) ||
+                           (p.BrandName != null && p.BrandName.ToLower().Contains(lowerKeyword)) ||
+                           (p.CategoryName != null && p.CategoryName.ToLower().Contains(lowerKeyword)))
+                .Take(20)
+                .ToListAsync();
+
+            var productIds = products.Select(p => p.ProductId).ToList();
+
+            var branchProducts = await _context.BranchProducts
+                .Where(bp => bp.BranchId == branchId.Value && productIds.Contains(bp.ProductId))
+                .ToListAsync();
+
+            var result = products.Select(p =>
+            {
+                var bp = branchProducts.FirstOrDefault(b => b.ProductId == p.ProductId);
+                return new ProductUpsertDto
+                {
+                    ProductId = p.ProductId,
+                    ProductName = p.ProductName ?? "",
+                    ProductCode = p.ProductCode ?? "",
+                    Barcode = p.Barcode,
+                    Unit = p.BaseUnit ?? "",
+                    BrandName = p.BrandName,
+                    CategoryName = p.CategoryName,
+                    SupplierId = p.SupplierId,
+                    ItemType = p.ItemType,
+                    ActualStock = bp?.ActualStock ?? 0,
+                    ReservedStock = bp?.ReservedStock ?? 0,
+                    AvailableStock = bp?.AvailableStock ?? 0,
+                    MinimumStock = bp?.MinimumStock,
+                    MaximumStock = bp?.MaximumStock
+                };
+            }).ToList();
+
+            return result;
+        }
     }
 }
