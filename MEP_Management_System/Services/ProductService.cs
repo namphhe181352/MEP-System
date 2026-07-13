@@ -3,6 +3,7 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using MEP_Management_System.DTOs.InventoryDTOs;
+using MEP_Management_System.DTOs.SaleDTOs;
 using MEP_Management_System.Models;
 using Microsoft.EntityFrameworkCore;
 using AutoMapper;
@@ -93,14 +94,14 @@ namespace MEP_Management_System.Services
                 ImageUrl = bp.Product?.MediaResources?.Where(m => m.IsPrimary == 1).Select(m => m.MediaUrl).FirstOrDefault(),
                 ConversionUnits = bp.Product?.ProductConversionUnits
                     ?.Where(u => u.DirectSale == 1 || u.DirectSale == null)
-                    .Select(u => new ProductConversionUnitDto
+                    .Select(u => new ConversionUnitDto
                     {
-                        Id = u.ConversionId,
-                        Name = u.UnitName,
-                        Rate = u.ConvertValue,
+                        ConversionId = u.ConversionId,
+                        UnitName = u.UnitName,
+                        ConvertValue = u.ConvertValue,
                         Price = u.Price,
                         DirectSale = u.DirectSale == 1
-                    }).ToList() ?? new System.Collections.Generic.List<ProductConversionUnitDto>()
+                    }).ToList() ?? new System.Collections.Generic.List<ConversionUnitDto>()
             };
 
             return dto;

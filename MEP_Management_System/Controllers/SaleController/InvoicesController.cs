@@ -228,21 +228,6 @@ public class InvoicesController : ControllerBase
         var dto = await _invoiceService.GetInvoiceByIdAsync(invoiceId, User);
 
         if (dto == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Invoice not found"));
-        if (invoice.InvoiceItems != null && invoice.InvoiceItems.Any())
-        {
-            var subtotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
-            dto.Subtotal = subtotal;
-            dto.DiscountAmount = invoice.DiscountAmount;
-            dto.DiscountPercent = invoice.DiscountPercent;
-            dto.TotalAmount = subtotal - invoice.DiscountAmount;
-        }
-
-        if (invoice.Payments != null && invoice.Payments.Any())
-        {
-            dto.PaymentMethod = invoice.Payments.Count > 1 
-                ? "Combined" 
-                : invoice.Payments.First().Method.ToString();
-        }
 
         return Ok(dto);
     }

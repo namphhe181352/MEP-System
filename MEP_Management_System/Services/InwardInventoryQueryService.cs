@@ -78,20 +78,34 @@ namespace MEP_Management_System.Services
             return new InwardInventoryResponseDto
             {
                 StockTicketId = st.StockTicketId,
-                TicketCode = st.TicketCode,
-                TicketType = st.TicketType,
-                Status = st.Status,
-                CreatedAt = st.CreatedAt ?? DateTime.MinValue,
-                TotalAmount = st.TotalAmount,
-                Items = st.StockTicketItems?.Select(i => new InwardInventoryItemDto
+                TicketCode = st.TicketCode ?? string.Empty,
+                TicketType = st.TicketType ?? string.Empty,
+                Status = st.Status ?? string.Empty,
+                BranchId = st.BranchId,
+                UserId = st.UserId,
+                SupplierId = st.SupplierId,
+                UserName = st.User?.FullName ?? st.User?.Username,
+                Reason = st.Notes,
+                Note = st.Notes,
+                CreatedAt = st.CreatedAt,
+                CompletedAt = st.CompletedAt,
+                CancelledAt = st.CancelledAt,
+                ConfirmedBy = st.ConfirmedBy,
+                CancelledBy = st.CancelledBy,
+                CancelReason = st.CancelReason,
+                CostPrice = st.StockTicketItems?.Sum(i => i.BranchProduct?.CostPrice ?? 0) ?? 0,
+                Items = st.StockTicketItems?.Select(i => new InwardInventoryItemResponseDto
                 {
+                    TicketItemId = i.TicketItemId,
                     BranchProductId = i.BranchProductId,
-                    ProductId = i.ProductId,
-                    ProductCode = i.BranchProduct?.Product?.ProductCode,
-                    ProductName = i.BranchProduct?.Product?.ProductName,
+                    ProductId = i.BranchProduct?.ProductId ?? Guid.Empty,
+                    ProductCode = i.BranchProduct?.Product?.ProductCode ?? string.Empty,
+                    ProductName = i.BranchProduct?.Product?.ProductName ?? string.Empty,
+                    SystemQuantity = i.SystemQuantity,
                     Quantity = i.Discrepancy,
-                    CostPrice = i.UnitCost
-                }).ToList() ?? new List<InwardInventoryItemDto>()
+                    ActualQuantity = i.ActualQuantity,
+                    CostPrice = i.BranchProduct?.CostPrice ?? 0
+                }).ToList() ?? new List<InwardInventoryItemResponseDto>()
             };
         }
     }
