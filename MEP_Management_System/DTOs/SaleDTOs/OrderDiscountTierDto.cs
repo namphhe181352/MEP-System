@@ -5,6 +5,8 @@ namespace MEP_Management_System.DTOs.SaleDTOs;
 public class OrderDiscountTierDto
 {
     public Guid OrderDiscountTierId { get; set; }
+    public Guid? BranchId { get; set; }
+    public string? BranchName { get; set; }
     public decimal MinOrderValue { get; set; }
     public decimal DiscountPercent { get; set; }
     public bool IsActive { get; set; }
@@ -14,6 +16,9 @@ public class OrderDiscountTierDto
 
 public class CreateOrderDiscountTierDto
 {
+    /// <summary>ID chi nhánh (null = global discount).</summary>
+    public Guid? BranchId { get; set; }
+
     /// <summary>Ngưỡng giá trị đơn hàng tối thiểu (phải > 0).</summary>
     public decimal MinOrderValue { get; set; }
 

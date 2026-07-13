@@ -2322,6 +2322,8 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.OrderDiscountTierId)
                 .HasDefaultValueSql("uuid_generate_v4()")
                 .HasColumnName("order_discount_tier_id");
+            entity.Property(e => e.BranchId)
+                .HasColumnName("branch_id");
             entity.Property(e => e.MinOrderValue)
                 .IsRequired()
                 .HasPrecision(18, 2)

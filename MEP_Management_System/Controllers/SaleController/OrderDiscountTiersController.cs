@@ -26,23 +26,45 @@ public class OrderDiscountTiersController : ControllerBase
     /// Lấy danh sách tất cả các bậc chiết khấu (sort theo MinOrderValue tăng dần).
     /// </summary>
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<OrderDiscountTierDto>>> GetAll()
+    public async Task<ActionResult<IEnumerable<OrderDiscountTierDto>>> GetAll([FromQuery] Guid? branchId)
     {
-        var tiers = await _context.OrderDiscountTiers
-            .OrderBy(t => t.MinOrderValue)
-            .ToListAsync();
-
-        var result = tiers.Select(t => new OrderDiscountTierDto
+        try
         {
-            OrderDiscountTierId = t.OrderDiscountTierId,
-            MinOrderValue = t.MinOrderValue,
-            DiscountPercent = t.DiscountPercent,
-            IsActive = t.IsActive,
-            CreatedAt = t.CreatedAt,
-            UpdatedAt = t.UpdatedAt
-        });
+            var query = _context.OrderDiscountTiers.AsQueryable();
 
-        return Ok(result);
+            if (branchId.HasValue)
+            {
+                query = query.Where(t => t.BranchId == branchId);
+            }
+
+            var tiers = await query
+                .OrderBy(t => t.MinOrderValue)
+                .ToListAsync();
+
+            // Lấy branch names riêng để tránh lỗi Include
+            var branchIds = tiers.Where(t => t.BranchId.HasValue).Select(t => t.BranchId!.Value).Distinct().ToList();
+            var branches = await _context.Branches
+                .Where(b => branchIds.Contains(b.BranchId))
+                .ToDictionaryAsync(b => b.BranchId, b => b.BranchName);
+
+            var result = tiers.Select(t => new OrderDiscountTierDto
+            {
+                OrderDiscountTierId = t.OrderDiscountTierId,
+                BranchId = t.BranchId,
+                BranchName = t.BranchId.HasValue && branches.ContainsKey(t.BranchId.Value) ? branches[t.BranchId.Value] : null,
+                MinOrderValue = t.MinOrderValue,
+                DiscountPercent = t.DiscountPercent,
+                IsActive = t.IsActive,
+                CreatedAt = t.CreatedAt,
+                UpdatedAt = t.UpdatedAt
+            });
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message });
+        }
     }
 
     /// <summary>
@@ -51,7 +73,9 @@ public class OrderDiscountTiersController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<OrderDiscountTierDto>> GetById(Guid id)
     {
-        var tier = await _context.OrderDiscountTiers.FindAsync(id);
+        var tier = await _context.OrderDiscountTiers
+            .Include(t => t.Branch)
+            .FirstOrDefaultAsync(t => t.OrderDiscountTierId == id);
 
         if (tier == null)
             return NotFound(ApiErrorResponse.Create("MSG-01", "Không tìm thấy bậc chiết khấu"));
@@ -59,6 +83,8 @@ public class OrderDiscountTiersController : ControllerBase
         var result = new OrderDiscountTierDto
         {
             OrderDiscountTierId = tier.OrderDiscountTierId,
+            BranchId = tier.BranchId,
+            BranchName = tier.Branch != null ? tier.Branch.BranchName : null,
             MinOrderValue = tier.MinOrderValue,
             DiscountPercent = tier.DiscountPercent,
             IsActive = tier.IsActive,
@@ -69,114 +95,4 @@ public class OrderDiscountTiersController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
-    /// Tạo mới một bậc chiết khấu (chỉ Owner).
-    /// </summary>
-    [HttpPost]
-    [Authorize(Roles = "Owner")]
-    public async Task<ActionResult<OrderDiscountTierDto>> Create([FromBody] CreateOrderDiscountTierDto request)
-    {
-        // Validate MinOrderValue > 0
-        if (request.MinOrderValue <= 0)
-            return BadRequest(ApiErrorResponse.Create("MSG-02", "Ngưỡng giá trị phải lớn hơn 0"));
-
-        // Validate DiscountPercent trong khoảng 0.01 - 100
-        if (request.DiscountPercent < 0.01m || request.DiscountPercent > 100)
-            return BadRequest(ApiErrorResponse.Create("MSG-02", "Phần trăm chiết khấu phải trong khoảng 0.01 - 100"));
-
-        // Kiểm tra trùng MinOrderValue
-        var existingTier = await _context.OrderDiscountTiers
-            .FirstOrDefaultAsync(t => t.MinOrderValue == request.MinOrderValue);
-
-        if (existingTier != null)
-            return BadRequest(ApiErrorResponse.Create("MSG-03", $"Ngưỡng giá trị {request.MinOrderValue:N0} đã tồn tại"));
-
-        var tier = new OrderDiscountTier
-        {
-            MinOrderValue = request.MinOrderValue,
-            DiscountPercent = request.DiscountPercent,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        _context.OrderDiscountTiers.Add(tier);
-        await _context.SaveChangesAsync();
-
-        var result = new OrderDiscountTierDto
-        {
-            OrderDiscountTierId = tier.OrderDiscountTierId,
-            MinOrderValue = tier.MinOrderValue,
-            DiscountPercent = tier.DiscountPercent,
-            IsActive = tier.IsActive,
-            CreatedAt = tier.CreatedAt,
-            UpdatedAt = tier.UpdatedAt
-        };
-
-        return CreatedAtAction(nameof(GetById), new { id = tier.OrderDiscountTierId }, result);
-    }
-
-    /// <summary>
-    /// Cập nhật một bậc chiết khấu (chỉ Owner).
-    /// </summary>
-    [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Owner")]
-    public async Task<ActionResult<OrderDiscountTierDto>> Update(Guid id, [FromBody] UpdateOrderDiscountTierDto request)
-    {
-        var tier = await _context.OrderDiscountTiers.FindAsync(id);
-
-        if (tier == null)
-            return NotFound(ApiErrorResponse.Create("MSG-01", "Không tìm thấy bậc chiết khấu"));
-
-        // Validate MinOrderValue > 0
-        if (request.MinOrderValue <= 0)
-            return BadRequest(ApiErrorResponse.Create("MSG-02", "Ngưỡng giá trị phải lớn hơn 0"));
-
-        // Validate DiscountPercent trong khoảng 0.01 - 100
-        if (request.DiscountPercent < 0.01m || request.DiscountPercent > 100)
-            return BadRequest(ApiErrorResponse.Create("MSG-02", "Phần trăm chiết khấu phải trong khoảng 0.01 - 100"));
-
-        // Kiểm tra trùng MinOrderValue (trừ chính bản thân)
-        var duplicateTier = await _context.OrderDiscountTiers
-            .FirstOrDefaultAsync(t => t.MinOrderValue == request.MinOrderValue && t.OrderDiscountTierId != id);
-
-        if (duplicateTier != null)
-            return BadRequest(ApiErrorResponse.Create("MSG-03", $"Ngưỡng giá trị {request.MinOrderValue:N0} đã tồn tại"));
-
-        tier.MinOrderValue = request.MinOrderValue;
-        tier.DiscountPercent = request.DiscountPercent;
-        tier.IsActive = request.IsActive;
-        tier.UpdatedAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync();
-
-        var result = new OrderDiscountTierDto
-        {
-            OrderDiscountTierId = tier.OrderDiscountTierId,
-            MinOrderValue = tier.MinOrderValue,
-            DiscountPercent = tier.DiscountPercent,
-            IsActive = tier.IsActive,
-            CreatedAt = tier.CreatedAt,
-            UpdatedAt = tier.UpdatedAt
-        };
-
-        return Ok(result);
-    }
-
-    /// <summary>
-    /// Xóa một bậc chiết khấu (chỉ Owner).
-    /// </summary>
-    [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "Owner")]
-    public async Task<IActionResult> Delete(Guid id)
-    {
-        var tier = await _context.OrderDiscountTiers.FindAsync(id);
-
-        if (tier == null)
-            return NotFound(ApiErrorResponse.Create("MSG-01", "Không tìm thấy bậc chiết khấu"));
-
-        _context.OrderDiscountTiers.Remove(tier);
-        await _context.SaveChangesAsync();
-
-        return NoContent();
-    }
 }
