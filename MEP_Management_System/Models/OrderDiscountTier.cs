@@ -6,6 +6,9 @@ public partial class OrderDiscountTier
 {
     public Guid OrderDiscountTierId { get; set; }
 
+    /// <summary>ID chi nhánh (null = global discount).</summary>
+    public Guid? BranchId { get; set; }
+
     /// <summary>Ngưỡng giá trị đơn hàng tối thiểu.</summary>
     public decimal MinOrderValue { get; set; }
 
@@ -18,4 +21,6 @@ public partial class OrderDiscountTier
     public DateTime? CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }
+
+    public virtual Branch? Branch { get; set; }
 }
