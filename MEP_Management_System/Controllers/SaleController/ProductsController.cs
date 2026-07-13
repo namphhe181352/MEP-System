@@ -17,10 +17,12 @@ namespace MEP_Management_System.Controllers.SaleController;
 public class ProductsController : ControllerBase
 {
     private readonly Models.MEPDatabaseContext _context;
+    private readonly IProductService _productService;
 
-    public ProductsController(Models.MEPDatabaseContext context)
+    public ProductsController(Models.MEPDatabaseContext context, IProductService productService)
     {
         _context = context;
+        _productService = productService;
     }
 
     private Guid GetBranchId() =>
@@ -84,21 +86,9 @@ public class ProductsController : ControllerBase
     [HttpGet("{productId:guid}/price")]
     public async Task<ActionResult<ProductPriceDto>> GetPrice(Guid productId)
     {
-        var branchId = GetBranchId();
-
-        // Include Product and ConversionUnits for mapping
-        var bp = await _context.BranchProducts
-            .AsNoTracking()
-            .Include(b => b.Product)
-            .ThenInclude(p => p!.ProductConversionUnits)
-            .Include(b => b.Product)
-            .ThenInclude(p => p!.MediaResources)
-            .Where(b => b.BranchId == branchId && b.ProductId == productId && b.IsActive == 1)
-            .FirstOrDefaultAsync();
-
-        if (bp == null) return NotFound(ApiErrorResponse.Create("MSG-59", "Product not found"));
-
-        return Ok(MapBranchProductToDto(bp));
+        var dto = await _productService.GetProductPriceAsync(productId, User);
+        if (dto == null) return NotFound(ApiErrorResponse.Create("MSG-59", "Product not found"));
+        return Ok(dto);
     }
 
     // GET /api/pos/products/{productId}/stock
@@ -108,36 +98,13 @@ public class ProductsController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 100)
     {
-        var product = await _context.Products.FindAsync(productId);
-        if (product == null) return NotFound(ApiErrorResponse.Create("MSG-59", "Product not found"));
+        var dto = await _productService.GetProductStockAsync(productId, User);
+        if (dto == null) return NotFound(ApiErrorResponse.Create("MSG-59", "Product not found"));
 
-        // Cross-branch stock lookup (BR-79) — with pagination
-        var query = _context.BranchProducts
-            .AsNoTracking()
-            .Where(b => b.ProductId == productId && b.IsActive == 1);
-
-        var totalBranches = await query.CountAsync();
-        var allBp = await query
-            .Select(b => new ProductStockDto.BranchStockDto
-            {
-                BranchId = b.BranchId,
-                BranchName = b.Branch != null ? b.Branch.BranchName : null,
-                AvailableStock = b.AvailableStock,
-                InTransitStock = b.ReservedStock
-            })
-            .Skip((page - 1) * pageSize).Take(pageSize)
-            .ToListAsync();
-
-        var dto = new ProductStockDto
-        {
-            ProductId = productId,
-            ProductName = product.ProductName,
-            ProductCode = product.ProductCode,
-            InStockQty = allBp.Sum(b => b.AvailableStock),
-            InTransitQty = allBp.Sum(b => b.InTransitStock),
-            ByBranch = allBp
-        };
-
+        // apply pagination at controller level to preserve original behavior
+        var totalBranches = dto.ByBranch.Count;
+        var paged = dto.ByBranch.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        dto.ByBranch = paged;
         return Ok(dto);
     }
 }
