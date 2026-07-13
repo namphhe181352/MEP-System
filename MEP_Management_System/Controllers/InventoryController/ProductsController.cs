@@ -20,11 +20,13 @@ namespace MEP_Management_System.Controllers.InventoryController
     {
         private readonly MEPDatabaseContext _context;
         private readonly IMapper _mapper;
+        private readonly IProductService _productService;
 
-        public ProductsController(MEPDatabaseContext context, IMapper mapper)
+        public ProductsController(MEPDatabaseContext context, IMapper mapper, IProductService productService)
         {
             _context = context;
             _mapper = mapper;
+            _productService = productService;
         }
 
         // Lấy UserId hiện tại từ JWT (dùng cho audit log)
@@ -374,18 +376,8 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
-
-                var bp = await _context.BranchProducts
-                    .Include(bp => bp.Product).ThenInclude(p => p.Supplier)
-                    .Include(bp => bp.Product).ThenInclude(p => p.MediaResources)
-                    .Include(bp => bp.Product).ThenInclude(p => p.ProductAttributes)
-                    .Include(bp => bp.Product).ThenInclude(p => p.ProductConversionUnits)
-                    .Include(bp => bp.Product).ThenInclude(p => p.CreatedByUser)
-                    .Include(bp => bp.Product).ThenInclude(p => p.UpdatedByUser)
-                    .FirstOrDefaultAsync(bp => bp.ProductId == id && bp.BranchId == branchId);
-
-                if (bp == null)
+                var dto = await _productService.GetProductByIdAsync(id, User);
+                if (dto == null)
                 {
                     return NotFound(new ApiResponse<object>
                     {
@@ -399,7 +391,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 {
                     Success = true,
                     Message = "Product retrieved successfully",
-                    Data = MapToProductDto(bp)
+                    Data = dto
                 });
             }
             catch (Exception ex)

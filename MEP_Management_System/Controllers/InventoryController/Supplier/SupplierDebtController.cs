@@ -15,10 +15,12 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
     public class SupplierDebtController : ControllerBase
     {
         private readonly MEPDatabaseContext _context;
+            private readonly ISupplierDebtService _supplierDebtService;
 
-        public SupplierDebtController(MEPDatabaseContext context)
+        public SupplierDebtController(MEPDatabaseContext context, ISupplierDebtService supplierDebtService)
         {
             _context = context;
+            _supplierDebtService = supplierDebtService;
         }
 
         // 🌟 TỐI ƯU 3: Helper escape dấu phẩy và nháy kép trong CSV, tránh lỗi lệch cột dữ liệu
@@ -203,13 +205,8 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         {
             try
             {
-                var supplier = await _context.Suppliers
-                    .Include(s => s.PurchaseOrders)
-                        .ThenInclude(po => po.PurchaseOrderItems)
-                            .ThenInclude(poi => poi.Product)
-                    .FirstOrDefaultAsync(s => s.SupplierId == supplierId && s.Status == 1);
-
-                if (supplier == null)
+                var result = await _supplierDebtService.GetSupplierDebtDetailAsync(supplierId, User);
+                if (result == null)
                 {
                     return NotFound(new ApiResponse<object>
                     {
@@ -219,39 +216,11 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     });
                 }
 
-                var poDetails = supplier.PurchaseOrders
-                    .OrderByDescending(po => po.CreatedAt)
-                    .Select(po => new SupplierDebtPoDetailDto
-                    {
-                        PurchaseOrderId = po.PurchaseOrderId,
-                        OrderCode = po.OrderCode ?? po.PurchaseOrderId.ToString()[..8].ToUpper(),
-                        TotalAmount = po.TotalAmount ?? 0,
-                        Status = po.Status,
-                        ExpectedDeliveryDate = po.ExpectedDeliveryDate?.ToString("yyyy-MM-dd"),
-                        CreatedAt = po.CreatedAt?.ToString("yyyy-MM-dd"),
-                        Items = po.PurchaseOrderItems.Select(i => new SupplierDebtPoItemDto
-                        {
-                            ProductId = i.ProductId,
-                            ProductCode = i.Product != null ? i.Product.ProductCode : "",
-                            ProductName = i.Product != null ? i.Product.ProductName : "",
-                            Quantity = i.Quantity,
-                            UnitPrice = i.UnitPrice,
-                            LineTotal = i.Quantity * i.UnitPrice
-                        }).ToList()
-                    }).ToList();
-
                 return Ok(new ApiResponse<SupplierDebtDetailResponse>
                 {
                     Success = true,
                     Message = "Supplier debt detail retrieved successfully",
-                    Data = new SupplierDebtDetailResponse
-                    {
-                        SupplierId = supplier.SupplierId,
-                        SupplierName = supplier.SupplierName,
-                        ContactPhone = supplier.ContactPhone,
-                        ContactEmail = supplier.ContactEmail,
-                        PurchaseOrders = poDetails
-                    }
+                    Data = result
                 });
             }
             catch (Exception ex)
