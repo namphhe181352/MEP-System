@@ -12,5 +12,7 @@ namespace MEP_Management_System.Services
         Task<ProductUpsertDto?> GetProductByIdAsync(Guid id, ClaimsPrincipal currentUser);
         Task<ProductPriceDto?> GetProductPriceAsync(Guid productId, ClaimsPrincipal currentUser);
         Task<ProductStockDto?> GetProductStockAsync(Guid productId, ClaimsPrincipal currentUser);
+        Task<ProductUpsertDto?> GetProductByCodeAsync(string productCode, ClaimsPrincipal currentUser);
+        Task<List<ProductUpsertDto>> SearchProductsAsync(string keyword, ClaimsPrincipal currentUser);
     }
 }

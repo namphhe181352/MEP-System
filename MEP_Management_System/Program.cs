@@ -38,6 +38,7 @@ builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<ISupplierDebtService, SupplierDebtService>();
 builder.Services.AddScoped<IInwardInventoryQueryService, InwardInventoryQueryService>();
+builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.ToolDispatcher>();
 
 // OData
 var odataBuilder = new ODataConventionModelBuilder();

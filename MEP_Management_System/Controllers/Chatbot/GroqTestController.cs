@@ -12,6 +12,7 @@ namespace MEP_Management_System.Controllers.Chatbot
 {
     [ApiController]
     [Route("api/chatbot")]
+    [Obsolete("Sử dụng ChatController thay thế với function calling")] // TODO: Xóa sau khi ChatController hoạt động ổn
     public class GroqTestController : ControllerBase
     {
         private readonly IHttpClientFactory _httpClientFactory;
