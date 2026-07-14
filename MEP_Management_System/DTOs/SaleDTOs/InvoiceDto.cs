@@ -11,6 +11,7 @@ public class InvoiceDto
     public Guid UserId { get; set; }
     public Guid? CustomerId { get; set; }
     public string? CustomerName { get; set; }
+    public string? UserName { get; set; }
     public decimal Subtotal { get; set; }
     public decimal DiscountAmount { get; set; }
     public string? PromotionCode { get; set; }
