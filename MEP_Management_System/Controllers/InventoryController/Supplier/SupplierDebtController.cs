@@ -2,6 +2,7 @@
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -15,10 +16,12 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
     public class SupplierDebtController : ControllerBase
     {
         private readonly MEPDatabaseContext _context;
+            private readonly ISupplierDebtService _supplierDebtService;
 
-        public SupplierDebtController(MEPDatabaseContext context)
+        public SupplierDebtController(MEPDatabaseContext context, ISupplierDebtService supplierDebtService)
         {
             _context = context;
+            _supplierDebtService = supplierDebtService;
         }
 
         // 🌟 TỐI ƯU 3: Helper escape dấu phẩy và nháy kép trong CSV, tránh lỗi lệch cột dữ liệu
@@ -41,6 +44,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                 // 🌟 TỐI ƯU 1: Bỏ .AsQueryable() vì truy vấn được thực thi ngay sau block filter này
                 var supplierQuery = _context.Suppliers
                     .Include(s => s.PurchaseOrders)
+                    .Include(s => s.StockTickets.Where(t => t.TicketType == "PURCHASE" && t.Status == "COMPLETED"))
                     // Tích hợp thêm dữ liệu phiếu chi thực tế để tính toán công nợ chính xác
                     .Include(s => s.SupplierPayments.Where(p => p.IsDeleted == 0))
                     .Where(s => s.Status == 1);
@@ -72,17 +76,27 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         .Where(po => po.CreatedAt < currentMonth && (po.Status == "APPROVED" || po.Status == "COMPLETED"))
                         .Sum(po => po.TotalAmount ?? 0);
 
+                    decimal openingStockTicketDebt = s.StockTickets
+                        .Where(t => t.CompletedAt.HasValue && t.CompletedAt.Value < currentMonth)
+                        .Sum(t => t.TotalAmount);
+
                     decimal openingPaid = s.SupplierPayments
                         .Where(p => p.PaymentDate < currentMonth)
                         .Sum(p => p.Amount);
 
-                    decimal openingDebt = openingPurchased - openingPaid;
+                    decimal openingDebt = openingPurchased + openingStockTicketDebt - openingPaid;
 
                     // 2. Phát sinh mua trong kỳ (Tháng hiện tại)
                     decimal purchasedInPeriod = s.PurchaseOrders
                         .Where(po => po.CreatedAt >= currentMonth
                                   && (po.Status == "COMPLETED" || po.Status == "APPROVED"))
                         .Sum(po => po.TotalAmount ?? 0);
+
+                    decimal stockTicketPurchasedInPeriod = s.StockTickets
+                        .Where(t => t.CompletedAt.HasValue && t.CompletedAt.Value >= currentMonth)
+                        .Sum(t => t.TotalAmount);
+
+                    purchasedInPeriod += stockTicketPurchasedInPeriod;
 
                     // 3. Thực tế đã trả trong kỳ (Tháng hiện tại - lấy từ bảng SupplierPayment thay vì giả lập PO)
                     decimal paidInPeriod = s.SupplierPayments
@@ -192,13 +206,8 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         {
             try
             {
-                var supplier = await _context.Suppliers
-                    .Include(s => s.PurchaseOrders)
-                        .ThenInclude(po => po.PurchaseOrderItems)
-                            .ThenInclude(poi => poi.Product)
-                    .FirstOrDefaultAsync(s => s.SupplierId == supplierId && s.Status == 1);
-
-                if (supplier == null)
+                var result = await _supplierDebtService.GetSupplierDebtDetailAsync(supplierId, User);
+                if (result == null)
                 {
                     return NotFound(new ApiResponse<object>
                     {
@@ -208,39 +217,11 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     });
                 }
 
-                var poDetails = supplier.PurchaseOrders
-                    .OrderByDescending(po => po.CreatedAt)
-                    .Select(po => new SupplierDebtPoDetailDto
-                    {
-                        PurchaseOrderId = po.PurchaseOrderId,
-                        OrderCode = po.OrderCode ?? po.PurchaseOrderId.ToString()[..8].ToUpper(),
-                        TotalAmount = po.TotalAmount ?? 0,
-                        Status = po.Status,
-                        ExpectedDeliveryDate = po.ExpectedDeliveryDate?.ToString("yyyy-MM-dd"),
-                        CreatedAt = po.CreatedAt?.ToString("yyyy-MM-dd"),
-                        Items = po.PurchaseOrderItems.Select(i => new SupplierDebtPoItemDto
-                        {
-                            ProductId = i.ProductId,
-                            ProductCode = i.Product != null ? i.Product.ProductCode : "",
-                            ProductName = i.Product != null ? i.Product.ProductName : "",
-                            Quantity = i.Quantity,
-                            UnitPrice = i.UnitPrice,
-                            LineTotal = i.Quantity * i.UnitPrice
-                        }).ToList()
-                    }).ToList();
-
                 return Ok(new ApiResponse<SupplierDebtDetailResponse>
                 {
                     Success = true,
                     Message = "Supplier debt detail retrieved successfully",
-                    Data = new SupplierDebtDetailResponse
-                    {
-                        SupplierId = supplier.SupplierId,
-                        SupplierName = supplier.SupplierName,
-                        ContactPhone = supplier.ContactPhone,
-                        ContactEmail = supplier.ContactEmail,
-                        PurchaseOrders = poDetails
-                    }
+                    Data = result
                 });
             }
             catch (Exception ex)

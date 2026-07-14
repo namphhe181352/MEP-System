@@ -15,6 +15,12 @@ public partial class InvoiceItem
 
     public decimal SellPrice { get; set; }
 
+    /// <summary>Đơn vị đã chọn khi bán (ví dụ: "Cuộn", "Mét"). Null = BaseUnit.</summary>
+    public string? SelectedUnit { get; set; }
+
+    /// <summary>Hệ số quy đổi tại thời điểm bán (ví dụ: 100 = 1 Cuộn = 100 Mét).</summary>
+    public decimal? ConvertValue { get; set; }
+
     public virtual BranchProduct BranchProduct { get; set; } = null!;
 
     public virtual Invoice Invoice { get; set; } = null!;

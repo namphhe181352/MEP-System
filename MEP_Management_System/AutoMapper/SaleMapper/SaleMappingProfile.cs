@@ -33,7 +33,9 @@ public class SaleMappingProfile : Profile
             .ForMember(d => d.ProductName, o => o.MapFrom(s => s.BranchProduct != null && s.BranchProduct.Product != null ? s.BranchProduct.Product.ProductName : null))
             .ForMember(d => d.ProductCode, o => o.MapFrom(s => s.BranchProduct != null && s.BranchProduct.Product != null ? s.BranchProduct.Product.ProductCode : null))
             .ForMember(d => d.Barcode, o => o.MapFrom(s => s.BranchProduct != null && s.BranchProduct.Product != null ? s.BranchProduct.Product.Barcode : null))
-            .ForMember(d => d.Unit, o => o.MapFrom(s => s.BranchProduct != null && s.BranchProduct.Product != null ? s.BranchProduct.Product.BaseUnit : null));
+            .ForMember(d => d.Unit, o => o.MapFrom(s => s.BranchProduct != null && s.BranchProduct.Product != null ? s.BranchProduct.Product.BaseUnit : null))
+            .ForMember(d => d.SelectedUnit, o => o.MapFrom(s => s.SelectedUnit))
+            .ForMember(d => d.ConvertValue, o => o.MapFrom(s => s.ConvertValue));
 
         // Payment
         CreateMap<Payment, DTOs.SaleDTOs.PaymentDto>();
@@ -76,7 +78,14 @@ public class SaleMappingProfile : Profile
 
         // ReturnOrder
         CreateMap<ReturnOrder, DTOs.SaleDTOs.ReturnOrderDto>()
-            .ForMember(d => d.InvoiceCode, o => o.MapFrom(s => s.Order != null ? s.Order.OrderCode : null))
+            // InvoiceCode = mã hóa đơn gốc (lấy từ invoice đầu tiên của order, không phải orderCode)
+            .ForMember(d => d.InvoiceCode, o => o.MapFrom(s =>
+                s.Order != null && s.Order.Invoices != null && s.Order.Invoices.Any()
+                    ? s.Order.Invoices.First().InvoiceCode
+                    : null))
+            .ForMember(d => d.CustomerId, o => o.MapFrom(s => s.Order != null ? s.Order.CustomerId : (Guid?)null))
+            .ForMember(d => d.CustomerName, o => o.MapFrom(s =>
+                s.Order != null && s.Order.Customer != null ? s.Order.Customer.CustomerName : null))
             .ForMember(d => d.StaffName, o => o.MapFrom(s => s.User != null ? s.User.FullName : null))
             .ForMember(d => d.Items, o => o.MapFrom(s => s.ReturnItems));
 

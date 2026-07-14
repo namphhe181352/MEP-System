@@ -53,6 +53,8 @@ public partial class Supplier
 
     public virtual ICollection<PurchaseOrder> PurchaseOrders { get; set; } = new List<PurchaseOrder>();
 
+    public virtual ICollection<StockTicket> StockTickets { get; set; } = new List<StockTicket>();
+
     //public virtual ICollection<SupplierRating> SupplierRatings { get; set; } = new List<SupplierRating>();
     public virtual ICollection<SupplierPayment> SupplierPayments { get; set; } = new List<SupplierPayment>();
     public virtual User? CreatedByUser { get; set; }

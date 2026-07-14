@@ -13,4 +13,10 @@ public class InvoiceItemDto
     public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal LineTotal { get; set; }
+
+    /// <summary>Đơn vị bán được chọn (null = BaseUnit).</summary>
+    public string? SelectedUnit { get; set; }
+
+    /// <summary>Hệ số quy đổi (null hoặc 1 = BaseUnit).</summary>
+    public decimal? ConvertValue { get; set; }
 }

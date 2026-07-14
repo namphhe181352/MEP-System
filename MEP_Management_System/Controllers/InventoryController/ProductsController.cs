@@ -3,6 +3,7 @@ using MEP_Management_System.Authorization;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -20,11 +21,13 @@ namespace MEP_Management_System.Controllers.InventoryController
     {
         private readonly MEPDatabaseContext _context;
         private readonly IMapper _mapper;
+        private readonly IProductService _productService;
 
-        public ProductsController(MEPDatabaseContext context, IMapper mapper)
+        public ProductsController(MEPDatabaseContext context, IMapper mapper, IProductService productService)
         {
             _context = context;
             _mapper = mapper;
+            _productService = productService;
         }
 
         // Lấy UserId hiện tại từ JWT (dùng cho audit log)
@@ -374,18 +377,8 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
-
-                var bp = await _context.BranchProducts
-                    .Include(bp => bp.Product).ThenInclude(p => p.Supplier)
-                    .Include(bp => bp.Product).ThenInclude(p => p.MediaResources)
-                    .Include(bp => bp.Product).ThenInclude(p => p.ProductAttributes)
-                    .Include(bp => bp.Product).ThenInclude(p => p.ProductConversionUnits)
-                    .Include(bp => bp.Product).ThenInclude(p => p.CreatedByUser)
-                    .Include(bp => bp.Product).ThenInclude(p => p.UpdatedByUser)
-                    .FirstOrDefaultAsync(bp => bp.ProductId == id && bp.BranchId == branchId);
-
-                if (bp == null)
+                var dto = await _productService.GetProductByIdAsync(id, User);
+                if (dto == null)
                 {
                     return NotFound(new ApiResponse<object>
                     {
@@ -399,7 +392,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 {
                     Success = true,
                     Message = "Product retrieved successfully",
-                    Data = MapToProductDto(bp)
+                    Data = dto
                 });
             }
             catch (Exception ex)
@@ -589,6 +582,23 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (isCodeExist)
                 {
                     return BadRequest(new ApiResponse<object> { Success = false, Message = "Product code already exists", Errors = new() { $"Code '{dto.ProductCode}' exists" } });
+                }
+
+                // UOM: Không cho sửa BaseUnit khi sản phẩm đã có giao dịch
+                if (bp.Product.BaseUnit != dto.Unit)
+                {
+                    var hasTransaction = await _context.InvoiceItems
+                        .AnyAsync(ii => ii.BranchProduct != null && ii.BranchProduct.ProductId == id);
+
+                    if (hasTransaction)
+                    {
+                        return BadRequest(new ApiResponse<object>
+                        {
+                            Success = false,
+                            Message = "Không thể thay đổi đơn vị cơ bản khi sản phẩm đã có giao dịch.",
+                            Errors = new() { "Sản phẩm đã xuất hiện trong hóa đơn. Không thể thay đổi BaseUnit." }
+                        });
+                    }
                 }
 
                 var currentLocalTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
@@ -1010,7 +1020,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     Value = a.AttributeValue ?? ""
                 }).ToList(),
 
-                ConversionUnits = p.ProductConversionUnits.Select(c => new ConversionUnitDto
+                ConversionUnits = p.ProductConversionUnits.Select(c => new ProductConversionUnitDto
                 {
                     Id = c.ConversionId,
                     Name = c.UnitName,
@@ -1111,6 +1121,103 @@ namespace MEP_Management_System.Controllers.InventoryController
                 {
                     Success = false,
                     Message = "Lỗi khi lấy danh sách thương hiệu",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
+        /// POST /api/products/categories - Thêm mới nhóm hàng (category)
+        /// </summary>
+        [HttpPost("categories")]
+        [HasPermission(PermissionConstants.PRODUCT_CREATE)]
+        public async Task<IActionResult> CreateCategory([FromBody] CreateTaxonomyDto dto)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(dto.Name))
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Tên nhóm hàng là bắt buộc."
+                    });
+                }
+
+                var trimmedName = dto.Name.Trim();
+                var exists = await _context.Products.AnyAsync(p => p.CategoryName != null && p.CategoryName.ToLower() == trimmedName.ToLower());
+                if (exists)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = $"Nhóm hàng '{trimmedName}' đã tồn tại."
+                    });
+                }
+
+                // Không cần tạo record trong bảng riêng, chỉ cần trả về thông báo thành công
+                // Category sẽ được tạo khi có sản phẩm đầu tiên sử dụng tên này
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = $"Nhóm hàng '{trimmedName}' đã được thêm.",
+                    Data = new { Name = trimmedName }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi thêm nhóm hàng",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
+        /// POST /api/products/brands - Thêm mới thương hiệu (brand)
+        /// </summary>
+        [HttpPost("brands")]
+        [HasPermission(PermissionConstants.PRODUCT_CREATE)]
+        public async Task<IActionResult> CreateBrand([FromBody] CreateTaxonomyDto dto)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(dto.Name))
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Tên thương hiệu là bắt buộc."
+                    });
+                }
+
+                var trimmedName = dto.Name.Trim();
+                var exists = await _context.Products.AnyAsync(p => p.BrandName != null && p.BrandName.ToLower() == trimmedName.ToLower());
+                if (exists)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = $"Thương hiệu '{trimmedName}' đã tồn tại."
+                    });
+                }
+
+                // Brand sẽ được tạo khi có sản phẩm đầu tiên sử dụng tên này
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = $"Thương hiệu '{trimmedName}' đã được thêm.",
+                    Data = new { Name = trimmedName }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi thêm thương hiệu",
                     Errors = new() { ex.Message }
                 });
             }

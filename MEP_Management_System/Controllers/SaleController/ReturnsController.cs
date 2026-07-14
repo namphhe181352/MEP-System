@@ -55,6 +55,8 @@ public class ReturnsController : ControllerBase
         var branchId = GetBranchId();
         var query = _context.ReturnOrders
             .Include(r => r.Order).ThenInclude(o => o!.Branch)
+            .Include(r => r.Order).ThenInclude(o => o!.Invoices) // để map InvoiceCode
+            .Include(r => r.Order).ThenInclude(o => o!.Customer) // để map CustomerName
             .Include(r => r.User)
             .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product)
             .Where(r => r.Order!.BranchId == branchId)
@@ -69,7 +71,7 @@ public class ReturnsController : ControllerBase
             query = query.Where(r => relatedOrders.Contains(r.OrderId));
         }
         if (!string.IsNullOrEmpty(status))
-            query = query.Where(r => r.Status == status.ToUpper());
+            query = query.Where(r => r.Status.ToLower() == status.ToLower());
         if (dateFrom.HasValue)
             query = query.Where(r => r.CreatedAt >= dateFrom.Value);
         if (dateTo.HasValue)
@@ -98,6 +100,7 @@ public class ReturnsController : ControllerBase
         var branchId = GetBranchId();
         var r = await _context.ReturnOrders
             .Include(r => r.Order).ThenInclude(o => o!.Branch)
+            .Include(r => r.Order).ThenInclude(o => o!.Invoices)
             .Include(r => r.User)
             .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product)
             .FirstOrDefaultAsync(r => r.ReturnOrderId == id && r.Order!.BranchId == branchId);
@@ -157,6 +160,7 @@ public class ReturnsController : ControllerBase
                 OrderId = invoice.OrderId,
                 UserId = userId,
                 RefundMethod = req.RefundMethod?.ToUpper() ?? "CASH",
+                ReturnType = req.ReturnType?.ToUpper() ?? "REFUND",
                 Status = "Pending",
                 Note = req.Note,
                 CreatedAt = DateTime.UtcNow
@@ -210,7 +214,16 @@ public class ReturnsController : ControllerBase
             return BadRequest(ApiErrorResponse.Create("MSG-66", $"Số lượng trả vượt quá số lượng đã mua. Tối đa: {totalBought - totalReturned}"));
 
         var avgPrice = originalItems.Sum(ii => ii.SellPrice * ii.Quantity) / totalBought;
-        var refundLine = req.Quantity * avgPrice;
+        var grossRefundLine = req.Quantity * avgPrice;
+
+        // Áp dụng chiết khấu theo tỷ lệ của hóa đơn gốc
+        var originalInvoice = originalItems.First().Invoice;
+        var invoiceSubtotal = originalItems.Sum(ii => ii.Quantity * ii.SellPrice);
+        var discountRatio = invoiceSubtotal > 0 && originalInvoice != null
+            ? Math.Min(1m, Math.Max(0m, originalInvoice.DiscountAmount / invoiceSubtotal))
+            : 0m;
+        var discountPortion = grossRefundLine * discountRatio;
+        var refundLine = Math.Max(0, grossRefundLine - discountPortion);
 
         var returnItem = new ReturnItem
         {

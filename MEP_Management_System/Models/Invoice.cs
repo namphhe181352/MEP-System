@@ -14,6 +14,16 @@ public partial class Invoice
 
     public Guid UserId { get; set; }
 
+    /// <summary>Tổng tiền TRƯỚC chiết khấu (dùng để so ngưỡng).</summary>
+    public decimal SubTotalAmount { get; set; }
+
+    /// <summary>% chiết khấu đã áp dụng (null nếu không áp dụng).</summary>
+    public decimal? DiscountPercent { get; set; }
+
+    /// <summary>Số tiền đã giảm.</summary>
+    public decimal DiscountAmount { get; set; }
+
+    /// <summary>Tổng tiền SAU chiết khấu (số khách thực trả).</summary>
     public decimal TotalAmount { get; set; }
 
     public string? PaymentMethod { get; set; }

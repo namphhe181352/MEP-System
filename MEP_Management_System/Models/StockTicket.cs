@@ -14,6 +14,10 @@ public partial class StockTicket
 
     public Guid UserId { get; set; }
 
+    public Guid? SupplierId { get; set; }
+
+    public decimal TotalAmount { get; set; }
+
     /// <summary>Loại phiếu: STOCK_CHECK / WRITE_OFF / TRANSFER / RETURN_SUPPLIER (theo UC 2.5).</summary>
     public string? TicketType { get; set; }
 
@@ -37,6 +41,8 @@ public partial class StockTicket
     public virtual Branch Branch { get; set; } = null!;
 
     public virtual ICollection<StockTicketItem> StockTicketItems { get; set; } = new List<StockTicketItem>();
+
+    public virtual Supplier? Supplier { get; set; }
 
     public virtual User User { get; set; } = null!;
 
