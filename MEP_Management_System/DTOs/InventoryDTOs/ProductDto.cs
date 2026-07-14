@@ -273,6 +273,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
     public class OutwardInventoryUpdateDto
     {
         public string? Reason { get; set; }
+        public string? Note { get; set; }
         public string? Status { get; set; }
     }
 

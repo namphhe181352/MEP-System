@@ -744,6 +744,16 @@ public class InventoryCheckController : ControllerBase
                 });
             }
 
+            if (dto.Details.Any(d => d.ActualQuantity < 0))
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Số lượng kiểm đếm không hợp lệ.",
+                    Errors = new() { "Số lượng đếm thực tế không được nhỏ hơn 0." }
+                });
+            }
+
             var branchId = _currentBranch.GetBranchId();
             if (branchId == null)
             {

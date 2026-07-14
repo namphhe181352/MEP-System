@@ -536,7 +536,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (stockTicket.Status == "COMPLETED")
                 {
                     // COMPLETED: CHỈ cho phép sửa Note/Reason, không cho sửa Items
-                    if (!string.IsNullOrWhiteSpace(dto.Reason))
+                    if (!string.IsNullOrWhiteSpace(dto.Note))
+                        stockTicket.Notes = dto.Note;
+                    else if (!string.IsNullOrWhiteSpace(dto.Reason))
                         stockTicket.Notes = dto.Reason;
 
                     await _context.SaveChangesAsync();
@@ -550,7 +552,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 // PENDING: Cho phép sửa tất cả (Items, Note, Reason, Status)
-                if (!string.IsNullOrWhiteSpace(dto.Reason))
+                if (!string.IsNullOrWhiteSpace(dto.Note))
+                    stockTicket.Notes = dto.Note;
+                else if (!string.IsNullOrWhiteSpace(dto.Reason))
                     stockTicket.Notes = dto.Reason;
 
                 // ============================================================
@@ -681,9 +685,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 // ============================================================
                 if (branchProductIds.Any())
                 {
-                    var uuidArray = string.Join(",", branchProductIds.Select(id => $"'{id}'"));
                     await _context.Database.ExecuteSqlRawAsync(
-                        $"SELECT 1 FROM branch_products WHERE branch_product_id IN ({uuidArray}) FOR UPDATE");
+                        "SELECT 1 FROM branch_products WHERE branch_product_id = ANY({0}) FOR UPDATE", branchProductIds.ToArray());
                 }
 
                 foreach (var item in stockTicket.StockTicketItems)
