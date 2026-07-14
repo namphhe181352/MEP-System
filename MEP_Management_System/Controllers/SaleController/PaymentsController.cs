@@ -50,8 +50,8 @@ public class PaymentsController : ControllerBase
         if (invoice.Status != "Draft") return BadRequest(ApiErrorResponse.Create("MSG-78", "Invoice already finalized"));
 
         var subtotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
-        var vatAmount = Math.Round(subtotal * 0.08m, 2);
-        var totalAmount = subtotal + vatAmount - (invoice.Order.DiscountAmount ?? 0);
+        // VAT removed - POS retail does not include VAT
+        var totalAmount = subtotal - (invoice.Order.DiscountAmount ?? 0);
 
         var existingPayments = await _context.Payments
             .Where(p => p.InvoiceId == invoiceId && (p.Status == "Confirmed" || p.Status == "Pending"))
@@ -183,19 +183,4 @@ public class PaymentsController : ControllerBase
         if (payment == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Payment not found"));
         return Ok(new { status = payment.Status });
     }
-}
-
-public class CreatePaymentRequest
-{
-    public string Method { get; set; } = null!;
-    public decimal Amount { get; set; }
-    public decimal? CashReceived { get; set; }
-    public System.Collections.Generic.List<PaymentLine>? PaymentLines { get; set; }
-}
-
-public class PaymentLine
-{
-    public string Method { get; set; } = null!;
-    public decimal Amount { get; set; }
-    public decimal? CashReceived { get; set; }
 }

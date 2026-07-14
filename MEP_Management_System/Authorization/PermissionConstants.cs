@@ -6,6 +6,13 @@ namespace MEP_Management_System.Authorization;
 /// </summary>
 public static class PermissionConstants
 {
+    // === EXPENSE / PHIẾU CHI TIỀN ===
+    public const string EXPENSE_VIEW = "EXPENSE_VIEW";
+    public const string EXPENSE_CREATE = "EXPENSE_CREATE";
+    public const string EXPENSE_CONFIRM = "EXPENSE_CONFIRM";
+    public const string EXPENSE_CANCEL = "EXPENSE_CANCEL";
+    public const string EXPENSE_CATEGORY_MANAGE = "EXPENSE_CATEGORY_MANAGE";
+
     // === SUPPLIER (Nhà cung cấp) ===
     public const string SUPPLIER_VIEW = "SUPPLIER_VIEW";
     public const string SUPPLIER_CREATE = "SUPPLIER_CREATE";

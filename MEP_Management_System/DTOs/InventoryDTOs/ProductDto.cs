@@ -43,7 +43,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public bool SalesChannelLinked { get; set; }
         public bool IsActive { get; set; }
         public List<ProductAttributeDto> Attributes { get; set; } = new();
-        public List<ConversionUnitDto> ConversionUnits { get; set; } = new();
+        public List<ProductConversionUnitDto> ConversionUnits { get; set; } = new();
         public DateTime? EstimatedOutAt { get; set; }
 
         // --- CÁC TRƯỜNG CŨ CỦA BẠN ĐÃ CÓ ---
@@ -67,7 +67,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string Value { get; set; } = null!;
     }
 
-    public class ConversionUnitDto
+    public class ProductConversionUnitDto
     {
         public Guid? Id { get; set; }
         public string Name { get; set; } = null!;
@@ -166,6 +166,11 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
     {
         public string Name { get; set; } = null!;
         public int ProductCount { get; set; }
+    }
+
+    public class CreateTaxonomyDto
+    {
+        public string Name { get; set; } = null!;
     }
 
     public class RenameTaxonomyDto

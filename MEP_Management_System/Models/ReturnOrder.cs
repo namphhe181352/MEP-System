@@ -19,6 +19,9 @@ public partial class ReturnOrder
     /// <summary>Phương thức hoàn tiền: CASH / TRANSFER / EXCHANGE.</summary>
     public string? RefundMethod { get; set; }
 
+    /// <summary>Loại đổi trả: EXCHANGE (đổi hàng) / REFUND (trả hàng).</summary>
+    public string? ReturnType { get; set; }
+
     /// <summary>Trạng thái: PENDING / COMPLETED / CANCELLED.</summary>
     public string? Status { get; set; }
 

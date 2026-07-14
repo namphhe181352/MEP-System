@@ -544,6 +544,151 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("daily_summaries", (string)null);
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.ExpenseCategory", b =>
+                {
+                    b.Property<Guid>("CategoryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("category_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<string>("CategoryName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("category_name");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<short>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)1)
+                        .HasColumnName("is_active");
+
+                    b.HasKey("CategoryId")
+                        .HasName("expense_categories_pkey");
+
+                    b.HasIndex("CategoryName")
+                        .IsUnique()
+                        .HasDatabaseName("expense_categories_category_name_key");
+
+                    b.HasIndex("CreatedBy");
+
+                    b.ToTable("expense_categories", (string)null);
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.ExpenseVoucher", b =>
+                {
+                    b.Property<Guid>("VoucherId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("voucher_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_id");
+
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("cancel_reason");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("cancelled_at");
+
+                    b.Property<Guid?>("CancelledBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cancelled_by");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("category_id");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<Guid?>("ConfirmedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("confirmed_by");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text")
+                        .HasColumnName("note");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("PENDING")
+                        .HasColumnName("status");
+
+                    b.Property<Guid?>("SupplierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("supplier_id");
+
+                    b.Property<string>("VoucherCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("voucher_code");
+
+                    b.HasKey("VoucherId")
+                        .HasName("expense_vouchers_pkey");
+
+                    b.HasIndex("BranchId")
+                        .HasDatabaseName("ix_expense_vouchers_branch_id");
+
+                    b.HasIndex("CancelledBy");
+
+                    b.HasIndex("CategoryId")
+                        .HasDatabaseName("ix_expense_vouchers_category_id");
+
+                    b.HasIndex("ConfirmedBy");
+
+                    b.HasIndex("CreatedBy");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_expense_vouchers_status");
+
+                    b.HasIndex("SupplierId");
+
+                    b.HasIndex("VoucherCode")
+                        .IsUnique()
+                        .HasDatabaseName("expense_vouchers_voucher_code_key");
+
+                    b.ToTable("expense_vouchers", (string)null);
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.InventoryCheckDetail", b =>
                 {
                     b.Property<Guid>("DetailId")
@@ -815,6 +960,18 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<decimal>("DiscountAmount")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("discount_amount");
+
+                    b.Property<decimal?>("DiscountPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("discount_percent");
+
                     b.Property<DateTime?>("HeldAt")
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("held_at");
@@ -846,6 +1003,13 @@ namespace MEP_Management_System.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
                         .HasColumnName("status");
+
+                    b.Property<decimal>("SubTotalAmount")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("sub_total_amount");
 
                     b.Property<decimal>("TotalAmount")
                         .HasPrecision(15, 2)
@@ -881,6 +1045,9 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("branch_product_id");
 
+                    b.Property<decimal?>("ConvertValue")
+                        .HasColumnType("numeric");
+
                     b.Property<Guid>("InvoiceId")
                         .HasColumnType("uuid")
                         .HasColumnName("invoice_id");
@@ -889,6 +1056,9 @@ namespace MEP_Management_System.Migrations
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)")
                         .HasColumnName("quantity");
+
+                    b.Property<string>("SelectedUnit")
+                        .HasColumnType("text");
 
                     b.Property<decimal>("SellPrice")
                         .HasPrecision(15, 2)
@@ -1145,6 +1315,54 @@ namespace MEP_Management_System.Migrations
                         .IsUnique();
 
                     b.ToTable("orders", (string)null);
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.OrderDiscountTier", b =>
+                {
+                    b.Property<Guid>("OrderDiscountTierId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_discount_tier_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_id");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<decimal>("DiscountPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("discount_percent");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<decimal>("MinOrderValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("min_order_value");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("OrderDiscountTierId")
+                        .HasName("order_discount_tiers_pkey");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("MinOrderValue")
+                        .IsUnique()
+                        .HasDatabaseName("ix_order_discount_tiers_min_order_value");
+
+                    b.ToTable("order_discount_tiers", (string)null);
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.OrderItem", b =>
@@ -1978,6 +2196,11 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("return_code");
 
+                    b.Property<string>("ReturnType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("return_type");
+
                     b.Property<string>("Status")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
@@ -2203,6 +2426,10 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("status");
 
+                    b.Property<Guid?>("SupplierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("supplier_id");
+
                     b.Property<string>("TicketCode")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
@@ -2212,6 +2439,11 @@ namespace MEP_Management_System.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
                         .HasColumnName("ticket_type");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)")
+                        .HasColumnName("total_amount");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
@@ -2225,6 +2457,8 @@ namespace MEP_Management_System.Migrations
                     b.HasIndex("CancelledBy");
 
                     b.HasIndex("ConfirmedBy");
+
+                    b.HasIndex("SupplierId");
 
                     b.HasIndex("UserId");
 
@@ -3084,6 +3318,69 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Branch");
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.ExpenseCategory", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("expense_categories_created_by_fkey");
+
+                    b.Navigation("CreatedByUser");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.ExpenseVoucher", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .IsRequired()
+                        .HasConstraintName("expense_vouchers_branch_id_fkey");
+
+                    b.HasOne("MEP_Management_System.Models.User", "CancelledByUser")
+                        .WithMany()
+                        .HasForeignKey("CancelledBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("expense_vouchers_cancelled_by_fkey");
+
+                    b.HasOne("MEP_Management_System.Models.ExpenseCategory", "Category")
+                        .WithMany("ExpenseVouchers")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("expense_vouchers_category_id_fkey");
+
+                    b.HasOne("MEP_Management_System.Models.User", "ConfirmedByUser")
+                        .WithMany()
+                        .HasForeignKey("ConfirmedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("expense_vouchers_confirmed_by_fkey");
+
+                    b.HasOne("MEP_Management_System.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .IsRequired()
+                        .HasConstraintName("expense_vouchers_created_by_fkey");
+
+                    b.HasOne("MEP_Management_System.Models.Supplier", "Supplier")
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("expense_vouchers_supplier_id_fkey");
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("CancelledByUser");
+
+                    b.Navigation("Category");
+
+                    b.Navigation("ConfirmedByUser");
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("Supplier");
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.InventoryCheckDetail", b =>
                 {
                     b.HasOne("MEP_Management_System.Models.User", "CountedByUser")
@@ -3324,6 +3621,15 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Customer");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.OrderDiscountTier", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId");
+
+                    b.Navigation("Branch");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.OrderItem", b =>
@@ -3635,6 +3941,12 @@ namespace MEP_Management_System.Migrations
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("stock_tickets_confirmed_by_fkey");
 
+                    b.HasOne("MEP_Management_System.Models.Supplier", "Supplier")
+                        .WithMany("StockTickets")
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("stock_tickets_supplier_id_fkey");
+
                     b.HasOne("MEP_Management_System.Models.User", "User")
                         .WithMany("StockTickets")
                         .HasForeignKey("UserId")
@@ -3646,6 +3958,8 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("CancelledByUser");
 
                     b.Navigation("ConfirmedByUser");
+
+                    b.Navigation("Supplier");
 
                     b.Navigation("User");
                 });
@@ -3965,6 +4279,11 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Orders");
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.ExpenseCategory", b =>
+                {
+                    b.Navigation("ExpenseVouchers");
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.InventoryCheckTicket", b =>
                 {
                     b.Navigation("Details");
@@ -4038,6 +4357,8 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Products");
 
                     b.Navigation("PurchaseOrders");
+
+                    b.Navigation("StockTickets");
 
                     b.Navigation("SupplierPayments");
 

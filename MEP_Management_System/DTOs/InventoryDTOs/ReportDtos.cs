@@ -194,8 +194,11 @@ public class SupplierDetailReportDto
     public string? ContactEmail { get; set; }
     public string? GroupName { get; set; }
 
-    // Thông tin công nợ
+    // Thông tin công nợ tổng cộng (tất cả thời gian)
     public SupplierDebtInfoDto DebtInfo { get; set; } = new();
+
+    // Thông tin công nợ theo tháng (nếu có lọc)
+    public List<MonthlyDebtInfoDto> MonthlyDebts { get; set; } = new();
 
     // Lịch sử mua hàng (phiếu nhập)
     public List<PurchaseHistoryItemDto> PurchaseHistory { get; set; } = new();
@@ -206,6 +209,20 @@ public class SupplierDetailReportDto
     public List<SupplierPaymentHistoryItemDto> PaymentHistory { get; set; } = new();
     public int TotalPayments { get; set; }
     public decimal TotalPaidAmount { get; set; }
+}
+
+/// <summary>
+/// Thông tin công nợ theo tháng
+/// </summary>
+public class MonthlyDebtInfoDto
+{
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public string MonthName { get; set; } = null!;
+    public decimal TotalPurchase { get; set; }
+    public decimal TotalPaid { get; set; }
+    public decimal RemainingDebt { get; set; }
+    public int OrderCount { get; set; }
 }
 
 public class SupplierDebtInfoDto
@@ -240,15 +257,14 @@ public class SupplierPaymentHistoryItemDto
 public class DailyEndReportRequestDto
 {
     public DateTime Date { get; set; } = DateTime.UtcNow.Date;
-    public Guid? BranchId { get; set; }
 }
 
 public class StockMovementReportRequestDto
 {
     public DateTime FromDate { get; set; }
     public DateTime ToDate { get; set; }
-    public Guid? BranchId { get; set; }
-    public Guid? CategoryId { get; set; } // Lọc theo nhóm sản phẩm
+    public Guid? CategoryId { get; set; } // Lọc theo nhóm sản phẩm (giữ tương thích cũ)
+    public string? CategoryName { get; set; } // Lọc theo tên nhóm sản phẩm từ UI
     public Guid? ProductId { get; set; } // Lọc theo sản phẩm
 }
 
@@ -256,13 +272,11 @@ public class RevenueByTimeRequestDto
 {
     public DateTime FromDate { get; set; }
     public DateTime ToDate { get; set; }
-    public Guid? BranchId { get; set; }
     public string TimeGrouping { get; set; } = "day"; // day, week, month
 }
 
 public class LowStockReportRequestDto
 {
-    public Guid? BranchId { get; set; }
     public bool IncludeZeroStock { get; set; } = true; // Bao gồm cả sản phẩm tồn = 0
 }
 
@@ -270,8 +284,7 @@ public class ProductProfitReportRequestDto
 {
     public DateTime FromDate { get; set; }
     public DateTime ToDate { get; set; }
-    public Guid? BranchId { get; set; }
-    public Guid? CategoryId { get; set; }
+    public string? CategoryName { get; set; } // Tên nhóm sản phẩm từ UI
     public string SortBy { get; set; } = "revenue"; // revenue, profit, quantity
     public int PageNumber { get; set; } = 1;
     public int PageSize { get; set; } = 50;
@@ -280,10 +293,8 @@ public class ProductProfitReportRequestDto
 public class SupplierDetailRequestDto
 {
     public Guid SupplierId { get; set; }
-    public DateTime? PurchaseFromDate { get; set; }
-    public DateTime? PurchaseToDate { get; set; }
-    public DateTime? PaymentFromDate { get; set; }
-    public DateTime? PaymentToDate { get; set; }
+    public int? Year { get; set; } // Năm để lọc (null = tất cả)
+    public int? Month { get; set; } // Tháng để lọc (1-12, null = tất cả)
 }
 
 #endregion
