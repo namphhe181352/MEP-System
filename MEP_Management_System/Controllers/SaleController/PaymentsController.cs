@@ -50,8 +50,8 @@ public class PaymentsController : ControllerBase
         if (invoice.Status != "Draft") return BadRequest(ApiErrorResponse.Create("MSG-78", "Invoice already finalized"));
 
         var subtotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
-        var vatAmount = Math.Round(subtotal * 0.08m, 2);
-        var totalAmount = subtotal + vatAmount - (invoice.Order.DiscountAmount ?? 0);
+        // VAT removed - POS retail does not include VAT
+        var totalAmount = subtotal - (invoice.Order.DiscountAmount ?? 0);
 
         var existingPayments = await _context.Payments
             .Where(p => p.InvoiceId == invoiceId && (p.Status == "Confirmed" || p.Status == "Pending"))
