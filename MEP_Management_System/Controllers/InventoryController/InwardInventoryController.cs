@@ -24,15 +24,18 @@ namespace MEP_Management_System.Controllers.InventoryController
         private readonly MEPDatabaseContext _context;
         private readonly ICurrentBranchAccessor _currentBranch;
         private readonly IHubContext<InventoryHub> _hub;
+        private readonly IInwardInventoryQueryService _inwardQueryService;
 
         public InwardInventoryController(
             MEPDatabaseContext context, 
             ICurrentBranchAccessor currentBranch,
-            IHubContext<InventoryHub> hub)
+            IHubContext<InventoryHub> hub,
+            IInwardInventoryQueryService inwardQueryService)
         {
             _context = context;
             _currentBranch = currentBranch;
             _hub = hub;
+            _inwardQueryService = inwardQueryService;
         }
 
         private Guid? GetCurrentUserId()
@@ -114,95 +117,38 @@ namespace MEP_Management_System.Controllers.InventoryController
             {
                 if (pageNumber < 1) pageNumber = 1;
                 if (pageSize < 1 || pageSize > 100) pageSize = 10;
+                    // Delegate branch + status scoping to service, then apply extra filters and pagination here
+                    var list = await _inwardQueryService.GetInwardInventoryAsync(status, User);
 
-                var query = _context.StockTickets
-                    .Include(st => st.User)
-                    .Include(st => st.StockTicketItems)
-                        .ThenInclude(item => item.BranchProduct)
-                            .ThenInclude(bp => bp.Product)
-                    .Where(st => st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST")
-                    .AsQueryable();
+                    if (!string.IsNullOrWhiteSpace(ticketType))
+                        list = list.Where(st => string.Equals(st.TicketType, ticketType, StringComparison.OrdinalIgnoreCase)).ToList();
 
-                if (IsOwner())
-                {
-                    if (branchId.HasValue)
-                        query = query.Where(st => st.BranchId == branchId.Value);
-                }
-                else
-                {
-                    var staffBranchId = _currentBranch.GetBranchId();
-                    if (staffBranchId == null)
+                    if (fromDate.HasValue)
+                        list = list.Where(st => st.CreatedAt >= fromDate.Value).ToList();
+
+                    if (toDate.HasValue)
+                        list = list.Where(st => st.CreatedAt <= toDate.Value.AddDays(1)).ToList();
+
+                    var totalCount = list.Count;
+                    var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+                    var items = list.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
+
+                    return Ok(new ApiResponse<PaginatedResponse<InwardInventoryResponseDto>>
                     {
-                        return Unauthorized(new ApiResponse<object>
+                        Success = true,
+                        Message = "Inward inventory history retrieved successfully",
+                        Data = new PaginatedResponse<InwardInventoryResponseDto>
                         {
-                            Success = false,
-                            Message = "JWT token is missing or invalid",
-                            Errors = new() { "Authorization header required" }
-                        });
-                    }
-                    query = query.Where(st => st.BranchId == staffBranchId.Value);
-                }
-
-                // ============================================================
-                // QUY TẮC MỚI: Mặc định chỉ hiển thị PENDING + COMPLETED
-                // Chỉ khi truyền tường minh status=CANCELLED hoặc status=ALL mới hiển thị CANCELLED
-                // ============================================================
-                if (!string.IsNullOrWhiteSpace(status))
-                {
-                    var normalizedStatus = status.Trim().ToUpperInvariant();
-                    if (normalizedStatus == "ALL")
-                    {
-                        // Hiển thị tất cả trạng thái
-                    }
-                    else if (normalizedStatus == "CANCELLED")
-                    {
-                        query = query.Where(st => st.Status != null && st.Status.ToUpper() == "CANCELLED");
-                    }
-                    else
-                    {
-                        query = query.Where(st => st.Status != null && st.Status.ToUpper() == normalizedStatus);
-                    }
-                }
-                else
-                {
-                    // Mặc định: Ẩn CANCELLED để giao diện sạch sẽ
-                    query = query.Where(st => st.Status == null || (st.Status != "CANCELLED"));
-                }
-
-                if (!string.IsNullOrWhiteSpace(ticketType))
-                    query = query.Where(st => st.TicketType != null && st.TicketType.ToLower() == ticketType.Trim().ToLower());
-
-                if (fromDate.HasValue)
-                    query = query.Where(st => st.CreatedAt >= fromDate.Value);
-
-                if (toDate.HasValue)
-                    query = query.Where(st => st.CreatedAt <= toDate.Value.AddDays(1));
-
-                query = query.OrderByDescending(st => st.CreatedAt);
-
-                var totalCount = await query.CountAsync();
-                var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
-
-                var items = await query
-                    .Skip((pageNumber - 1) * pageSize)
-                    .Take(pageSize)
-                    .ToListAsync();
-
-                return Ok(new ApiResponse<PaginatedResponse<InwardInventoryResponseDto>>
-                {
-                    Success = true,
-                    Message = "Inward inventory history retrieved successfully",
-                    Data = new PaginatedResponse<InwardInventoryResponseDto>
-                    {
-                        Items = items.Select(MapToInwardInventoryResponse).ToList(),
-                        TotalCount = totalCount,
-                        PageNumber = pageNumber,
-                        PageSize = pageSize,
-                        TotalPages = totalPages,
-                        HasNextPage = pageNumber < totalPages,
-                        HasPreviousPage = pageNumber > 1
-                    }
-                });
+                            Items = items,
+                            TotalCount = totalCount,
+                            PageNumber = pageNumber,
+                            PageSize = pageSize,
+                            TotalPages = totalPages,
+                            HasNextPage = pageNumber < totalPages,
+                            HasPreviousPage = pageNumber > 1
+                        }
+                    });
             }
             catch (Exception ex)
             {
@@ -353,6 +299,16 @@ namespace MEP_Management_System.Controllers.InventoryController
                 });
             }
 
+            if (dto.InwardType == InwardInventoryType.Purchase && (!dto.SupplierId.HasValue || dto.SupplierId == Guid.Empty))
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Validation failed",
+                    Errors = new() { "SupplierId is required for Purchase inward inventory." }
+                });
+            }
+
             var itemValidationErrors = new List<string>();
             foreach (var item in dto.Items)
             {
@@ -386,6 +342,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     TicketCode = ticketCode,
                     BranchId = resolvedBranchId.Value,
                     UserId = currentUserId.Value,
+                    SupplierId = dto.InwardType == InwardInventoryType.Purchase ? dto.SupplierId : null,
                     TicketType = GetTicketTypeName(dto.InwardType),
                     Status = "PENDING", // THAY ĐỔI: Từ COMPLETED -> PENDING
                     Notes = dto.Note ?? dto.Reason,
@@ -398,6 +355,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 };
 
                 _context.StockTickets.Add(stockTicket);
+
+                decimal totalAmount = 0;
 
                 foreach (var item in dto.Items)
                 {
@@ -412,6 +371,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                             && bp.BranchId == resolvedBranchId.Value);
 
                     Guid actualBranchProductId;
+                    var effectiveCostPrice = item.CostPrice > 0 ? item.CostPrice : (branchProduct?.CostPrice ?? 0);
 
                     if (branchProduct == null)
                     {
@@ -428,7 +388,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                             BranchProductId = Guid.NewGuid(),
                             BranchId = resolvedBranchId.Value,
                             ProductId = product.ProductId,
-                            CostPrice = item.CostPrice > 0 ? item.CostPrice : 0,
+                            CostPrice = effectiveCostPrice,
                             SellPrice = 0,
                             ActualStock = 0,
                             ReservedStock = 0,
@@ -448,7 +408,13 @@ namespace MEP_Management_System.Controllers.InventoryController
                         {
                             branchProduct.CostPrice = item.CostPrice;
                         }
+                        else if (branchProduct.CostPrice <= 0)
+                        {
+                            branchProduct.CostPrice = effectiveCostPrice;
+                        }
                     }
+
+                    totalAmount += item.Quantity * effectiveCostPrice;
 
                     // Tạo ticket item với số lượng tồn hiện tại (chưa cộng thêm)
                     var ticketItem = new StockTicketItem
@@ -711,6 +677,10 @@ namespace MEP_Management_System.Controllers.InventoryController
                 stockTicket.Status = "COMPLETED";
                 stockTicket.CompletedAt = DateTime.UtcNow;
                 stockTicket.ConfirmedBy = currentUserId;
+                if (stockTicket.TicketType == "PURCHASE" && stockTicket.TotalAmount == 0)
+                {
+                    stockTicket.TotalAmount = stockTicket.StockTicketItems.Sum(item => item.Discrepancy * (item.BranchProduct?.CostPrice ?? 0));
+                }
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -933,6 +903,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 Status = stockTicket.Status ?? string.Empty,
                 BranchId = stockTicket.BranchId,
                 UserId = stockTicket.UserId,
+                SupplierId = stockTicket.SupplierId,
                 UserName = stockTicket.User?.FullName ?? stockTicket.User?.Username,
                 Reason = stockTicket.Notes,
                 Note = stockTicket.Notes,

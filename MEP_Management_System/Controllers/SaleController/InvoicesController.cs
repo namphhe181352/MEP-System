@@ -27,18 +27,21 @@ public class InvoicesController : ControllerBase
 
     private readonly IOrderDiscountService _orderDiscountService;
     private readonly ILogger<InvoicesController> _logger;
+    private readonly IInvoiceService _invoiceService;
     public InvoicesController(
        Models.MEPDatabaseContext context,
        IMapper mapper,
        MepNotificationService notifications,
        IOrderDiscountService orderDiscountService,
-       ILogger<InvoicesController> logger)
+       ILogger<InvoicesController> logger,
+       IInvoiceService invoiceService)
     {
         _context = context;
         _mapper = mapper;
         _notifications = notifications;
         _orderDiscountService = orderDiscountService;
         _logger = logger;
+        _invoiceService = invoiceService;
     }
 
     private Guid GetBranchId() =>
@@ -222,37 +225,9 @@ public class InvoicesController : ControllerBase
     [HttpGet("{invoiceId:guid}")]
     public async Task<ActionResult<InvoiceDto>> GetInvoice(Guid invoiceId)
     {
-        var branchId = GetBranchId();
-        var invoice = await _context.Invoices
-            .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct).ThenInclude(bp => bp.Product)
-            .Include(i => i.Payments)
-            .Include(i => i.Order).ThenInclude(o => o.Customer)
-            .Include(i => i.Order).ThenInclude(o => o.User)
-            .FirstOrDefaultAsync(i => i.InvoiceId == invoiceId && i.Order.BranchId == branchId);
+        var dto = await _invoiceService.GetInvoiceByIdAsync(invoiceId, User);
 
-        if (invoice == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Invoice not found"));
-
-        var dto = _mapper.Map<InvoiceDto>(invoice);
-        dto.OrderId = invoice.OrderId;
-        dto.UserId = invoice.UserId;
-        dto.UserName = invoice.Order?.User?.FullName;
-
-        // Tính TotalAmount = SubTotal - Discount
-        if (invoice.InvoiceItems != null && invoice.InvoiceItems.Any())
-        {
-            var subtotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
-            dto.Subtotal = subtotal;
-            dto.DiscountAmount = invoice.DiscountAmount;
-            dto.DiscountPercent = invoice.DiscountPercent;
-            dto.TotalAmount = subtotal - invoice.DiscountAmount;
-        }
-
-        if (invoice.Payments != null && invoice.Payments.Any())
-        {
-            dto.PaymentMethod = invoice.Payments.Count > 1 
-                ? "Combined" 
-                : invoice.Payments.First().Method.ToString();
-        }
+        if (dto == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Invoice not found"));
 
         return Ok(dto);
     }
