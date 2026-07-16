@@ -203,6 +203,29 @@ using (var scope = app.Services.CreateScope())
     await MEP_Management_System.Seed.DatabaseSeeder.SeedAsync(context);
 }
 
+// Đảm bảo bảng product_taxonomies tồn tại (cho nhóm hàng & thương hiệu)
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<MEPDatabaseContext>();
+    try
+    {
+        await context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS product_taxonomies (
+                taxonomy_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                name VARCHAR(255) NOT NULL,
+                type VARCHAR(50) NOT NULL CHECK (type IN ('Category', 'Brand')),
+                created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(name, type)
+            );
+            CREATE INDEX IF NOT EXISTS idx_product_taxonomies_type ON product_taxonomies(type);
+        ");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Startup] Tạo bảng product_taxonomies thất bại: {ex.Message}");
+    }
+}
+
 app.Run();
 
 public class UtcDateTimeConverter : System.Text.Json.Serialization.JsonConverter<DateTime>

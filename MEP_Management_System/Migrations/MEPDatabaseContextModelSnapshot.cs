@@ -1753,6 +1753,34 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("product_conversion_units", (string)null);
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.ProductTaxonomy", b =>
+                {
+                    b.Property<Guid>("TaxonomyId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("taxonomy_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("type");
+
+                    b.HasKey("TaxonomyId");
+
+                    b.ToTable("product_taxonomies");
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.Promotion", b =>
                 {
                     b.Property<Guid>("PromotionId")
