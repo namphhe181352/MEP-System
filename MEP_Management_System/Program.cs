@@ -226,6 +226,22 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// Đảm bảo cột media_url có thể lưu base64 images (mặc định VARCHAR(255) là quá nhỏ)
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<MEPDatabaseContext>();
+    try
+    {
+        await context.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE media_resources ALTER COLUMN media_url TYPE TEXT;"
+        );
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Startup] Alter media_url thất bại: {ex.Message}");
+    }
+}
+
 app.Run();
 
 public class UtcDateTimeConverter : System.Text.Json.Serialization.JsonConverter<DateTime>
