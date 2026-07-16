@@ -6,6 +6,7 @@ using MEP_Management_System.Hubs;
 using MEP_Management_System.DTOs.SaleDTOs;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OData;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -61,6 +62,37 @@ approvalsCfg.EntityType.HasKey(a => a.ApprovalId);
 builder.Services.Configure<VietQrOptions>(builder.Configuration.GetSection("VietQr"));
 builder.Services.AddHttpClient<VietQrService>();
 builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var errors = context.ModelState
+                .Where(e => e.Value?.Errors.Count > 0)
+                .SelectMany(e => e.Value!.Errors.Select(x =>
+                {
+                    var fieldName = e.Key.Split('.').Last();
+                    var msg = x.ErrorMessage;
+                    if (string.IsNullOrEmpty(msg) && x.Exception != null)
+                        msg = x.Exception.Message;
+                    if (string.IsNullOrEmpty(msg))
+                        msg = $"Trường '{fieldName}' không hợp lệ.";
+                    else if (msg.Contains("is required"))
+                        msg = $"Trường '{fieldName}' là bắt buộc.";
+                    else if (msg.Contains("Could not convert") || msg.Contains("could not convert"))
+                        msg = $"Trường '{fieldName}' không đúng định dạng.";
+                    else if (msg.Contains("The JSON value"))
+                        msg = $"Trường '{fieldName}' không đúng định dạng.";
+                    return msg;
+                }));
+
+            return new BadRequestObjectResult(new
+            {
+                success = false,
+                message = "Dữ liệu không hợp lệ.",
+                errors = errors.Any() ? errors.ToArray() : new[] { "Dữ liệu gửi lên không đúng định dạng." }
+            });
+        };
+    })
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new UtcDateTimeConverter());

@@ -295,7 +295,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 {
                     Success = false,
                     Message = "Validation failed",
-                    Errors = new() { "At least one item is required." }
+                    Errors = new() { "Phải có ít nhất 1 sản phẩm." }
                 });
             }
 
@@ -305,7 +305,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 {
                     Success = false,
                     Message = "Validation failed",
-                    Errors = new() { "SupplierId is required for Purchase inward inventory." }
+                    Errors = new() { "Nhà cung cấp là bắt buộc đối với phiếu nhập mua." }
                 });
             }
 

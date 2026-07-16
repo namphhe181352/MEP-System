@@ -40,7 +40,7 @@ namespace MEP_Management_System.Controllers
 
             var user = await _context.Users.FindAsync(userId.Value);
             if (user == null)
-                return NotFound(new { message = "User not found" });
+                return NotFound(new { message = "Không tìm thấy người dùng" });
 
             // Verify user has access to this branch
             var hasAccess = await _context.StaffAssignments

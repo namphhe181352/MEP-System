@@ -112,7 +112,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Include(bp => bp.Product).ThenInclude(p => p.ProductConversionUnits)
                     .Include(bp => bp.Product).ThenInclude(p => p.CreatedByUser)
                     .Include(bp => bp.Product).ThenInclude(p => p.UpdatedByUser)
-                    .Where(bp => bp.BranchId == branchId).AsQueryable();
+                    .Where(bp => bp.BranchId == branchId && bp.IsActive == 1).AsQueryable();
 
                 // Search by product name, code, or barcode
                 if (!string.IsNullOrWhiteSpace(@params.SearchTerm))
@@ -383,8 +383,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return NotFound(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Product not found",
-                        Errors = new() { $"No product with ID: {id}" }
+                        Message = "Không tìm thấy sản phẩm",
+                        Errors = new() { $"Không có sản phẩm với ID: {id}" }
                     });
                 }
 
@@ -430,7 +430,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 bool isCodeExist = await _context.Products.AnyAsync(p => p.ProductCode.ToLower() == dto.ProductCode.Trim().ToLower());
                 if (isCodeExist)
                 {
-                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Product code already exists", Errors = new() { $"Code '{dto.ProductCode}' exists" } });
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Mã hàng đã tồn tại", Errors = new() { $"Mã '{dto.ProductCode}' đã tồn tại" } });
                 }
 
                 var currentLocalTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
@@ -581,7 +581,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 bool isCodeExist = await _context.Products.AnyAsync(p => p.ProductId != id && p.ProductCode.ToLower() == dto.ProductCode.Trim().ToLower());
                 if (isCodeExist)
                 {
-                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Product code already exists", Errors = new() { $"Code '{dto.ProductCode}' exists" } });
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Mã hàng đã tồn tại", Errors = new() { $"Mã '{dto.ProductCode}' đã tồn tại" } });
                 }
 
                 // UOM: Không cho sửa BaseUnit khi sản phẩm đã có giao dịch
@@ -747,8 +747,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return NotFound(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Product not found",
-                        Errors = new() { $"No product with ID: {id}" }
+                        Message = "Không tìm thấy sản phẩm",
+                        Errors = new() { $"Không có sản phẩm với ID: {id}" }
                     });
                 }
 
@@ -765,7 +765,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = "Product deleted successfully"
+                    Message = "Đã xoá sản phẩm thành công"
                 });
             }
             catch (Exception ex)
@@ -773,7 +773,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return StatusCode(500, new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Error deleting product",
+                    Message = "Lỗi khi xoá sản phẩm",
                     Errors = new() { ex.Message }
                 });
             }
