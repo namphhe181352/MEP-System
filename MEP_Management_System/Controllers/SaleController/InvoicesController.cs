@@ -293,7 +293,13 @@ public class InvoicesController : ControllerBase
             if (currentStock < actualQuantity)
                 return BadRequest(ApiErrorResponse.Create("MSG-59", $"Insufficient stock. Available: {currentStock} {bp.Product.BaseUnit}"));
 
-            if (unitPrice < bp.CostPrice) return BadRequest(ApiErrorResponse.Create("MSG-63", "Price override below floor price"));
+            // Validate floor price with proper unit conversion scaling
+            // effectiveCost = costPrice * convertValue / baseConvertValue
+            var baseConvUnit = bp.Product.ProductConversionUnits.FirstOrDefault(u => u.UnitName == bp.Product.BaseUnit);
+            var baseConvertValue = baseConvUnit?.ConvertValue ?? 1m;
+            var effectiveCost = bp.CostPrice * convertValue / baseConvertValue;
+
+            if (unitPrice < effectiveCost) return BadRequest(ApiErrorResponse.Create("MSG-63", "Price override below floor price"));
 
             var existingItem = invoice.InvoiceItems
                 .FirstOrDefault(ii => ii.BranchProductId == bp.BranchProductId && ii.SellPrice == unitPrice && ii.SelectedUnit == selectedUnit);
