@@ -54,6 +54,8 @@ public partial class MEPDatabaseContext : DbContext
 
     public virtual DbSet<ProductConversionUnit> ProductConversionUnits { get; set; }
 
+    public virtual DbSet<ProductTaxonomy> ProductTaxonomies { get; set; }
+
     public virtual DbSet<PurchaseOrder> PurchaseOrders { get; set; }
 
     public virtual DbSet<PurchaseOrderItem> PurchaseOrderItems { get; set; }
