@@ -339,7 +339,7 @@ namespace MEP_Management_System.Controllers
                     {
                         Success = false,
                         Message = "Nhóm chi phí không hợp lệ hoặc đã bị vô hiệu hóa.",
-                        Errors = new() { $"CategoryId: {dto.CategoryId} not found or inactive." }
+                        Errors = new() { $"CategoryId: {dto.CategoryId} không tìm thấy hoặc không hoạt động." }
                     });
                 }
 
@@ -716,7 +716,7 @@ namespace MEP_Management_System.Controllers
                     {
                         Success = false,
                         Message = "Tên nhóm chi phí đã tồn tại.",
-                        Errors = new() { $"Category '{trimmedName}' already exists." }
+                        Errors = new() { $"Danh mục '{trimmedName}' đã tồn tại." }
                     });
                 }
 

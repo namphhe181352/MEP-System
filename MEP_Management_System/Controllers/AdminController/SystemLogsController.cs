@@ -113,7 +113,7 @@ public class SystemLogsController : ControllerBase
             .Include(l => l.User)
             .FirstOrDefaultAsync(l => l.LogId == id);
 
-        if (log == null) return NotFound(new { error = new { code = "MSG-404", message = "Not found." } });
+        if (log == null) return NotFound(new { error = new { code = "MSG-404", message = "Không tìm thấy." } });
 
         return Ok(_mapper.Map<SystemLogDto>(log));
     }
