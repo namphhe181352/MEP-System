@@ -812,7 +812,7 @@ public partial class MEPDatabaseContext : DbContext
                 .HasMaxLength(20)
                 .HasColumnName("media_type");
             entity.Property(e => e.MediaUrl)
-                .HasMaxLength(255)
+                .HasColumnType("text")
                 .HasColumnName("media_url");
             entity.Property(e => e.PostId).HasColumnName("post_id");
             entity.Property(e => e.ProductId).HasColumnName("product_id");
