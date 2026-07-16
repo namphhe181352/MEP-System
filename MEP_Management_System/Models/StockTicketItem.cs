@@ -17,6 +17,8 @@ public partial class StockTicketItem
 
     public decimal Discrepancy { get; set; }
 
+    public decimal? UnitPrice { get; set; }
+
     public virtual BranchProduct BranchProduct { get; set; } = null!;
 
     public virtual StockTicket StockTicket { get; set; } = null!;

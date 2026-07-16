@@ -1778,7 +1778,7 @@ namespace MEP_Management_System.Migrations
 
                     b.HasKey("TaxonomyId");
 
-                    b.ToTable("product_taxonomies");
+                    b.ToTable("product_taxonomies", (string)null);
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.Promotion", b =>
