@@ -1,15 +1,17 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using AutoMapper;
-using MEP_Management_System.Models;
 using MEP_Management_System.DTOs;
+using MEP_Management_System.Models;
 using MEP_Management_System.Services;
+using MEP_Management_System.Services.Email;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.RateLimiting;
 
 namespace MEP_Management_System.Controllers
 {
@@ -20,16 +22,22 @@ namespace MEP_Management_System.Controllers
         private readonly MEPDatabaseContext _context;
         private readonly IMapper _mapper;
         private readonly JwtHelper _jwtHelper;
+        private readonly IEmailService _emailService; // 🌟 Injection Email Service
 
-        public authController(MEPDatabaseContext context, IMapper mapper, JwtHelper jwtHelper)
+        public authController(
+            MEPDatabaseContext context,
+            IMapper mapper,
+            JwtHelper jwtHelper,
+            IEmailService emailService) // 🌟 Khai báo thêm Email Service ở Constructor
         {
             _context = context;
             _mapper = mapper;
             _jwtHelper = jwtHelper;
+            _emailService = emailService;
         }
 
         // ==========================================
-        // 1. REGISTER START: KIỂM TRA EMAIL & SINH OTP
+        // 1. REGISTER START: KIỂM TRA EMAIL, SINH OTP & GỬI EMAIL THỰC TẾ
         // ==========================================
         [EnableRateLimiting("StrictLimit")]
         [HttpPost("register/start")]
@@ -41,6 +49,7 @@ namespace MEP_Management_System.Controllers
                 return BadRequest(new { message = "Email này đã được đăng ký tài khoản." });
             }
 
+            // Sinh mã OTP gồm 6 chữ số ngẫu nhiên
             var otpCode = new Random().Next(100000, 999999).ToString();
 
             var otpVerification = new OtpVerification
@@ -56,10 +65,20 @@ namespace MEP_Management_System.Controllers
             _context.OtpVerifications.Add(otpVerification);
             await _context.SaveChangesAsync();
 
+            try
+            {
+                // 🌟 GỌI SERVICE GỬI MAIL THỰC TẾ Ở ĐÂY
+                await _emailService.SendOtpEmailAsync(dto.Email, otpCode);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = ex.Message });
+            }
+
             return Ok(new
             {
-                message = "Mã xác thực OTP đã được tạo thành công. Vui lòng kiểm tra email của bạn.",
-                otp = otpCode
+                message = "Mã xác thực OTP đã được gửi đến email của bạn thành công. Vui lòng kiểm tra hộp thư."
+                // 🔒 Lưu ý: Để bảo mật, trong môi trường Production thực tế, ta KHÔNG trả kèm thuộc tính `otp: otpCode` về Client nữa!
             });
         }
 
@@ -154,20 +173,18 @@ namespace MEP_Management_System.Controllers
             if (user.IsActive != 1) return BadRequest(new { message = "Tài khoản của bạn hiện đang bị khóa." });
             if (!user.IsVerified) return BadRequest(new { message = "Tài khoản của bạn chưa được xác thực." });
 
-            // 1. Lấy danh sách tên nhóm vai trò (Roles) gắn liền với User
             var userRoles = await _context.Roles
                 .Where(r => r.Users.Any(u => u.UserId == user.UserId))
                 .Select(r => r.RoleName)
                 .ToListAsync();
 
-var isOwner = userRoles.Contains("Owner");
+            var isOwner = userRoles.Contains("Owner");
 
             string? branchIdForToken = null;
             object? branchesForResponse = null;
 
             if (isOwner)
             {
-                // Owner: lấy tất cả branches
                 var branches = await _context.StaffAssignments
                     .Where(sa => sa.UserId == user.UserId)
                     .Include(sa => sa.Branch)
@@ -184,7 +201,6 @@ var isOwner = userRoles.Contains("Owner");
 
                 branchesForResponse = branches;
 
-                // 🎯 Dùng DefaultBranchId từ DB
                 if (user.DefaultBranchId != null)
                 {
                     branchIdForToken = user.DefaultBranchId.ToString();
@@ -204,14 +220,12 @@ var isOwner = userRoles.Contains("Owner");
             }
             else
             {
-                // Staff: Ưu tiên DefaultBranchId, fallback sang StaffAssignments với ORDER BY deterministic
                 if (user.DefaultBranchId.HasValue)
                 {
                     branchIdForToken = user.DefaultBranchId.Value.ToString();
                 }
                 else
                 {
-                    // Fallback: lấy từ StaffAssignments với ORDER BY AssignedAt (deterministic)
                     var assignment = await _context.StaffAssignments
                         .Where(sa => sa.UserId == user.UserId)
                         .OrderBy(sa => sa.AssignedAt)
@@ -224,26 +238,22 @@ var isOwner = userRoles.Contains("Owner");
                 }
             }
 
-// 2. 🌟 THÊM MỚI: Truy vấn toàn bộ mã quyền (PermissionCode) thông qua các Roles của User
             var rolePermissions = await _context.Roles
                 .Where(r => r.Users.Any(u => u.UserId == user.UserId))
                 .SelectMany(r => r.Permissions)
                 .Select(p => p.PermissionCode)
                 .ToListAsync();
 
-            // 3. 🌟 THÊM MỚI: Truy vấn mã quyền (PermissionCode) được chỉ định / gán trực tiếp cho User (bảng nối UserPermission)
             var userPermissions = await _context.UserPermissions
                 .Where(up => up.UserId == user.UserId)
                 .Select(up => up.Permission.PermissionCode)
                 .ToListAsync();
 
-            // 4. 🌟 THÊM MỚI: Sử dụng phương thức tập hợp Union để gộp 2 mảng quyền lại và triệt tiêu trùng lặp ngầm bằng Distinct
             var allPermissions = rolePermissions
                 .Union(userPermissions)
                 .Distinct()
                 .ToList();
 
-            // 5. 🌟 THAY ĐỔI: Tiến hành truyền thêm tham số danh sách mảng quyền `allPermissions` vào hàm sinh Token
             var jwtToken = _jwtHelper.GenerateToken(
                 user.UserId,
                 user.Username,
