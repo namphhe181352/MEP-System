@@ -923,7 +923,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                     SystemQuantity = item.SystemQuantity,
                     Quantity = item.Discrepancy,
                     ActualQuantity = item.ActualQuantity,
-                    CostPrice = item.BranchProduct?.CostPrice ?? 0
+                    CostPrice = item.BranchProduct?.CostPrice ?? 0,
+                    UnitPrice = item.UnitPrice,
+                    UnitName = item.BranchProduct?.Product?.BaseUnit
                 }).ToList() ?? new()
             };
         }
