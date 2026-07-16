@@ -430,7 +430,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                             BranchProductId = bp.BranchProductId,
                             SystemQuantity = bp.ActualStock,
                             ActualQuantity = bp.ActualStock,
-                            Discrepancy = item.Quantity
+                            Discrepancy = item.Quantity,
+                            UnitPrice = item.UnitPrice
                         };
 
                         _context.StockTicketItems.Add(ticketItem);
@@ -960,7 +961,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     ProductName = item.BranchProduct?.Product?.ProductName ?? string.Empty,
                     SystemQuantity = item.SystemQuantity,
                     Quantity = item.Discrepancy,
-                    ActualQuantity = item.ActualQuantity
+                    ActualQuantity = item.ActualQuantity,
+                    UnitPrice = item.UnitPrice
                 }).ToList() ?? new()
             };
         }

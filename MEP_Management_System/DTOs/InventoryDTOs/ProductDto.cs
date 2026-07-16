@@ -260,6 +260,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
     {
         public Guid BranchProductId { get; set; }
         public decimal Quantity { get; set; }
+        public decimal? UnitPrice { get; set; }
     }
 
     public class OutwardInventoryCreateDto
@@ -286,6 +287,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public decimal SystemQuantity { get; set; }
         public decimal Quantity { get; set; }
         public decimal ActualQuantity { get; set; }
+        public decimal? UnitPrice { get; set; }
     }
 
     public class OutwardInventoryResponseDto
