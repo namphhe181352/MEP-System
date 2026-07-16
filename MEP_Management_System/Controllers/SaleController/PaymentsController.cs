@@ -49,6 +49,16 @@ public class PaymentsController : ControllerBase
         if (invoice == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Invoice not found"));
         if (invoice.Status != "Draft") return BadRequest(ApiErrorResponse.Create("MSG-78", "Invoice already finalized"));
 
+        if (!invoice.InvoiceItems.Any())
+        {
+            return BadRequest(ApiErrorResponse.Create("MSG-61", "Hoá đơn chưa có sản phẩm nào"));
+        }
+
+        if (request.Amount <= 0)
+        {
+            return BadRequest(ApiErrorResponse.Create("validation_error", "Số tiền thanh toán phải lớn hơn 0"));
+        }
+
         var subtotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
         // VAT removed - POS retail does not include VAT
         var totalAmount = subtotal - (invoice.Order.DiscountAmount ?? 0);
@@ -62,7 +72,12 @@ public class PaymentsController : ControllerBase
 
         if (request.Method == PaymentMethod.Cash)
         {
-            var cashReceived = request.CashReceived ?? request.Amount;
+            if (request.CashReceived == null)
+            {
+                return BadRequest(ApiErrorResponse.Create("validation_error", "Tiền mặt nhận được là bắt buộc đối với thanh toán tiền mặt."));
+            }
+
+            var cashReceived = request.CashReceived.Value;
             var changeAmount = cashReceived - request.Amount;
             if (cashReceived < request.Amount) return BadRequest(ApiErrorResponse.Create("MSG-76", "Cash received is less than amount"));
 
@@ -89,9 +104,9 @@ public class PaymentsController : ControllerBase
             // Transaction Content e.g. MEP INV-1234
             var invoiceCode = (await _context.Invoices.FindAsync(invoiceId))?.InvoiceCode ?? invoiceId.ToString().Substring(0, 8);
             var content = $"MEP {invoiceCode}";
-            
+
             var (qrBase64, transactionContent) = await _vietQrService.GenerateQrAsync(request.Amount, content);
-            
+
             var payment = new Payment
             {
                 PaymentId = Guid.NewGuid(),
@@ -106,19 +121,45 @@ public class PaymentsController : ControllerBase
             };
             _context.Payments.Add(payment);
             await _context.SaveChangesAsync();
-            
+
             var dto = _mapper.Map<PaymentDto>(payment);
             dto.QRImageBase64 = qrBase64;
             dto.TransactionContent = transactionContent;
-            
+
             return Created($"/api/pos/payments/{payment.PaymentId}", dto);
         }
 
         if (request.Method == PaymentMethod.Combined)
         {
-            var lines = request.PaymentLines ?? throw new Exception("Payment lines required for combined payment");
+            var lines = request.PaymentLines;
+            if (lines == null || !lines.Any())
+            {
+                return BadRequest(ApiErrorResponse.Create("validation_error", "Danh sách thanh toán kết hợp không được để trống."));
+            }
+
+            var linesSum = lines.Sum(l => l.Amount);
+            if (linesSum != request.Amount)
+            {
+                return BadRequest(ApiErrorResponse.Create("amount_mismatch", $"Tổng số tiền các hình thức thanh toán ({linesSum:N0}) không khớp với tổng tiền yêu cầu ({request.Amount:N0})."));
+            }
+
+            var qrImages = new System.Collections.Generic.Dictionary<Guid, string>();
+            var transContents = new System.Collections.Generic.Dictionary<Guid, string>();
+            var invoiceCode = invoice.InvoiceCode ?? invoiceId.ToString().Substring(0, 8);
+
             foreach (var line in lines)
             {
+                if (line.Method == PaymentMethod.Cash)
+                {
+                    if (line.CashReceived == null)
+                    {
+                        return BadRequest(ApiErrorResponse.Create("validation_error", "Tiền mặt nhận được là bắt buộc đối với thanh toán tiền mặt."));
+                    }
+                    if (line.CashReceived.Value < line.Amount)
+                    {
+                        return BadRequest(ApiErrorResponse.Create("MSG-76", "Cash received is less than amount"));
+                    }
+                }
                 var p = new Payment
                 {
                     PaymentId = Guid.NewGuid(),
@@ -132,12 +173,35 @@ public class PaymentsController : ControllerBase
                     CreatedAt = DateTime.UtcNow,
                     BranchId = branchId
                 };
+
+                if (line.Method == PaymentMethod.Transfer)
+                {
+                    var content = $"MEP {invoiceCode}";
+                    var (qrBase64, transactionContent) = await _vietQrService.GenerateQrAsync(line.Amount, content);
+
+                    p.VietQRString = transactionContent;
+                    p.QRExpiredAt = DateTime.UtcNow.AddMinutes(5);
+
+                    qrImages[p.PaymentId] = qrBase64;
+                    transContents[p.PaymentId] = transactionContent;
+                }
+
                 _context.Payments.Add(p);
             }
             await _context.SaveChangesAsync();
 
             var allPayments = await _context.Payments.Where(p => p.InvoiceId == invoiceId).ToListAsync();
-            return Created($"/api/pos/invoices/{invoiceId}/payments", allPayments.Select(_mapper.Map<PaymentDto>));
+            var dtos = allPayments.Select(p =>
+            {
+                var dto = _mapper.Map<PaymentDto>(p);
+                if (qrImages.ContainsKey(p.PaymentId))
+                {
+                    dto.QRImageBase64 = qrImages[p.PaymentId];
+                    dto.TransactionContent = transContents[p.PaymentId];
+                }
+                return dto;
+            });
+            return Created($"/api/pos/invoices/{invoiceId}/payments", dtos);
         }
 
         return BadRequest(ApiErrorResponse.Create("MSG-76", "Invalid payment method"));
