@@ -38,29 +38,9 @@ namespace MEP_Management_System.Controllers.InventoryController
             return userId;
         }
 
-        private async Task<Guid?> GetCurrentBranchId()
+        private Guid? GetCurrentBranchId()
         {
-            // Ưu tiên 1: DefaultBranchId từ user
-            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
-            if (Guid.TryParse(userIdStr, out Guid userId))
-            {
-                var user = await _context.Users
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(u => u.UserId == userId);
-
-                if (user?.DefaultBranchId != null && user.DefaultBranchId != Guid.Empty)
-                {
-                    return user.DefaultBranchId;
-                }
-            }
-
-            // Ưu tiên 2: Lấy chi nhánh active DUY NHẤT
-            var activeBranch = await _context.Branches
-                .AsNoTracking()
-                .Where(b => b.IsActive == 1)
-                .FirstOrDefaultAsync();
-
-            return activeBranch?.BranchId;
+            return _currentBranch.GetBranchId();
         }
 
         private Guid? GetUserInfo()
@@ -83,7 +63,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
                     return BadRequest(new ApiResponse<object>
@@ -206,7 +186,7 @@ namespace MEP_Management_System.Controllers.InventoryController
             try
             {
                 // 🔐 Quyền đã kiểm tra bằng [HasPermission] ở attribute
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
                     return BadRequest(new ApiResponse<object>
@@ -305,7 +285,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var namePart = term.Trim();
 
                 // Get current branch for per-branch suggestions
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
                     return BadRequest(new ApiResponse<object>
@@ -429,7 +409,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
 
                 var errors = new List<string>();
                 if (string.IsNullOrWhiteSpace(dto.ProductCode)) errors.Add("productCode is required");
@@ -566,7 +546,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
 
                 var bp = await _context.BranchProducts
                     .Include(b => b.Product).ThenInclude(p => p.MediaResources)
@@ -752,7 +732,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
 
                 var bp = await _context.BranchProducts
                     .Include(b => b.Product)
@@ -804,7 +784,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
 
                 var bp = await _context.BranchProducts
                     .Include(b => b.Product)
@@ -858,7 +838,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
 
                 if (request?.Ids == null || !request.Ids.Any())
                 {
@@ -1075,7 +1055,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
                     return BadRequest(new ApiResponse<object>
@@ -1124,7 +1104,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
                     return BadRequest(new ApiResponse<object>
@@ -1173,7 +1153,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
                     return BadRequest(new ApiResponse<object>
@@ -1235,7 +1215,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
                     return BadRequest(new ApiResponse<object>
@@ -1296,7 +1276,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
                     return BadRequest(new ApiResponse<object>
@@ -1374,7 +1354,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
                     return BadRequest(new ApiResponse<object>
@@ -1452,7 +1432,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
                     return BadRequest(new ApiResponse<object>
@@ -1519,7 +1499,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
                     return BadRequest(new ApiResponse<object>
@@ -1588,7 +1568,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
                     return BadRequest(new ApiResponse<object>
@@ -1631,7 +1611,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
                     return BadRequest(new ApiResponse<object>
@@ -1688,7 +1668,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         [HasPermission(PermissionConstants.PRODUCT_UPDATE)]
         public async Task<IActionResult> RenameLocation([FromBody] RenameTaxonomyDto dto)
         {
-            var branchId = await GetCurrentBranchId();
+            var branchId = GetCurrentBranchId();
             if (branchId == null)
             {
                 return BadRequest(new ApiResponse<object>
@@ -1785,7 +1765,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                var branchId = await GetCurrentBranchId();
+                var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
                     return BadRequest(new ApiResponse<object>

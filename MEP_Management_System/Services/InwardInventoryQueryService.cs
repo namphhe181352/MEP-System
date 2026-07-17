@@ -37,12 +37,10 @@ namespace MEP_Management_System.Services
                 .Where(st => st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST")
                 .AsQueryable();
 
-            if (!IsOwner(currentUser))
-            {
-                var staffBranchId = GetUserBranchFromTokenOrDefault(currentUser);
-                if (staffBranchId == null) return new List<InwardInventoryResponseDto>();
-                query = query.Where(st => st.BranchId == staffBranchId.Value);
-            }
+            // Lọc theo branch từ token - áp dụng cho TẤT CẢ user (bao gồm Owner)
+            var branchId = GetUserBranchFromTokenOrDefault(currentUser);
+            if (branchId == null) return new List<InwardInventoryResponseDto>();
+            query = query.Where(st => st.BranchId == branchId.Value);
 
             if (!string.IsNullOrWhiteSpace(status))
             {
