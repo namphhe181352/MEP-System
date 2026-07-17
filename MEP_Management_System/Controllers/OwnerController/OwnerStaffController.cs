@@ -182,7 +182,7 @@ public class OwnerStaffController : ControllerBase
         var query = _context.Users
             .Include(u => u.UserPermissions).ThenInclude(up => up.Permission)
             .Include(u => u.Roles)
-            .Where(u => u.CreatedBy == ownerId.Value && u.Status != "DELETED")
+             .Where(u => u.CreatedBy == ownerId.Value && u.Status != "DELETED")
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -230,6 +230,13 @@ public class OwnerStaffController : ControllerBase
     /// <summary>
     /// Kiểm tra quan hệ dữ liệu của nhân viên trước khi xóa.
     /// </summary>
+    /// <remarks>
+    /// NOTE: Owner luôn pass permission check (xem PermissionAuthorizationHandler).
+    /// HasPermission đặt ở đây vì:
+    /// 1. Audit trail - ghi log ai check relations
+    /// 2. Intent documentation - thể hiện rõ đây là bước trước khi xóa
+    /// 3. Security-in-depth - phòng trường hợp user không phải Owner gọi trực tiếp qua URL
+    /// </remarks>
     [HttpGet("{id:guid}/check-relations")]
     [HasPermission(PermissionConstants.STAFF_DELETE)]
     public async Task<IActionResult> CheckStaffRelations(Guid id)
