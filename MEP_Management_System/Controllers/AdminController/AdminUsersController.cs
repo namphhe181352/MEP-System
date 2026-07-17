@@ -172,6 +172,27 @@ public class AdminUsersController : ControllerBase
             validRoles = roles;
         }
 
+        // Resolve branch: sử dụng BranchId được cung cấp hoặc lấy branch đầu tiên
+        Guid? resolvedBranchId = dto.BranchId;
+        if (resolvedBranchId == null || resolvedBranchId == Guid.Empty)
+        {
+            var firstBranch = await _context.Branches
+                .Where(b => b.IsActive == 1)
+                .OrderBy(b => b.CreatedAt)
+                .FirstOrDefaultAsync();
+            resolvedBranchId = firstBranch?.BranchId;
+        }
+
+        // Validate branch exists if provided
+        if (resolvedBranchId != null)
+        {
+            var branchExists = await _context.Branches.AnyAsync(b => b.BranchId == resolvedBranchId && b.IsActive == 1);
+            if (!branchExists)
+            {
+                return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-404", Message = "Chi nhánh không tồn tại hoặc đã bị vô hiệu hóa." } });
+            }
+        }
+
         var user = new User
         {
             UserId = Guid.NewGuid(),
@@ -182,6 +203,7 @@ public class AdminUsersController : ControllerBase
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
             IsActive = 1,
             Status = "ACTIVE",
+            DefaultBranchId = resolvedBranchId,
             CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified),
             CreatedBy = currentAdminId
         };
@@ -189,6 +211,18 @@ public class AdminUsersController : ControllerBase
         foreach (var role in validRoles)
         {
             user.Roles.Add(role);
+        }
+
+        // Tạo staff assignment nếu có branch
+        if (resolvedBranchId != null)
+        {
+            _context.StaffAssignments.Add(new StaffAssignment
+            {
+                AssignmentId = Guid.NewGuid(),
+                UserId = user.UserId,
+                BranchId = resolvedBranchId.Value,
+                AssignedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
+            });
         }
 
         _context.Users.Add(user);

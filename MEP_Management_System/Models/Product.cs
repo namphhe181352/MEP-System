@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MEP_Management_System.Models;
 
@@ -19,8 +20,28 @@ public partial class Product
 
     public string? ItemType { get; set; }
 
+    /// <summary>
+    /// Brand ID tham chiếu đến product_taxonomies (type = 'Brand').
+    /// Null = dùng BrandName string (legacy).
+    /// </summary>
+    public Guid? BrandTaxonomyId { get; set; }
+
+    /// <summary>
+    /// Category ID tham chiếu đến product_taxonomies (type = 'Category').
+    /// Null = dùng CategoryName string (legacy).
+    /// </summary>
+    public Guid? CategoryTaxonomyId { get; set; }
+
+    /// <summary>
+    /// Legacy field: kept for backward compatibility.
+    /// Nên dùng BrandTaxonomyId thay vì field này.
+    /// </summary>
     public string? BrandName { get; set; }
 
+    /// <summary>
+    /// Legacy field: kept for backward compatibility.
+    /// Nên dùng CategoryTaxonomyId thay vì field này.
+    /// </summary>
     public string? CategoryName { get; set; }
 
     public Guid? SupplierId { get; set; }
@@ -54,6 +75,11 @@ public partial class Product
 
     public DateTime? UpdatedAt { get; set; }
 
+    [ForeignKey("BrandTaxonomyId")]
+    public virtual ProductTaxonomy? BrandTaxonomy { get; set; }
+
+    [ForeignKey("CategoryTaxonomyId")]
+    public virtual ProductTaxonomy? CategoryTaxonomy { get; set; }
 
     public virtual ICollection<BranchProduct> BranchProducts { get; set; } = new List<BranchProduct>();
 

@@ -1152,8 +1152,7 @@ namespace MEP_Management_System.Migrations
 
                     b.Property<string>("MediaUrl")
                         .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("text")
                         .HasColumnName("media_url");
 
                     b.Property<Guid?>("PostId")
@@ -1573,10 +1572,16 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("brand_name");
 
+                    b.Property<Guid?>("BrandTaxonomyId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("CategoryName")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("category_name");
+
+                    b.Property<Guid?>("CategoryTaxonomyId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime?>("CreatedAt")
                         .ValueGeneratedOnAdd()
@@ -1666,6 +1671,10 @@ namespace MEP_Management_System.Migrations
 
                     b.HasKey("ProductId")
                         .HasName("products_pkey");
+
+                    b.HasIndex("BrandTaxonomyId");
+
+                    b.HasIndex("CategoryTaxonomyId");
 
                     b.HasIndex("CreatedBy");
 
@@ -1811,6 +1820,10 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("taxonomy_id");
 
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_id");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("created_at");
@@ -1829,7 +1842,9 @@ namespace MEP_Management_System.Migrations
 
                     b.HasKey("TaxonomyId");
 
-                    b.ToTable("product_taxonomies", (string)null);
+                    b.HasIndex("BranchId");
+
+                    b.ToTable("product_taxonomies");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.Promotion", b =>
@@ -2577,6 +2592,9 @@ namespace MEP_Management_System.Migrations
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)")
                         .HasColumnName("system_quantity");
+
+                    b.Property<decimal?>("UnitPrice")
+                        .HasColumnType("numeric");
 
                     b.HasKey("TicketItemId")
                         .HasName("stock_ticket_items_pkey");
@@ -3743,6 +3761,14 @@ namespace MEP_Management_System.Migrations
 
             modelBuilder.Entity("MEP_Management_System.Models.Product", b =>
                 {
+                    b.HasOne("MEP_Management_System.Models.ProductTaxonomy", "BrandTaxonomy")
+                        .WithMany()
+                        .HasForeignKey("BrandTaxonomyId");
+
+                    b.HasOne("MEP_Management_System.Models.ProductTaxonomy", "CategoryTaxonomy")
+                        .WithMany()
+                        .HasForeignKey("CategoryTaxonomyId");
+
                     b.HasOne("MEP_Management_System.Models.User", "CreatedByUser")
                         .WithMany()
                         .HasForeignKey("CreatedBy")
@@ -3759,6 +3785,10 @@ namespace MEP_Management_System.Migrations
                         .HasForeignKey("UpdatedBy")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("products_updated_by_fkey");
+
+                    b.Navigation("BrandTaxonomy");
+
+                    b.Navigation("CategoryTaxonomy");
 
                     b.Navigation("CreatedByUser");
 
@@ -3789,6 +3819,15 @@ namespace MEP_Management_System.Migrations
                         .HasConstraintName("product_conversion_units_product_id_fkey");
 
                     b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.ProductTaxonomy", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId");
+
+                    b.Navigation("Branch");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.PromotionUsage", b =>
