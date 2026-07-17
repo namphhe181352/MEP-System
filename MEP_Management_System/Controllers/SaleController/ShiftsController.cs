@@ -29,8 +29,11 @@ public class ShiftsController : ControllerBase
         _notifications = notifications;
     }
 
-    private Guid GetBranchId() =>
-        Guid.Parse(User.FindFirst("branchId")?.Value ?? throw new Exception("branchId not found"));
+    private Guid? GetBranchId()
+    {
+        var val = User.FindFirst("branchId")?.Value;
+        return string.IsNullOrEmpty(val) ? null : Guid.Parse(val);
+    }
     private Guid GetUserId() =>
         Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value ?? throw new Exception("userId"));
 
@@ -40,13 +43,16 @@ public class ShiftsController : ControllerBase
     {
         var userId = GetUserId();
         var branchId = GetBranchId();
+        if (branchId == null) return BadRequest(ApiErrorResponse.Create("MSG-76", "Tài khoản chưa được phân công chi nhánh. Vui lòng liên hệ chủ cửa hàng."));
 
         var openShift = await _context.Shifts
-            .FirstOrDefaultAsync(s => s.UserId == userId && s.BranchId == branchId && s.Status == "OPEN");
+            .FirstOrDefaultAsync(s => s.UserId == userId && s.BranchId == branchId.Value && s.Status == "OPEN");
         if (openShift != null) return Conflict(ApiErrorResponse.Create("MSG-76", "You already have an open shift"));
 
+        var today = DateTime.UtcNow.Date;
+        var tomorrow = today.AddDays(1);
         var todayCount = await _context.Shifts
-            .Where(s => s.BranchId == branchId && s.StartedAt.Date == DateTime.UtcNow.Date)
+            .Where(s => s.StartedAt >= today && s.StartedAt < tomorrow)
             .CountAsync();
 
         var shift = new Shift
@@ -54,7 +60,7 @@ public class ShiftsController : ControllerBase
             ShiftId = Guid.NewGuid(),
             ShiftCode = CodeGenerator.GenerateShiftCode(todayCount + 1),
             UserId = userId,
-            BranchId = branchId,
+            BranchId = branchId.Value,
             Status = "OPEN",
             StartedAt = DateTime.UtcNow,
             OpeningBalance = request.OpeningBalance
@@ -76,7 +82,7 @@ public class ShiftsController : ControllerBase
         };
 
         // Real-time: notify branch staff that a new shift was opened
-        _ = _notifications.NotifyBranchShiftOpened(branchId, new
+        _ = _notifications.NotifyBranchShiftOpened(branchId.Value, new
         {
             shift.ShiftId,
             shift.ShiftCode,
@@ -94,9 +100,10 @@ public class ShiftsController : ControllerBase
     {
         var userId = GetUserId();
         var branchId = GetBranchId();
+        if (branchId == null) return BadRequest(ApiErrorResponse.Create("MSG-76", "Tài khoản chưa được phân công chi nhánh."));
 
         var shift = await _context.Shifts
-            .FirstOrDefaultAsync(s => s.ShiftId == shiftId && s.BranchId == branchId);
+            .FirstOrDefaultAsync(s => s.ShiftId == shiftId && s.BranchId == branchId.Value);
         if (shift == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Shift not found"));
         if (shift.Status == "CLOSED") return BadRequest(ApiErrorResponse.Create("MSG-76", "Shift already closed"));
 
@@ -121,7 +128,7 @@ public class ShiftsController : ControllerBase
         var dto = _mapper.Map<ShiftDto>(shift);
 
         // Real-time: notify branch staff that shift was closed with summary
-        _ = _notifications.NotifyBranchShiftClosed(branchId, shift.ShiftId.ToString(), new
+        _ = _notifications.NotifyBranchShiftClosed(branchId.Value, shift.ShiftId.ToString(), new
         {
             shift.ShiftId,
             shift.ShiftCode,
@@ -142,9 +149,10 @@ public class ShiftsController : ControllerBase
     {
         var userId = GetUserId();
         var branchId = GetBranchId();
+        if (branchId == null) return BadRequest(ApiErrorResponse.Create("MSG-76", "Tài khoản chưa được phân công chi nhánh."));
 
         var shift = await _context.Shifts
-            .FirstOrDefaultAsync(s => s.ShiftId == shiftId && s.BranchId == branchId);
+            .FirstOrDefaultAsync(s => s.ShiftId == shiftId && s.BranchId == branchId.Value);
         if (shift == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Shift not found"));
 
         // Calculate real-time if shift is OPEN, otherwise use saved values
@@ -200,9 +208,10 @@ public class ShiftsController : ControllerBase
     {
         var userId = GetUserId();
         var branchId = GetBranchId();
+        if (branchId == null) return Ok(new PageResultDto<ShiftDto> { Items = new(), TotalCount = 0 });
 
         var query = _context.Shifts
-            .Where(s => s.BranchId == branchId)
+            .Where(s => s.BranchId == branchId.Value)
             .AsQueryable();
 
         if (from.HasValue) query = query.Where(s => s.StartedAt >= from.Value);

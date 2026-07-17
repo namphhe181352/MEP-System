@@ -517,9 +517,9 @@ public class InvoicesController : ControllerBase
                 ProductId = ii.BranchProduct.ProductId,
                 ProductName = ii.BranchProduct.Product.ProductName,
                 NewAvailableStock = ii.BranchProduct.AvailableStock
-            } as object)
+            })
             .ToListAsync();
-        _ = _notifications.NotifyBranchInvoiceFinalized(branchId, invoice.InvoiceId, stockUpdates);
+        _ = _notifications.NotifyBranchInvoiceFinalized(branchId, invoice.InvoiceId, stockUpdates.Cast<object>().ToList());
 
         return Ok(dto);
     }
