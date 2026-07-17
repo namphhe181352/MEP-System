@@ -27,7 +27,7 @@ public partial class User
     public string? SubscriptionPlan { get; set; } // BASIC / PREMIUM / ENTERPRISE
     public Guid? CreatedBy { get; set; } // NEW: Self-referencing foreign key to track which Owner created this User
     public Guid? DefaultBranchId { get; set; } // NEW: User's default branch
-    public virtual Branch? DefaultBranch { get; set; } // Navigation property: User's default branch
+    // public virtual Branch? DefaultBranch { get; set; } // Navigation property: User's default branch
 
     public virtual User? CreatedByUser { get; set; } // Navigation property: User who created this User
 
