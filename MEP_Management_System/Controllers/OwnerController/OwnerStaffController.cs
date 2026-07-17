@@ -48,8 +48,12 @@ public class OwnerStaffController : ControllerBase
     /// <summary>
     /// Chuẩn hóa OwnerStaffDto từ User entity.
     /// </summary>
-    private static OwnerStaffDto MapToDto(User user)
+    private async Task<OwnerStaffDto> MapToDto(User user)
     {
+        var assignment = await _context.StaffAssignments
+            .Include(sa => sa.Branch)
+            .FirstOrDefaultAsync(sa => sa.UserId == user.UserId);
+
         return new OwnerStaffDto
         {
             UserId = user.UserId,
@@ -57,8 +61,8 @@ public class OwnerStaffController : ControllerBase
             Email = user.Email,
             PhoneNumber = user.PhoneNumber,
             IsActive = user.IsActive,
-            BranchId = null, // Hệ thống 1 chi nhánh, tạm thời không dùng
-            BranchName = "Chi nhánh chính", // Gán cứng tên hiển thị nếu Frontend yêu cầu
+            BranchId = assignment?.BranchId,
+            BranchName = assignment?.Branch?.BranchName ?? "Chưa gán chi nhánh",
             PermissionCodes = user.UserPermissions
                 .Select(up => up.Permission?.PermissionCode ?? "")
                 .Where(c => !string.IsNullOrEmpty(c))
@@ -84,6 +88,15 @@ public class OwnerStaffController : ControllerBase
     {
         return await _context.Users.AnyAsync(u =>
             u.Username.ToLower() == username.Trim().ToLower());
+    }
+
+    private async Task<bool> IsUsernameTakenInBranchAsync(string username, Guid branchId)
+    {
+        // Check if any user with this username is assigned to the same branch
+        return await _context.StaffAssignments
+            .Include(sa => sa.User)
+            .AnyAsync(sa => sa.BranchId == branchId &&
+                sa.User.Username.ToLower() == username.Trim().ToLower());
     }
 
     private async Task<bool> IsPhoneTakenAsync(string phone, Guid? excludeUserId = null)
@@ -188,7 +201,11 @@ public class OwnerStaffController : ControllerBase
             .Take(pageSize)
             .ToListAsync();
 
-        var dtos = items.Select(u => MapToDto(u)).ToList();
+        var dtos = new List<OwnerStaffDto>();
+        foreach (var u in items)
+        {
+            dtos.Add(await MapToDto(u));
+        }
 
         return Ok(new ApiResponse<PaginatedResponse<OwnerStaffDto>>
         {
@@ -270,7 +287,7 @@ public class OwnerStaffController : ControllerBase
         {
             Success = true,
             Message = "Chi tiết nhân viên.",
-            Data = MapToDto(staff)
+            Data = await MapToDto(staff)
         });
     }
 
@@ -279,7 +296,7 @@ public class OwnerStaffController : ControllerBase
     #region POST /api/owner/staffs
 
     /// <summary>
-    /// Tạo nhân viên mới (Không gán chi nhánh).
+    /// Tạo nhân viên mới - Tự động gán chi nhánh của Owner.
     /// </summary>
     [HttpPost]
     public async Task<IActionResult> CreateStaff([FromBody] CreateStaffWithPermissionRequest dto)
@@ -291,6 +308,21 @@ public class OwnerStaffController : ControllerBase
                 Success = false,
                 Message = "Không thể xác định người dùng từ token."
             });
+
+        // Lấy branchId của Owner để gán cho nhân viên mới
+        var ownerBranchId = await _context.StaffAssignments
+            .Where(sa => sa.UserId == ownerId.Value)
+            .Select(sa => sa.BranchId)
+            .FirstOrDefaultAsync();
+
+        if (ownerBranchId == Guid.Empty)
+        {
+            return BadRequest(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Owner chưa được gán chi nhánh. Vui lòng liên hệ quản trị viên."
+            });
+        }
 
         if (string.IsNullOrWhiteSpace(dto.Username) ||
             string.IsNullOrWhiteSpace(dto.Email) ||
@@ -314,12 +346,13 @@ public class OwnerStaffController : ControllerBase
             });
         }
 
-        if (await IsUsernameTakenAsync(dto.Username))
+        // Check username uniqueness within the branch
+        if (await IsUsernameTakenInBranchAsync(dto.Username, ownerBranchId))
         {
             return BadRequest(new ApiResponse<object>
             {
                 Success = false,
-                Message = "Username đã tồn tại."
+                Message = $"Username '{dto.Username}' đã tồn tại trong chi nhánh này."
             });
         }
 
@@ -402,7 +435,14 @@ public class OwnerStaffController : ControllerBase
                 user.Roles.Add(staffRole);
             }
 
-            // ĐÃ BỎ: Logic nạp dữ liệu vào bảng StaffAssignments
+            // Tự động gán nhân viên vào chi nhánh của Owner
+            _context.StaffAssignments.Add(new StaffAssignment
+            {
+                AssignmentId = Guid.NewGuid(),
+                UserId = user.UserId,
+                BranchId = ownerBranchId,
+                AssignedAt = now
+            });
 
             foreach (var permission in validPermissions)
             {
@@ -427,7 +467,7 @@ public class OwnerStaffController : ControllerBase
                 {
                     Success = true,
                     Message = "Tạo nhân viên thành công.",
-                    Data = MapToDto(createdUser)
+                    Data = await MapToDto(createdUser)
                 });
         }
         catch
