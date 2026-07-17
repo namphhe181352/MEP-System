@@ -182,7 +182,7 @@ public class OwnerStaffController : ControllerBase
         var query = _context.Users
             .Include(u => u.UserPermissions).ThenInclude(up => up.Permission)
             .Include(u => u.Roles)
-            .Where(u => u.CreatedBy == ownerId.Value)
+            .Where(u => u.CreatedBy == ownerId.Value && u.Status != "DELETED")
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -224,6 +224,71 @@ public class OwnerStaffController : ControllerBase
         });
     }
 
+    #endregion
+
+    #region GET /api/owner/staffs/{id}/check-relations
+    /// <summary>
+    /// Kiểm tra quan hệ dữ liệu của nhân viên trước khi xóa.
+    /// </summary>
+    [HttpGet("{id:guid}/check-relations")]
+    public async Task<IActionResult> CheckStaffRelations(Guid id)
+    {
+        var ownerId = GetCurrentUserId();
+        if (!ownerId.HasValue)
+            return Unauthorized(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Không thể xác định người dùng từ token."
+            });
+
+        var staff = await _context.Users
+            .FirstOrDefaultAsync(u => u.UserId == id && u.CreatedBy == ownerId.Value);
+
+        if (staff == null)
+            return NotFound(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Nhân viên không tồn tại hoặc không thuộc quyền quản lý của bạn."
+            });
+
+        var invoiceCount = await _context.Invoices.CountAsync(i => i.UserId == id);
+        var orderCount = await _context.Orders.CountAsync(o => o.UserId == id);
+        var returnOrderCount = await _context.ReturnOrders.CountAsync(r => r.UserId == id);
+        var purchaseOrderCount = await _context.PurchaseOrders.CountAsync(p => p.UserId == id);
+        var shiftCount = await _context.Shifts.CountAsync(s => s.UserId == id);
+        var stockTicketCount = await _context.StockTickets.CountAsync(s => s.UserId == id);
+
+        var hasRelations = invoiceCount > 0 || orderCount > 0 || returnOrderCount > 0
+            || purchaseOrderCount > 0 || shiftCount > 0 || stockTicketCount > 0;
+
+        var messages = new List<string>();
+        if (invoiceCount > 0) messages.Add($"{invoiceCount} hóa đơn");
+        if (orderCount > 0) messages.Add($"{orderCount} đơn hàng");
+        if (returnOrderCount > 0) messages.Add($"{returnOrderCount} phiếu trả hàng");
+        if (purchaseOrderCount > 0) messages.Add($"{purchaseOrderCount} đơn mua hàng");
+        if (shiftCount > 0) messages.Add($"{shiftCount} ca làm việc");
+        if (stockTicketCount > 0) messages.Add($"{stockTicketCount} phiếu kho");
+
+        var message = hasRelations
+            ? $"Nhân viên có: {string.Join(", ", messages)}"
+            : "Nhân viên chưa có dữ liệu nghiệp vụ.";
+
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Message = message,
+            Data = new
+            {
+                hasRelations,
+                invoiceCount,
+                orderCount,
+                returnOrderCount,
+                purchaseOrderCount,
+                shiftCount,
+                stockTicketCount
+            }
+        });
+    }
     #endregion
 
     #region GET /api/owner/staffs/available-permissions
@@ -644,7 +709,7 @@ public class OwnerStaffController : ControllerBase
 
     #region DELETE /api/owner/staffs/{id}
     /// <summary>
-    /// Xóa hoàn toàn nhân viên ra khỏi hệ thống (Xóa cứng trong DB).
+    /// Xóa mềm nhân viên (Soft Delete - chuyển Status = DELETED, IsActive = 0).
     /// </summary>
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteStaff(Guid id)
@@ -654,9 +719,7 @@ public class OwnerStaffController : ControllerBase
             return Unauthorized(new ApiResponse<object> { Success = false, Message = "Không thể xác định người dùng từ token." });
 
         var staff = await _context.Users
-            .Include(u => u.UserPermissions)
-            .Include(u => u.Roles)
-            .FirstOrDefaultAsync(u => u.UserId == id && u.CreatedBy == ownerId.Value);
+            .FirstOrDefaultAsync(u => u.UserId == id && u.CreatedBy == ownerId.Value && u.Status != "DELETED");
 
         if (staff == null)
             return NotFound(new ApiResponse<object> { Success = false, Message = "Nhân viên không tồn tại hoặc không thuộc quyền quản lý của bạn." });
@@ -664,31 +727,11 @@ public class OwnerStaffController : ControllerBase
         if (staff.UserId == ownerId.Value)
             return BadRequest(new ApiResponse<object> { Success = false, Message = "Bạn không thể tự xóa tài khoản của chính mình." });
 
-        await using var transaction = await _context.Database.BeginTransactionAsync();
-        try
-        {
-            if (staff.UserPermissions.Any()) _context.UserPermissions.RemoveRange(staff.UserPermissions);
-            if (staff.Roles.Any()) staff.Roles.Clear();
+        staff.Status = "DELETED";
+        staff.IsActive = 0;
+        await _context.SaveChangesAsync();
 
-            var assignments = await _context.StaffAssignments.Where(sa => sa.UserId == staff.UserId).ToListAsync();
-            if (assignments.Any()) _context.StaffAssignments.RemoveRange(assignments);
-
-            _context.Users.Remove(staff);
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            return Ok(new ApiResponse<object> { Success = true, Message = $"Đã xóa hoàn toàn nhân viên '{staff.FullName}' ra khỏi hệ thống." });
-        }
-        catch (Exception ex)
-        {
-            await transaction.RollbackAsync();
-            return BadRequest(new ApiResponse<object>
-            {
-                Success = false,
-                Message = "Không thể xóa cứng nhân viên này vì tài khoản đã phát sinh dữ liệu nghiệp vụ (Hóa đơn, phiếu kho...). Vui lòng chọn giải pháp Tắt hoạt động.",
-                Errors = new List<string> { ex.Message }
-            });
-        }
+        return Ok(new ApiResponse<object> { Success = true, Message = $"Đã xóa mềm nhân viên '{staff.FullName}'." });
     }
     #endregion
 }
