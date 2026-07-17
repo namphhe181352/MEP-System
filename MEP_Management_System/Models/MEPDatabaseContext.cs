@@ -57,6 +57,8 @@ public partial class MEPDatabaseContext : DbContext
     public virtual DbSet<ProductTaxonomy> ProductTaxonomies { get; set; }
     public virtual DbSet<ProductAttributeType> ProductAttributeTypes { get; set; }
 
+    public virtual DbSet<ProductLocation> ProductLocations { get; set; }
+
     public virtual DbSet<PurchaseOrder> PurchaseOrders { get; set; }
 
     public virtual DbSet<PurchaseOrderItem> PurchaseOrderItems { get; set; }
@@ -2404,6 +2406,45 @@ public partial class MEPDatabaseContext : DbContext
             entity.HasIndex(e => e.TypeName)
                 .IsUnique()
                 .HasDatabaseName("ix_product_attribute_types_type_name");
+        });
+
+        // PRODUCT LOCATION - Vị trí lưu trữ sản phẩm
+        // ============================================================
+        modelBuilder.Entity<ProductLocation>(entity =>
+        {
+            entity.HasKey(e => e.LocationId).HasName("product_locations_pkey");
+            entity.ToTable("product_locations");
+
+            entity.Property(e => e.LocationId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("location_id");
+            entity.Property(e => e.LocationName)
+                .IsRequired()
+                .HasMaxLength(100)
+                .HasColumnName("location_name");
+            entity.Property(e => e.LocationCode)
+                .HasMaxLength(50)
+                .HasColumnName("location_code");
+            entity.Property(e => e.Description)
+                .HasMaxLength(500)
+                .HasColumnName("description");
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue((short)1)
+                .HasColumnName("is_active");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.Property(e => e.CreatedBy)
+                .HasColumnName("created_by");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("updated_at");
+            entity.Property(e => e.UpdatedBy)
+                .HasColumnName("updated_by");
+
+            entity.HasIndex(e => e.LocationName)
+                .IsUnique()
+                .HasDatabaseName("ix_product_locations_location_name");
         });
     }
 
