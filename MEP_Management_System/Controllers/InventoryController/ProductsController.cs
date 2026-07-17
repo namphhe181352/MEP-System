@@ -112,7 +112,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Include(bp => bp.Product).ThenInclude(p => p.ProductConversionUnits)
                     .Include(bp => bp.Product).ThenInclude(p => p.CreatedByUser)
                     .Include(bp => bp.Product).ThenInclude(p => p.UpdatedByUser)
-                    .Where(bp => bp.BranchId == branchId && bp.IsActive == 1).AsQueryable();
+                    .Where(bp => bp.BranchId == branchId).AsQueryable();
 
                 // Search by product name, code, or barcode
                 if (!string.IsNullOrWhiteSpace(@params.SearchTerm))
@@ -397,8 +397,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return NotFound(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Không tìm thấy sản phẩm",
-                        Errors = new() { $"Không có sản phẩm với ID: {id}" }
+                        Message = "Product not found",
+                        Errors = new() { $"No product with ID: {id}" }
                     });
                 }
 
@@ -597,7 +597,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 bool isCodeExist = await _context.Products.AnyAsync(p => p.ProductId != id && p.ProductCode.ToLower() == dto.ProductCode.Trim().ToLower());
                 if (isCodeExist)
                 {
-                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Mã hàng đã tồn tại", Errors = new() { $"Mã '{dto.ProductCode}' đã tồn tại" } });
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Product code already exists", Errors = new() { $"Code '{dto.ProductCode}' exists" } });
                 }
 
                 // UOM: Không cho sửa BaseUnit khi sản phẩm đã có giao dịch
@@ -763,8 +763,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return NotFound(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Không tìm thấy sản phẩm",
-                        Errors = new() { $"Không có sản phẩm với ID: {id}" }
+                        Message = "Product not found",
+                        Errors = new() { $"No product with ID: {id}" }
                     });
                 }
 
@@ -781,7 +781,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = "Đã xoá sản phẩm thành công"
+                    Message = "Product deleted successfully"
                 });
             }
             catch (Exception ex)
@@ -789,7 +789,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return StatusCode(500, new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Lỗi khi xoá sản phẩm",
+                    Message = "Error deleting product",
                     Errors = new() { ex.Message }
                 });
             }
@@ -1085,38 +1085,17 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                // Categories từ sản phẩm trong chi nhánh
-                var fromProducts = await _context.BranchProducts
+                var result = await _context.BranchProducts
                     .Include(bp => bp.Product)
                     .Where(bp => bp.BranchId == branchId && bp.Product.CategoryName != null && bp.Product.CategoryName != "")
                     .GroupBy(bp => bp.Product.CategoryName)
-                    .Select(g => new { Name = g.Key!, Count = g.Count() })
-                    .ToListAsync();
-
-                // Categories từ bảng taxonomy (tạo thủ công, chưa có SP)
-                var fromTaxonomy = await _context.ProductTaxonomies
-                    .Where(t => t.Type == "Category")
-                    .Select(t => t.Name)
-                    .ToListAsync();
-
-                // Merge: ưu tiên count từ Products, thêm taxonomy chưa có SP với count = 0
-                var result = fromProducts
-                    .Select(p => new TaxonomyItemDto
+                    .Select(g => new TaxonomyItemDto
                     {
-                        Name = p.Name!,
-                        ProductCount = p.Count
+                        Name = g.Key!,
+                        ProductCount = g.Count()
                     })
-                    .Concat(
-                        fromTaxonomy
-                            .Where(name => !fromProducts.Any(p => p.Name!.Equals(name, StringComparison.OrdinalIgnoreCase)))
-                            .Select(name => new TaxonomyItemDto
-                            {
-                                Name = name,
-                                ProductCount = 0
-                            })
-                    )
                     .OrderBy(x => x.Name)
-                    .ToList();
+                    .ToListAsync();
 
                 return Ok(new ApiResponse<List<TaxonomyItemDto>>
                 {
@@ -1155,38 +1134,17 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                // Brands từ sản phẩm trong chi nhánh
-                var fromProducts = await _context.BranchProducts
+                var result = await _context.BranchProducts
                     .Include(bp => bp.Product)
                     .Where(bp => bp.BranchId == branchId && bp.Product.BrandName != null && bp.Product.BrandName != "")
                     .GroupBy(bp => bp.Product.BrandName)
-                    .Select(g => new { Name = g.Key!, Count = g.Count() })
-                    .ToListAsync();
-
-                // Brands từ bảng taxonomy (tạo thủ công, chưa có SP)
-                var fromTaxonomy = await _context.ProductTaxonomies
-                    .Where(t => t.Type == "Brand")
-                    .Select(t => t.Name)
-                    .ToListAsync();
-
-                // Merge: ưu tiên count từ Products, thêm taxonomy chưa có SP với count = 0
-                var result = fromProducts
-                    .Select(p => new TaxonomyItemDto
+                    .Select(g => new TaxonomyItemDto
                     {
-                        Name = p.Name!,
-                        ProductCount = p.Count
+                        Name = g.Key!,
+                        ProductCount = g.Count()
                     })
-                    .Concat(
-                        fromTaxonomy
-                            .Where(name => !fromProducts.Any(p => p.Name!.Equals(name, StringComparison.OrdinalIgnoreCase)))
-                            .Select(name => new TaxonomyItemDto
-                            {
-                                Name = name,
-                                ProductCount = 0
-                            })
-                    )
                     .OrderBy(x => x.Name)
-                    .ToList();
+                    .ToListAsync();
 
                 return Ok(new ApiResponse<List<TaxonomyItemDto>>
                 {
@@ -1248,21 +1206,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                // Lưu vào bảng taxonomy để danh sách hiển thị ngay cả khi chưa có SP
-                var taxonomyExists = await _context.ProductTaxonomies
-                    .AnyAsync(t => t.Name.ToLower() == trimmedName.ToLower() && t.Type == "Category");
-                if (!taxonomyExists)
-                {
-                    _context.ProductTaxonomies.Add(new ProductTaxonomy
-                    {
-                        TaxonomyId = Guid.NewGuid(),
-                        Name = trimmedName,
-                        Type = "Category",
-                        CreatedAt = DateTime.UtcNow
-                    });
-                    await _context.SaveChangesAsync();
-                }
-
+                // Không cần tạo record trong bảng riêng, chỉ cần trả về thông báo thành công
+                // Category sẽ được tạo khi có sản phẩm đầu tiên sử dụng tên này
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
@@ -1323,21 +1268,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                // Lưu vào bảng taxonomy để danh sách hiển thị ngay cả khi chưa có SP
-                var taxonomyExists = await _context.ProductTaxonomies
-                    .AnyAsync(t => t.Name.ToLower() == trimmedName.ToLower() && t.Type == "Brand");
-                if (!taxonomyExists)
-                {
-                    _context.ProductTaxonomies.Add(new ProductTaxonomy
-                    {
-                        TaxonomyId = Guid.NewGuid(),
-                        Name = trimmedName,
-                        Type = "Brand",
-                        CreatedAt = DateTime.UtcNow
-                    });
-                    await _context.SaveChangesAsync();
-                }
-
+                // Brand sẽ được tạo khi có sản phẩm đầu tiên sử dụng tên này
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
@@ -1365,6 +1296,16 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
+                var branchId = await GetCurrentBranchId();
+                if (branchId == null)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy chi nhánh hợp lệ."
+                    });
+                }
+
                 if (string.IsNullOrWhiteSpace(dto.OldName) || string.IsNullOrWhiteSpace(dto.NewName))
                 {
                     return BadRequest(new ApiResponse<object>
@@ -1377,38 +1318,14 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 var newName = dto.NewName.Trim();
                 var oldName = dto.OldName.Trim();
-                var updatedCount = 0;
 
-                // Cập nhật sản phẩm đang dùng nhóm hàng cũ
-                var affectedProducts = await _context.Products
-                    .Where(p => p.CategoryName != null && p.CategoryName.ToLower() == oldName.ToLower())
+                var affectedProducts = await _context.BranchProducts
+                    .Include(bp => bp.Product)
+                    .Where(bp => bp.BranchId == branchId && bp.Product.CategoryName != null && bp.Product.CategoryName.ToLower() == oldName.ToLower())
+                    .Select(bp => bp.Product)
                     .ToListAsync();
 
-                if (affectedProducts.Any())
-                {
-                    var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
-                    var currentUserId = GetUserInfo();
-
-                    foreach (var product in affectedProducts)
-                    {
-                        product.CategoryName = newName;
-                        product.UpdatedAt = currentTime;
-                        product.UpdatedBy = currentUserId;
-                    }
-                    await _context.SaveChangesAsync();
-                    updatedCount = affectedProducts.Count;
-                }
-
-                // Cập nhật tên trong bảng taxonomy (kể cả khi chưa có SP nào)
-                var taxItem = await _context.ProductTaxonomies
-                    .FirstOrDefaultAsync(t => t.Name.ToLower() == oldName.ToLower() && t.Type == "Category");
-                if (taxItem != null)
-                {
-                    taxItem.Name = newName;
-                    await _context.SaveChangesAsync();
-                }
-
-                if (updatedCount == 0 && taxItem == null)
+                if (!affectedProducts.Any())
                 {
                     return NotFound(new ApiResponse<object>
                     {
@@ -1418,11 +1335,23 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
+                var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+                var currentUserId = GetUserInfo();
+
+                foreach (var product in affectedProducts)
+                {
+                    product.CategoryName = newName;
+                    product.UpdatedAt = currentTime;
+                    product.UpdatedBy = currentUserId;
+                }
+
+                await _context.SaveChangesAsync();
+
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = $"Đã đổi tên nhóm hàng '{oldName}' thành '{newName}' cho {updatedCount} sản phẩm",
-                    Data = new { UpdatedCount = updatedCount }
+                    Message = $"Đã đổi tên nhóm hàng '{oldName}' thành '{newName}' cho {affectedProducts.Count} sản phẩm",
+                    Data = new { UpdatedCount = affectedProducts.Count }
                 });
             }
             catch (Exception ex)
@@ -1445,6 +1374,16 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
+                var branchId = await GetCurrentBranchId();
+                if (branchId == null)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy chi nhánh hợp lệ."
+                    });
+                }
+
                 if (string.IsNullOrWhiteSpace(dto.OldName) || string.IsNullOrWhiteSpace(dto.NewName))
                 {
                     return BadRequest(new ApiResponse<object>
@@ -1457,38 +1396,14 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 var newName = dto.NewName.Trim();
                 var oldName = dto.OldName.Trim();
-                var updatedCount = 0;
 
-                // Cập nhật sản phẩm đang dùng thương hiệu cũ
-                var affectedProducts = await _context.Products
-                    .Where(p => p.BrandName != null && p.BrandName.ToLower() == oldName.ToLower())
+                var affectedProducts = await _context.BranchProducts
+                    .Include(bp => bp.Product)
+                    .Where(bp => bp.BranchId == branchId && bp.Product.BrandName != null && bp.Product.BrandName.ToLower() == oldName.ToLower())
+                    .Select(bp => bp.Product)
                     .ToListAsync();
 
-                if (affectedProducts.Any())
-                {
-                    var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
-                    var currentUserId = GetUserInfo();
-
-                    foreach (var product in affectedProducts)
-                    {
-                        product.BrandName = newName;
-                        product.UpdatedAt = currentTime;
-                        product.UpdatedBy = currentUserId;
-                    }
-                    await _context.SaveChangesAsync();
-                    updatedCount = affectedProducts.Count;
-                }
-
-                // Cập nhật tên trong bảng taxonomy (kể cả khi chưa có SP nào)
-                var taxItem = await _context.ProductTaxonomies
-                    .FirstOrDefaultAsync(t => t.Name.ToLower() == oldName.ToLower() && t.Type == "Brand");
-                if (taxItem != null)
-                {
-                    taxItem.Name = newName;
-                    await _context.SaveChangesAsync();
-                }
-
-                if (updatedCount == 0 && taxItem == null)
+                if (!affectedProducts.Any())
                 {
                     return NotFound(new ApiResponse<object>
                     {
@@ -1498,11 +1413,23 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
+                var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+                var currentUserId = GetUserInfo();
+
+                foreach (var product in affectedProducts)
+                {
+                    product.BrandName = newName;
+                    product.UpdatedAt = currentTime;
+                    product.UpdatedBy = currentUserId;
+                }
+
+                await _context.SaveChangesAsync();
+
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = $"Đã đổi tên thương hiệu '{oldName}' thành '{newName}' cho {updatedCount} sản phẩm",
-                    Data = new { UpdatedCount = updatedCount }
+                    Message = $"Đã đổi tên thương hiệu '{oldName}' thành '{newName}' cho {affectedProducts.Count} sản phẩm",
+                    Data = new { UpdatedCount = affectedProducts.Count }
                 });
             }
             catch (Exception ex)
@@ -1525,41 +1452,51 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var trimmed = name.Trim();
-
-                // Kiểm tra sản phẩm đang dùng — không cho xoá nếu có SP
-                var affectedCount = await _context.Products
-                    .CountAsync(p => p.CategoryName != null && p.CategoryName.ToLower() == trimmed.ToLower());
-
-                if (affectedCount > 0)
+                var branchId = await GetCurrentBranchId();
+                if (branchId == null)
                 {
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = $"Không thể xoá nhóm hàng '{trimmed}' vì có {affectedCount} sản phẩm đang sử dụng. Hãy gỡ nhóm hàng khỏi sản phẩm trước."
+                        Message = "Không tìm thấy chi nhánh hợp lệ."
                     });
                 }
 
-                // Xoá khỏi bảng taxonomy nếu có
-                var taxItem = await _context.ProductTaxonomies
-                    .FirstOrDefaultAsync(t => t.Name.ToLower() == trimmed.ToLower() && t.Type == "Category");
-                if (taxItem != null)
+                var trimmed = name.Trim();
+
+                var affectedProducts = await _context.BranchProducts
+                    .Include(bp => bp.Product)
+                    .Where(bp => bp.BranchId == branchId && bp.Product.CategoryName != null && bp.Product.CategoryName.ToLower() == trimmed.ToLower())
+                    .Select(bp => bp.Product)
+                    .ToListAsync();
+
+                if (!affectedProducts.Any())
                 {
-                    _context.ProductTaxonomies.Remove(taxItem);
-                    await _context.SaveChangesAsync();
-                    return Ok(new ApiResponse<object>
+                    return NotFound(new ApiResponse<object>
                     {
-                        Success = true,
-                        Message = $"Đã xoá nhóm hàng '{trimmed}'",
-                        Data = new { UpdatedCount = 0 }
+                        Success = false,
+                        Message = "Không tìm thấy nhóm hàng",
+                        Errors = new() { $"Không có sản phẩm nào đang dùng nhóm hàng '{trimmed}'" }
                     });
                 }
 
-                return NotFound(new ApiResponse<object>
+                var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+                var currentUserId = GetUserInfo();
+
+                foreach (var product in affectedProducts)
                 {
-                    Success = false,
-                    Message = "Không tìm thấy nhóm hàng",
-                    Errors = new() { $"Không có sản phẩm nào đang dùng nhóm hàng '{trimmed}'" }
+                    product.CategoryName = null;
+                    product.UpdatedAt = currentTime;
+                    product.UpdatedBy = currentUserId;
+                }
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = $"Đã gỡ nhóm hàng '{trimmed}' khỏi {affectedProducts.Count} sản phẩm",
+                    Data = new { UpdatedCount = affectedProducts.Count }
                 });
             }
             catch (Exception ex)
@@ -1582,41 +1519,51 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var trimmed = name.Trim();
-
-                // Kiểm tra sản phẩm đang dùng — không cho xoá nếu có SP
-                var affectedCount = await _context.Products
-                    .CountAsync(p => p.BrandName != null && p.BrandName.ToLower() == trimmed.ToLower());
-
-                if (affectedCount > 0)
+                var branchId = await GetCurrentBranchId();
+                if (branchId == null)
                 {
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = $"Không thể xoá thương hiệu '{trimmed}' vì có {affectedCount} sản phẩm đang sử dụng. Hãy gỡ thương hiệu khỏi sản phẩm trước."
+                        Message = "Không tìm thấy chi nhánh hợp lệ."
                     });
                 }
 
-                // Xoá khỏi bảng taxonomy nếu có
-                var taxItem = await _context.ProductTaxonomies
-                    .FirstOrDefaultAsync(t => t.Name.ToLower() == trimmed.ToLower() && t.Type == "Brand");
-                if (taxItem != null)
+                var trimmed = name.Trim();
+
+                var affectedProducts = await _context.BranchProducts
+                    .Include(bp => bp.Product)
+                    .Where(bp => bp.BranchId == branchId && bp.Product.BrandName != null && bp.Product.BrandName.ToLower() == trimmed.ToLower())
+                    .Select(bp => bp.Product)
+                    .ToListAsync();
+
+                if (!affectedProducts.Any())
                 {
-                    _context.ProductTaxonomies.Remove(taxItem);
-                    await _context.SaveChangesAsync();
-                    return Ok(new ApiResponse<object>
+                    return NotFound(new ApiResponse<object>
                     {
-                        Success = true,
-                        Message = $"Đã xoá thương hiệu '{trimmed}'",
-                        Data = new { UpdatedCount = 0 }
+                        Success = false,
+                        Message = "Không tìm thấy thương hiệu",
+                        Errors = new() { $"Không có sản phẩm nào đang dùng thương hiệu '{trimmed}'" }
                     });
                 }
 
-                return NotFound(new ApiResponse<object>
+                var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+                var currentUserId = GetUserInfo();
+
+                foreach (var product in affectedProducts)
                 {
-                    Success = false,
-                    Message = "Không tìm thấy thương hiệu",
-                    Errors = new() { $"Không có sản phẩm nào đang dùng thương hiệu '{trimmed}'" }
+                    product.BrandName = null;
+                    product.UpdatedAt = currentTime;
+                    product.UpdatedBy = currentUserId;
+                }
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = $"Đã gỡ thương hiệu '{trimmed}' khỏi {affectedProducts.Count} sản phẩm",
+                    Data = new { UpdatedCount = affectedProducts.Count }
                 });
             }
             catch (Exception ex)
@@ -1629,6 +1576,493 @@ namespace MEP_Management_System.Controllers.InventoryController
                 });
             }
         }
+
+        #region Location Management APIs
+
+        /// <summary>
+        /// GET /api/products/locations - Danh sách vị trí kho (distinct)
+        /// </summary>
+        [HttpGet("locations")]
+        [HasPermission(PermissionConstants.PRODUCT_VIEW)]
+        public async Task<IActionResult> GetLocations()
+        {
+            try
+            {
+                var branchId = await GetCurrentBranchId();
+                if (branchId == null)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy chi nhánh hợp lệ."
+                    });
+                }
+
+                var result = await _context.BranchProducts
+                    .Where(bp => bp.BranchId == branchId && bp.ShelfLocation != null && bp.ShelfLocation != "")
+                    .Select(bp => bp.ShelfLocation!)
+                    .Distinct()
+                    .OrderBy(x => x)
+                    .ToListAsync();
+
+                return Ok(new ApiResponse<List<string>>
+                {
+                    Success = true,
+                    Data = result
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi lấy danh sách vị trí",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
+        /// POST /api/products/locations - Thêm mới vị trí kho
+        /// </summary>
+        [HttpPost("locations")]
+        [HasPermission(PermissionConstants.PRODUCT_CREATE)]
+        public async Task<IActionResult> CreateLocation([FromBody] CreateTaxonomyDto dto)
+        {
+            try
+            {
+                var branchId = await GetCurrentBranchId();
+                if (branchId == null)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy chi nhánh hợp lệ."
+                    });
+                }
+
+                if (string.IsNullOrWhiteSpace(dto.Name))
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Tên vị trí là bắt buộc."
+                    });
+                }
+
+                var trimmedName = dto.Name.Trim();
+                var exists = await _context.BranchProducts
+                    .AnyAsync(bp => bp.BranchId == branchId && bp.ShelfLocation != null && bp.ShelfLocation.ToLower() == trimmedName.ToLower());
+
+                if (exists)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = $"Vị trí '{trimmedName}' đã tồn tại trong chi nhánh này."
+                    });
+                }
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = $"Vị trí '{trimmedName}' đã được thêm.",
+                    Data = new { Name = trimmedName }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi thêm vị trí",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
+        /// PUT /api/products/locations - Đổi tên vị trí kho (bulk update)
+        /// </summary>
+        [HttpPut("locations")]
+        [HasPermission(PermissionConstants.PRODUCT_UPDATE)]
+        public async Task<IActionResult> RenameLocation([FromBody] RenameTaxonomyDto dto)
+        {
+            var branchId = await GetCurrentBranchId();
+            if (branchId == null)
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy chi nhánh hợp lệ."
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(dto.OldName) || string.IsNullOrWhiteSpace(dto.NewName))
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Tên cũ và tên mới là bắt buộc."
+                });
+            }
+
+            var oldTrimmed = dto.OldName.Trim();
+            var newTrimmed = dto.NewName.Trim();
+
+            // Sử dụng transaction để tránh race condition
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                // Kiểm tra trùng tên location mới với lock
+                var newLocationExists = await _context.BranchProducts
+                    .AnyAsync(bp => bp.BranchId == branchId &&
+                        bp.ShelfLocation != null &&
+                        bp.ShelfLocation.ToLower() == newTrimmed.ToLower());
+
+                if (newLocationExists && oldTrimmed.ToLower() != newTrimmed.ToLower())
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = $"Vị trí '{newTrimmed}' đã tồn tại"
+                    });
+                }
+
+                // Lấy và update trong cùng transaction
+                var affectedProducts = await _context.BranchProducts
+                    .Where(bp => bp.BranchId == branchId &&
+                        bp.ShelfLocation != null &&
+                        bp.ShelfLocation.ToLower() == oldTrimmed.ToLower())
+                    .ToListAsync();
+
+                foreach (var bp in affectedProducts)
+                {
+                    bp.ShelfLocation = newTrimmed;
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                var message = affectedProducts.Count > 0
+                    ? $"Đã đổi tên vị trí '{oldTrimmed}' thành '{newTrimmed}' cho {affectedProducts.Count} sản phẩm"
+                    : $"Đã đổi tên vị trí '{oldTrimmed}' thành '{newTrimmed}'. Vị trí cũ chưa được sử dụng.";
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = message,
+                    Data = new { UpdatedCount = affectedProducts.Count }
+                });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi đổi tên vị trí",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
+        /// DELETE /api/products/locations/{locationName} - Xóa vị trí kho
+        /// </summary>
+        [HttpDelete("locations/{locationName}")]
+        [HasPermission(PermissionConstants.PRODUCT_DELETE)]
+        public async Task<IActionResult> DeleteLocation(string locationName)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(locationName))
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Tên vị trí là bắt buộc."
+                    });
+                }
+
+                var branchId = await GetCurrentBranchId();
+                if (branchId == null)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy chi nhánh hợp lệ."
+                    });
+                }
+
+                var trimmed = locationName.Trim();
+
+                var productsWithLocation = await _context.BranchProducts
+                    .Where(bp => bp.BranchId == branchId && bp.ShelfLocation != null && bp.ShelfLocation.ToLower() == trimmed.ToLower())
+                    .CountAsync();
+
+                if (productsWithLocation > 0)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = $"Không thể xóa vị trí '{trimmed}' vì có {productsWithLocation} sản phẩm đang sử dụng vị trí này."
+                    });
+                }
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = $"Đã xóa vị trí '{trimmed}'"
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi xóa vị trí",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        #endregion
+
+        #region Attribute Type Management APIs
+
+        /// <summary>
+        /// GET /api/products/attribute-types - Danh sách loại thuộc tính
+        /// </summary>
+        [HttpGet("attribute-types")]
+        [HasPermission(PermissionConstants.PRODUCT_VIEW)]
+        public async Task<IActionResult> GetAttributeTypes()
+        {
+            try
+            {
+                var result = await _context.ProductAttributeTypes
+                    .Where(t => t.IsActive == 1)
+                    .OrderBy(t => t.TypeName)
+                    .Select(t => new
+                    {
+                        t.TypeId,
+                        t.TypeName,
+                        t.TypeCode
+                    })
+                    .ToListAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Data = result
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi lấy danh sách loại thuộc tính",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
+        /// POST /api/products/attribute-types - Thêm mới loại thuộc tính
+        /// </summary>
+        [HttpPost("attribute-types")]
+        [HasPermission(PermissionConstants.PRODUCT_CREATE)]
+        public async Task<IActionResult> CreateAttributeType([FromBody] CreateAttributeTypeDto dto)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(dto.TypeName))
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Tên loại thuộc tính là bắt buộc."
+                    });
+                }
+
+                var exists = await _context.ProductAttributeTypes
+                    .AnyAsync(t => t.TypeName.ToLower() == dto.TypeName.Trim().ToLower() && t.IsActive == 1);
+
+                if (exists)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = $"Loại thuộc tính '{dto.TypeName}' đã tồn tại."
+                    });
+                }
+
+                var userId = GetUserInfo();
+                var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+
+                var attributeType = new ProductAttributeType
+                {
+                    TypeId = Guid.NewGuid(),
+                    TypeName = dto.TypeName.Trim(),
+                    TypeCode = !string.IsNullOrWhiteSpace(dto.TypeCode) ? dto.TypeCode.Trim().ToUpper() : null,
+                    IsActive = 1,
+                    CreatedAt = currentTime,
+                    CreatedBy = userId
+                };
+
+                _context.ProductAttributeTypes.Add(attributeType);
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = $"Đã thêm loại thuộc tính '{attributeType.TypeName}'",
+                    Data = new
+                    {
+                        attributeType.TypeId,
+                        attributeType.TypeName,
+                        attributeType.TypeCode
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi thêm loại thuộc tính",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
+        /// PUT /api/products/attribute-types/{id} - Cập nhật loại thuộc tính
+        /// </summary>
+        [HttpPut("attribute-types/{id:guid}")]
+        [HasPermission(PermissionConstants.PRODUCT_UPDATE)]
+        public async Task<IActionResult> UpdateAttributeType(Guid id, [FromBody] UpdateAttributeTypeDto dto)
+        {
+            try
+            {
+                var attributeType = await _context.ProductAttributeTypes.FindAsync(id);
+                if (attributeType == null || attributeType.IsActive == 0)
+                {
+                    return NotFound(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy loại thuộc tính."
+                    });
+                }
+
+                if (!string.IsNullOrWhiteSpace(dto.TypeName))
+                {
+                    var exists = await _context.ProductAttributeTypes
+                        .AnyAsync(t => t.TypeId != id && t.TypeName.ToLower() == dto.TypeName.Trim().ToLower() && t.IsActive == 1);
+
+                    if (exists)
+                    {
+                        return BadRequest(new ApiResponse<object>
+                        {
+                            Success = false,
+                            Message = $"Tên loại thuộc tính '{dto.TypeName}' đã tồn tại."
+                        });
+                    }
+
+                    attributeType.TypeName = dto.TypeName.Trim();
+                }
+
+                if (dto.TypeCode != null)
+                {
+                    attributeType.TypeCode = string.IsNullOrWhiteSpace(dto.TypeCode) ? null : dto.TypeCode.Trim().ToUpper();
+                }
+
+                attributeType.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+                attributeType.UpdatedBy = GetUserInfo();
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = "Cập nhật loại thuộc tính thành công",
+                    Data = new
+                    {
+                        attributeType.TypeId,
+                        attributeType.TypeName,
+                        attributeType.TypeCode
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi cập nhật loại thuộc tính",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
+        /// DELETE /api/products/attribute-types/{id} - Xóa loại thuộc tính
+        /// </summary>
+        [HttpDelete("attribute-types/{id:guid}")]
+        [HasPermission(PermissionConstants.PRODUCT_DELETE)]
+        public async Task<IActionResult> DeleteAttributeType(Guid id)
+        {
+            try
+            {
+                var attributeType = await _context.ProductAttributeTypes.FindAsync(id);
+                if (attributeType == null || attributeType.IsActive == 0)
+                {
+                    return NotFound(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy loại thuộc tính."
+                    });
+                }
+
+                // Check if any product uses this attribute type
+                var productsUsingType = await _context.ProductAttributes
+                    .Where(a => a.AttributeName == attributeType.TypeName)
+                    .CountAsync();
+
+                if (productsUsingType > 0)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = $"Không thể xóa loại thuộc tính '{attributeType.TypeName}' vì có {productsUsingType} sản phẩm đang sử dụng."
+                    });
+                }
+
+                attributeType.IsActive = 0;
+                attributeType.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+                attributeType.UpdatedBy = GetUserInfo();
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = $"Đã xóa loại thuộc tính '{attributeType.TypeName}'"
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Lỗi khi xóa loại thuộc tính",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        #endregion
 
     }
 }
