@@ -24,13 +24,13 @@ namespace MEP_Management_System.Controllers.InventoryController
         private readonly MEPDatabaseContext _context;
         private readonly ICurrentBranchAccessor _currentBranch;
         private readonly IHubContext<InventoryHub> _hub;
-        private readonly IInwardInventoryQueryService _inwardQueryService;
+        private readonly InwardInventoryQueryService _inwardQueryService;
 
         public InwardInventoryController(
-            MEPDatabaseContext context, 
+            MEPDatabaseContext context,
             ICurrentBranchAccessor currentBranch,
             IHubContext<InventoryHub> hub,
-            IInwardInventoryQueryService inwardQueryService)
+            InwardInventoryQueryService inwardQueryService)
         {
             _context = context;
             _currentBranch = currentBranch;

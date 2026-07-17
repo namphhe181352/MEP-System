@@ -9,20 +9,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MEP_Management_System.Services
 {
-    public class InvoiceService : IInvoiceService
+    public static class InvoiceService
     {
-        private readonly MEPDatabaseContext _context;
-        private readonly IMapper _mapper;
-        private readonly IOrderDiscountService _orderDiscountService;
-
-        public InvoiceService(MEPDatabaseContext context, IMapper mapper, IOrderDiscountService orderDiscountService)
-        {
-            _context = context;
-            _mapper = mapper;
-            _orderDiscountService = orderDiscountService;
-        }
-
-        private Guid GetBranchId(ClaimsPrincipal user)
+        private static Guid GetBranchId(ClaimsPrincipal user)
         {
             var branchIdStr = user.FindFirst("branchId")?.Value;
             if (Guid.TryParse(branchIdStr, out var branchId))
@@ -32,10 +21,10 @@ namespace MEP_Management_System.Services
             throw new UnauthorizedAccessException("branchId not found in token.");
         }
 
-        public async Task<InvoiceDto?> GetInvoiceByIdAsync(Guid invoiceId, ClaimsPrincipal currentUser)
+        public static async Task<InvoiceDto?> GetInvoiceByIdAsync(MEPDatabaseContext context, IMapper mapper, IOrderDiscountService orderDiscountService, Guid invoiceId, ClaimsPrincipal currentUser)
         {
             var branchId = GetBranchId(currentUser);
-            var invoice = await _context.Invoices
+            var invoice = await context.Invoices
                 .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct).ThenInclude(bp => bp.Product)
                 .Include(i => i.Payments)
                 .Include(i => i.Order).ThenInclude(o => o.Customer)
@@ -44,11 +33,11 @@ namespace MEP_Management_System.Services
 
             if (invoice == null) return null;
 
-            var dto = _mapper.Map<InvoiceDto>(invoice);
+            var dto = mapper.Map<InvoiceDto>(invoice);
             dto.OrderId = invoice.OrderId;
             dto.UserId = invoice.UserId;
             dto.UserName = invoice.Order?.User?.FullName;
-            
+
             // Map the discount manually in case AutoMapper missed it from SaleMappingProfile
             dto.DiscountPercent = invoice.DiscountPercent;
             dto.DiscountAmount = invoice.DiscountAmount;
@@ -61,13 +50,13 @@ namespace MEP_Management_System.Services
                 // Nếu hóa đơn đang Draft, tính discount on the fly để POS hiển thị
                 if (invoice.Status == "Draft")
                 {
-                    var (dynDiscountPercent, dynDiscountAmount, _) = await _orderDiscountService.CalculateDiscountAsync(subtotal);
+                    var (dynDiscountPercent, dynDiscountAmount, _) = await orderDiscountService.CalculateDiscountAsync(subtotal);
                     dto.DiscountPercent = dynDiscountPercent;
                     dto.DiscountAmount = dynDiscountAmount;
                 }
 
                 dto.TotalAmount = subtotal - dto.DiscountAmount;
-                dto.Items = _mapper.Map<System.Collections.Generic.List<DTOs.SaleDTOs.InvoiceItemDto>>(invoice.InvoiceItems);
+                dto.Items = mapper.Map<System.Collections.Generic.List<DTOs.SaleDTOs.InvoiceItemDto>>(invoice.InvoiceItems);
             }
 
             if (invoice.Payments != null && invoice.Payments.Any())

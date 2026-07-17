@@ -10,7 +10,7 @@ using AutoMapper;
 
 namespace MEP_Management_System.Services
 {
-    public class ProductService : IProductService
+    public class ProductService
     {
         private readonly MEPDatabaseContext _context;
         private readonly ICurrentBranchAccessor _currentBranch;
@@ -45,12 +45,34 @@ namespace MEP_Management_System.Services
             return activeBranch?.BranchId;
         }
 
-        public async Task<ProductUpsertDto?> GetProductByIdAsync(Guid id, ClaimsPrincipal currentUser)
+        private static Guid? GetUserIdStatic(ClaimsPrincipal user)
         {
-            var branchId = await ResolveBranchIdAsync(currentUser);
+            var userClaim = user?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? user?.FindFirst("sub")?.Value;
+            return Guid.TryParse(userClaim, out var userId) ? userId : null;
+        }
+
+        private static async Task<Guid?> ResolveBranchIdAsyncStatic(ClaimsPrincipal user, MEPDatabaseContext context, ICurrentBranchAccessor currentBranch)
+        {
+            var userId = GetUserIdStatic(user);
+            if (userId == null) return null;
+
+            var userEntity = await context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId.Value);
+            if (userEntity?.DefaultBranchId != null && userEntity.DefaultBranchId != Guid.Empty)
+                return userEntity.DefaultBranchId;
+
+            var jwtBranchId = currentBranch.GetBranchId();
+            if (jwtBranchId.HasValue) return jwtBranchId.Value;
+
+            var activeBranch = await context.Branches.AsNoTracking().Where(b => b.IsActive == 1).FirstOrDefaultAsync();
+            return activeBranch?.BranchId;
+        }
+
+        public static async Task<ProductUpsertDto?> GetProductByIdAsync(Guid id, ClaimsPrincipal currentUser, MEPDatabaseContext context, ICurrentBranchAccessor currentBranch, IMapper mapper)
+        {
+            var branchId = await ResolveBranchIdAsyncStatic(currentUser, context, currentBranch);
             if (branchId == null) return null;
 
-            var bp = await _context.BranchProducts
+            var bp = await context.BranchProducts
                 .Include(bp => bp.Product).ThenInclude(p => p.Supplier)
                 .Include(bp => bp.Product).ThenInclude(p => p.MediaResources)
                 .Include(bp => bp.Product).ThenInclude(p => p.ProductAttributes)
@@ -61,16 +83,16 @@ namespace MEP_Management_System.Services
 
             if (bp == null) return null;
 
-            var dto = _mapper.Map<ProductUpsertDto>(bp);
+            var dto = mapper.Map<ProductUpsertDto>(bp);
             return dto;
         }
 
-        public async Task<ProductPriceDto?> GetProductPriceAsync(Guid productId, ClaimsPrincipal currentUser)
+        public static async Task<ProductPriceDto?> GetProductPriceAsync(Guid productId, ClaimsPrincipal currentUser, MEPDatabaseContext context, ICurrentBranchAccessor currentBranch)
         {
-            var branchId = await ResolveBranchIdAsync(currentUser);
+            var branchId = await ResolveBranchIdAsyncStatic(currentUser, context, currentBranch);
             if (branchId == null) return null;
 
-            var bp = await _context.BranchProducts
+            var bp = await context.BranchProducts
                 .AsNoTracking()
                 .Include(b => b.Product)
                     .ThenInclude(p => p.ProductConversionUnits)
@@ -107,12 +129,12 @@ namespace MEP_Management_System.Services
             return dto;
         }
 
-        public async Task<ProductStockDto?> GetProductStockAsync(Guid productId, ClaimsPrincipal currentUser)
+        public static async Task<ProductStockDto?> GetProductStockAsync(Guid productId, ClaimsPrincipal currentUser, MEPDatabaseContext context)
         {
-            var product = await _context.Products.FindAsync(productId);
+            var product = await context.Products.FindAsync(productId);
             if (product == null) return null;
 
-            var query = _context.BranchProducts
+            var query = context.BranchProducts
                 .AsNoTracking()
                 .Where(b => b.ProductId == productId && b.IsActive == 1);
 

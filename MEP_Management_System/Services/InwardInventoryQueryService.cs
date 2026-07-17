@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MEP_Management_System.Services
 {
-    public class InwardInventoryQueryService : IInwardInventoryQueryService
+    public class InwardInventoryQueryService
     {
         private readonly MEPDatabaseContext _context;
         private readonly ICurrentBranchAccessor _currentBranch;
