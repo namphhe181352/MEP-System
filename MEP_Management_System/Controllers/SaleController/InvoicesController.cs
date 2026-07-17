@@ -27,21 +27,18 @@ public class InvoicesController : ControllerBase
 
     private readonly IOrderDiscountService _orderDiscountService;
     private readonly ILogger<InvoicesController> _logger;
-    private readonly IInvoiceService _invoiceService;
     public InvoicesController(
        Models.MEPDatabaseContext context,
        IMapper mapper,
        MepNotificationService notifications,
        IOrderDiscountService orderDiscountService,
-       ILogger<InvoicesController> logger,
-       IInvoiceService invoiceService)
+       ILogger<InvoicesController> logger)
     {
         _context = context;
         _mapper = mapper;
         _notifications = notifications;
         _orderDiscountService = orderDiscountService;
         _logger = logger;
-        _invoiceService = invoiceService;
     }
 
     private Guid GetBranchId() =>
@@ -234,7 +231,7 @@ public class InvoicesController : ControllerBase
     [HttpGet("{invoiceId:guid}")]
     public async Task<ActionResult<InvoiceDto>> GetInvoice(Guid invoiceId)
     {
-        var dto = await _invoiceService.GetInvoiceByIdAsync(invoiceId, User);
+        var dto = await InvoiceService.GetInvoiceByIdAsync(_context, _mapper, _orderDiscountService, invoiceId, User);
 
         if (dto == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Invoice not found"));
 
@@ -445,18 +442,6 @@ public class InvoicesController : ControllerBase
             return BadRequest(ApiErrorResponse.Create("MSG-82", $"Thanh toán chưa đủ. Cần thanh toán {totalAmount:N0} VNĐ, nhưng mới nhận {totalPaid:N0} VNĐ."));
         }
 
-        // BR-90: Block finalize if any product is in a pending StockCheckTicket
-        var productIds = invoice.InvoiceItems.Select(ii => ii.BranchProduct.ProductId).ToList();
-        var hasPendingStockCheck = await _context.InventoryCheckTickets
-            .Where(t => t.BranchId == branchId &&
-                        (t.Status == InventoryCheckTicketStatus.Draft ||
-                         t.Status == InventoryCheckTicketStatus.WaitingForApproval) &&
-                        t.Details.Any(d => productIds.Contains(d.ProductId)))
-            .AnyAsync();
-
-        if (hasPendingStockCheck)
-            return BadRequest(ApiErrorResponse.Create("MSG-80", "Một số sản phẩm đang nằm trong phiếu kiểm kho chưa hoàn tất. Không thể thanh toán."));
-
         // Validate stock
         foreach (var item in invoice.InvoiceItems)
         {
@@ -517,9 +502,9 @@ public class InvoicesController : ControllerBase
                 ProductId = ii.BranchProduct.ProductId,
                 ProductName = ii.BranchProduct.Product.ProductName,
                 NewAvailableStock = ii.BranchProduct.AvailableStock
-            } as object)
+            })
             .ToListAsync();
-        _ = _notifications.NotifyBranchInvoiceFinalized(branchId, invoice.InvoiceId, stockUpdates);
+        _ = _notifications.NotifyBranchInvoiceFinalized(branchId, invoice.InvoiceId, stockUpdates.Cast<object>().ToList());
 
         return Ok(dto);
     }

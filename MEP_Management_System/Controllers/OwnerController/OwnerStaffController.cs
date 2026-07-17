@@ -7,6 +7,7 @@ using MEP_Management_System.Authorization;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -23,10 +24,12 @@ namespace MEP_Management_System.Controllers.OwnerController;
 public class OwnerStaffController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
+    private readonly ICurrentBranchAccessor _currentBranch;
 
-    public OwnerStaffController(MEPDatabaseContext context)
+    public OwnerStaffController(MEPDatabaseContext context, ICurrentBranchAccessor currentBranch)
     {
         _context = context;
+        _currentBranch = currentBranch;
     }
 
     #region Private Helper Methods
@@ -46,10 +49,22 @@ public class OwnerStaffController : ControllerBase
     }
 
     /// <summary>
+    /// Lấy BranchId từ JWT token.
+    /// </summary>
+    private Guid? GetCurrentBranchId()
+    {
+        return _currentBranch.GetBranchId();
+    }
+
+    /// <summary>
     /// Chuẩn hóa OwnerStaffDto từ User entity.
     /// </summary>
-    private static OwnerStaffDto MapToDto(User user)
+    private async Task<OwnerStaffDto> MapToDto(User user)
     {
+        var assignment = await _context.StaffAssignments
+            .Include(sa => sa.Branch)
+            .FirstOrDefaultAsync(sa => sa.UserId == user.UserId);
+
         return new OwnerStaffDto
         {
             UserId = user.UserId,
@@ -57,8 +72,8 @@ public class OwnerStaffController : ControllerBase
             Email = user.Email,
             PhoneNumber = user.PhoneNumber,
             IsActive = user.IsActive,
-            BranchId = null, // Hệ thống 1 chi nhánh, tạm thời không dùng
-            BranchName = "Chi nhánh chính", // Gán cứng tên hiển thị nếu Frontend yêu cầu
+            BranchId = assignment?.BranchId,
+            BranchName = assignment?.Branch?.BranchName ?? "Chưa gán chi nhánh",
             PermissionCodes = user.UserPermissions
                 .Select(up => up.Permission?.PermissionCode ?? "")
                 .Where(c => !string.IsNullOrEmpty(c))
@@ -84,6 +99,15 @@ public class OwnerStaffController : ControllerBase
     {
         return await _context.Users.AnyAsync(u =>
             u.Username.ToLower() == username.Trim().ToLower());
+    }
+
+    private async Task<bool> IsUsernameTakenInBranchAsync(string username, Guid branchId)
+    {
+        // Check if any user with this username is assigned to the same branch
+        return await _context.StaffAssignments
+            .Include(sa => sa.User)
+            .AnyAsync(sa => sa.BranchId == branchId &&
+                sa.User.Username.ToLower() == username.Trim().ToLower());
     }
 
     private async Task<bool> IsPhoneTakenAsync(string phone, Guid? excludeUserId = null)
@@ -147,7 +171,7 @@ public class OwnerStaffController : ControllerBase
     #region GET /api/owner/staffs
 
     /// <summary>
-    /// Lấy danh sách nhân viên do Owner tạo.
+    /// Lấy danh sách nhân viên của chi nhánh hiện tại.
     /// </summary>
     [HttpGet]
     public async Task<IActionResult> GetStaffs(
@@ -163,13 +187,27 @@ public class OwnerStaffController : ControllerBase
                 Message = "Không thể xác định người dùng từ token."
             });
 
+        var branchId = GetCurrentBranchId();
+        if (!branchId.HasValue)
+            return BadRequest(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Không tìm thấy thông tin chi nhánh."
+            });
+
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
+
+        // Lấy danh sách user thuộc chi nhánh hiện tại
+        var staffUserIds = await _context.StaffAssignments
+            .Where(sa => sa.BranchId == branchId.Value)
+            .Select(sa => sa.UserId)
+            .ToListAsync();
 
         var query = _context.Users
             .Include(u => u.UserPermissions).ThenInclude(up => up.Permission)
             .Include(u => u.Roles)
-            .Where(u => u.CreatedBy == ownerId.Value)
+            .Where(u => staffUserIds.Contains(u.UserId) && u.Status != "DELETED")
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -188,7 +226,11 @@ public class OwnerStaffController : ControllerBase
             .Take(pageSize)
             .ToListAsync();
 
-        var dtos = items.Select(u => MapToDto(u)).ToList();
+        var dtos = new List<OwnerStaffDto>();
+        foreach (var u in items)
+        {
+            dtos.Add(await MapToDto(u));
+        }
 
         return Ok(new ApiResponse<PaginatedResponse<OwnerStaffDto>>
         {
@@ -207,6 +249,167 @@ public class OwnerStaffController : ControllerBase
         });
     }
 
+    #endregion
+
+    #region GET /api/owner/staffs/{id}/check-relations
+    /// <summary>
+    /// Kiểm tra quan hệ dữ liệu của nhân viên trước khi xóa.
+    /// </summary>
+    /// <remarks>
+    /// NOTE: Owner luôn pass permission check (xem PermissionAuthorizationHandler).
+    /// HasPermission đặt ở đây vì:
+    /// 1. Audit trail - ghi log ai check relations
+    /// 2. Intent documentation - thể hiện rõ đây là bước trước khi xóa
+    /// 3. Security-in-depth - phòng trường hợp user không phải Owner gọi trực tiếp qua URL
+    /// </remarks>
+    [HttpGet("{id:guid}/check-relations")]
+    [HasPermission(PermissionConstants.STAFF_DELETE)]
+    public async Task<IActionResult> CheckStaffRelations(Guid id)
+    {
+        var ownerId = GetCurrentUserId();
+        if (!ownerId.HasValue)
+            return Unauthorized(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Không thể xác định người dùng từ token."
+            });
+
+        var branchId = GetCurrentBranchId();
+        if (!branchId.HasValue)
+            return BadRequest(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Không tìm thấy thông tin chi nhánh."
+            });
+
+        // Kiểm tra nhân viên có thuộc chi nhánh hiện tại không
+        var isInBranch = await _context.StaffAssignments
+            .AnyAsync(sa => sa.UserId == id && sa.BranchId == branchId.Value);
+
+        if (!isInBranch)
+            return NotFound(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Nhân viên không tồn tại hoặc không thuộc chi nhánh này."
+            });
+
+        var invoiceCount = await _context.Invoices.CountAsync(i => i.UserId == id);
+        var orderCount = await _context.Orders.CountAsync(o => o.UserId == id);
+        var returnOrderCount = await _context.ReturnOrders.CountAsync(r => r.UserId == id);
+        var purchaseOrderCount = await _context.PurchaseOrders.CountAsync(p => p.UserId == id);
+        var shiftCount = await _context.Shifts.CountAsync(s => s.UserId == id);
+        var stockTicketCount = await _context.StockTickets.CountAsync(s => s.UserId == id);
+
+        var hasRelations = invoiceCount > 0 || orderCount > 0 || returnOrderCount > 0
+            || purchaseOrderCount > 0 || shiftCount > 0 || stockTicketCount > 0;
+
+        var messages = new List<string>();
+        if (invoiceCount > 0) messages.Add($"{invoiceCount} hóa đơn");
+        if (orderCount > 0) messages.Add($"{orderCount} đơn hàng");
+        if (returnOrderCount > 0) messages.Add($"{returnOrderCount} phiếu trả hàng");
+        if (purchaseOrderCount > 0) messages.Add($"{purchaseOrderCount} đơn mua hàng");
+        if (shiftCount > 0) messages.Add($"{shiftCount} ca làm việc");
+        if (stockTicketCount > 0) messages.Add($"{stockTicketCount} phiếu kho");
+
+        var message = hasRelations
+            ? $"Nhân viên có: {string.Join(", ", messages)}"
+            : "Nhân viên chưa có dữ liệu nghiệp vụ.";
+
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Message = message,
+            Data = new
+            {
+                hasRelations,
+                invoiceCount,
+                orderCount,
+                returnOrderCount,
+                purchaseOrderCount,
+                shiftCount,
+                stockTicketCount
+            }
+        });
+    }
+    #endregion
+
+    #region GET /api/owner/staffs/{id}/check-usage
+    /// <summary>
+    /// Kiểm tra xem nhân viên có đang liên kết với các bảng dữ liệu nào không.
+    /// </summary>
+    [HttpGet("{id:guid}/check-usage")]
+    [HasPermission(PermissionConstants.STAFF_DELETE)]
+    public async Task<IActionResult> CheckStaffUsage(Guid id)
+    {
+        var ownerId = GetCurrentUserId();
+        if (!ownerId.HasValue)
+            return Unauthorized(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Không thể xác định người dùng từ token."
+            });
+
+        var staff = await _context.Users
+            .FirstOrDefaultAsync(u => u.UserId == id && u.CreatedBy == ownerId.Value);
+
+        if (staff == null)
+            return NotFound(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Nhân viên không tồn tại hoặc không thuộc quyền quản lý của bạn."
+            });
+
+        // Đếm số lượng liên kết trong các bảng
+        var orderCount = await _context.Orders.CountAsync(o => o.UserId == id);
+        var invoiceCount = await _context.Invoices.CountAsync(i => i.UserId == id);
+        var shiftCount = await _context.Shifts.CountAsync(s => s.UserId == id);
+
+        // StockTickets: UserId (người tạo), ConfirmedBy (người xác nhận), CancelledBy (người hủy)
+        var stockTicketCreatedCount = await _context.StockTickets.CountAsync(s => s.UserId == id);
+        var stockTicketConfirmedCount = await _context.StockTickets.CountAsync(s => s.ConfirmedBy == id);
+        var stockTicketCancelledCount = await _context.StockTickets.CountAsync(s => s.CancelledBy == id);
+        var stockTicketTotalCount = stockTicketCreatedCount + stockTicketConfirmedCount + stockTicketCancelledCount;
+
+        var violationReportCount = await _context.ViolationReports.CountAsync(v => v.UserId == id);
+
+        var hasUsage = orderCount > 0 || invoiceCount > 0 || shiftCount > 0
+            || stockTicketTotalCount > 0 || violationReportCount > 0;
+
+        // Tạo thông báo chi tiết
+        var usageDetails = new List<string>();
+        if (orderCount > 0) usageDetails.Add($"{orderCount} đơn hàng");
+        if (invoiceCount > 0) usageDetails.Add($"{invoiceCount} hóa đơn");
+        if (shiftCount > 0) usageDetails.Add($"{shiftCount} ca làm việc");
+        if (stockTicketCreatedCount > 0) usageDetails.Add($"{stockTicketCreatedCount} phiếu kho (người tạo)");
+        if (stockTicketConfirmedCount > 0) usageDetails.Add($"{stockTicketConfirmedCount} phiếu kho (người xác nhận)");
+        if (stockTicketCancelledCount > 0) usageDetails.Add($"{stockTicketCancelledCount} phiếu kho (người hủy)");
+        if (violationReportCount > 0) usageDetails.Add($"{violationReportCount} báo cáo vi phạm");
+
+        var warningMessage = hasUsage
+            ? $"Nhân viên đang có {string.Join(", ", usageDetails)}. Nếu xóa sẽ mất thông tin này."
+            : "Nhân viên chưa có dữ liệu nghiệp vụ.";
+
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Message = warningMessage,
+            Data = new
+            {
+                hasUsage,
+                orderCount,
+                invoiceCount,
+                shiftCount,
+                stockTicket = new
+                {
+                    createdCount = stockTicketCreatedCount,
+                    confirmedCount = stockTicketConfirmedCount,
+                    cancelledCount = stockTicketCancelledCount,
+                    totalCount = stockTicketTotalCount
+                },
+                violationReportCount
+            }
+        });
+    }
     #endregion
 
     #region GET /api/owner/staffs/available-permissions
@@ -253,24 +456,42 @@ public class OwnerStaffController : ControllerBase
                 Message = "Không thể xác định người dùng từ token."
             });
 
+        var branchId = GetCurrentBranchId();
+        if (!branchId.HasValue)
+            return BadRequest(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Không tìm thấy thông tin chi nhánh."
+            });
+
+        // Kiểm tra nhân viên có thuộc chi nhánh hiện tại không
+        var isInBranch = await _context.StaffAssignments
+            .AnyAsync(sa => sa.UserId == id && sa.BranchId == branchId.Value);
+
+        if (!isInBranch)
+            return NotFound(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Nhân viên không tồn tại hoặc không thuộc chi nhánh này."
+            });
+
         var staff = await _context.Users
             .Include(u => u.UserPermissions).ThenInclude(up => up.Permission)
             .Include(u => u.Roles)
-            .FirstOrDefaultAsync(u =>
-                u.UserId == id && u.CreatedBy == ownerId.Value);
+            .FirstOrDefaultAsync(u => u.UserId == id);
 
         if (staff == null)
             return NotFound(new ApiResponse<object>
             {
                 Success = false,
-                Message = "Nhân viên không tồn tại hoặc không thuộc quyền quản lý của bạn."
+                Message = "Nhân viên không tồn tại."
             });
 
         return Ok(new ApiResponse<OwnerStaffDto>
         {
             Success = true,
             Message = "Chi tiết nhân viên.",
-            Data = MapToDto(staff)
+            Data = await MapToDto(staff)
         });
     }
 
@@ -279,7 +500,7 @@ public class OwnerStaffController : ControllerBase
     #region POST /api/owner/staffs
 
     /// <summary>
-    /// Tạo nhân viên mới (Không gán chi nhánh).
+    /// Tạo nhân viên mới - Tự động gán chi nhánh của Owner.
     /// </summary>
     [HttpPost]
     public async Task<IActionResult> CreateStaff([FromBody] CreateStaffWithPermissionRequest dto)
@@ -291,6 +512,21 @@ public class OwnerStaffController : ControllerBase
                 Success = false,
                 Message = "Không thể xác định người dùng từ token."
             });
+
+        // Lấy branchId của Owner để gán cho nhân viên mới
+        var ownerBranchId = await _context.StaffAssignments
+            .Where(sa => sa.UserId == ownerId.Value)
+            .Select(sa => sa.BranchId)
+            .FirstOrDefaultAsync();
+
+        if (ownerBranchId == Guid.Empty)
+        {
+            return BadRequest(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Owner chưa được gán chi nhánh. Vui lòng liên hệ quản trị viên."
+            });
+        }
 
         if (string.IsNullOrWhiteSpace(dto.Username) ||
             string.IsNullOrWhiteSpace(dto.Email) ||
@@ -314,12 +550,13 @@ public class OwnerStaffController : ControllerBase
             });
         }
 
-        if (await IsUsernameTakenAsync(dto.Username))
+        // Check username uniqueness within the branch
+        if (await IsUsernameTakenInBranchAsync(dto.Username, ownerBranchId))
         {
             return BadRequest(new ApiResponse<object>
             {
                 Success = false,
-                Message = "Username đã tồn tại."
+                Message = $"Username '{dto.Username}' đã tồn tại trong chi nhánh này."
             });
         }
 
@@ -408,7 +645,14 @@ public class OwnerStaffController : ControllerBase
                 user.Roles.Add(staffRole);
             }
 
-            // ĐÃ BỎ: Logic nạp dữ liệu vào bảng StaffAssignments
+            // Tự động gán nhân viên vào chi nhánh của Owner
+            _context.StaffAssignments.Add(new StaffAssignment
+            {
+                AssignmentId = Guid.NewGuid(),
+                UserId = user.UserId,
+                BranchId = ownerBranchId,
+                AssignedAt = now
+            });
 
             foreach (var permission in validPermissions)
             {
@@ -433,7 +677,7 @@ public class OwnerStaffController : ControllerBase
                 {
                     Success = true,
                     Message = "Tạo nhân viên thành công.",
-                    Data = MapToDto(createdUser)
+                    Data = await MapToDto(createdUser)
                 });
         }
         catch
@@ -610,7 +854,7 @@ public class OwnerStaffController : ControllerBase
 
     #region DELETE /api/owner/staffs/{id}
     /// <summary>
-    /// Xóa hoàn toàn nhân viên ra khỏi hệ thống (Xóa cứng trong DB).
+    /// Xóa mềm nhân viên (Soft Delete - chuyển Status = DELETED, IsActive = 0).
     /// </summary>
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteStaff(Guid id)
@@ -619,42 +863,78 @@ public class OwnerStaffController : ControllerBase
         if (!ownerId.HasValue)
             return Unauthorized(new ApiResponse<object> { Success = false, Message = "Không thể xác định người dùng từ token." });
 
+        var branchId = GetCurrentBranchId();
+        if (!branchId.HasValue)
+            return BadRequest(new ApiResponse<object> { Success = false, Message = "Không tìm thấy thông tin chi nhánh." });
+
+        // Kiểm tra nhân viên có thuộc chi nhánh hiện tại không
+        var isInBranch = await _context.StaffAssignments
+            .AnyAsync(sa => sa.UserId == id && sa.BranchId == branchId.Value);
+
+        if (!isInBranch)
+            return NotFound(new ApiResponse<object> { Success = false, Message = "Nhân viên không tồn tại hoặc không thuộc chi nhánh này." });
+
         var staff = await _context.Users
-            .Include(u => u.UserPermissions)
-            .Include(u => u.Roles)
-            .FirstOrDefaultAsync(u => u.UserId == id && u.CreatedBy == ownerId.Value);
+            .FirstOrDefaultAsync(u => u.UserId == id && u.Status != "DELETED");
 
         if (staff == null)
-            return NotFound(new ApiResponse<object> { Success = false, Message = "Nhân viên không tồn tại hoặc không thuộc quyền quản lý của bạn." });
+            return NotFound(new ApiResponse<object> { Success = false, Message = "Nhân viên không tồn tại." });
 
         if (staff.UserId == ownerId.Value)
             return BadRequest(new ApiResponse<object> { Success = false, Message = "Bạn không thể tự xóa tài khoản của chính mình." });
 
-        await using var transaction = await _context.Database.BeginTransactionAsync();
-        try
+        // Kiểm tra các liên kết dữ liệu trước khi xóa
+        var orderCount = await _context.Orders.CountAsync(o => o.UserId == id);
+        var invoiceCount = await _context.Invoices.CountAsync(i => i.UserId == id);
+        var shiftCount = await _context.Shifts.CountAsync(s => s.UserId == id);
+        var stockTicketCreatedCount = await _context.StockTickets.CountAsync(s => s.UserId == id);
+        var stockTicketConfirmedCount = await _context.StockTickets.CountAsync(s => s.ConfirmedBy == id);
+        var stockTicketCancelledCount = await _context.StockTickets.CountAsync(s => s.CancelledBy == id);
+        var violationReportCount = await _context.ViolationReports.CountAsync(v => v.UserId == id);
+
+        var hasUsage = orderCount > 0 || invoiceCount > 0 || shiftCount > 0
+            || stockTicketCreatedCount > 0 || stockTicketConfirmedCount > 0 || stockTicketCancelledCount > 0
+            || violationReportCount > 0;
+
+        // Tạo cảnh báo nếu có liên kết
+        string? warningMessage = null;
+        if (hasUsage)
         {
-            if (staff.UserPermissions.Any()) _context.UserPermissions.RemoveRange(staff.UserPermissions);
-            if (staff.Roles.Any()) staff.Roles.Clear();
+            var usageDetails = new List<string>();
+            if (orderCount > 0) usageDetails.Add($"{orderCount} đơn hàng");
+            if (invoiceCount > 0) usageDetails.Add($"{invoiceCount} hóa đơn");
+            if (shiftCount > 0) usageDetails.Add($"{shiftCount} ca làm việc");
+            if (stockTicketCreatedCount > 0) usageDetails.Add($"{stockTicketCreatedCount} phiếu kho (người tạo)");
+            if (stockTicketConfirmedCount > 0) usageDetails.Add($"{stockTicketConfirmedCount} phiếu kho (người xác nhận)");
+            if (stockTicketCancelledCount > 0) usageDetails.Add($"{stockTicketCancelledCount} phiếu kho (người hủy)");
+            if (violationReportCount > 0) usageDetails.Add($"{violationReportCount} báo cáo vi phạm");
 
-            var assignments = await _context.StaffAssignments.Where(sa => sa.UserId == staff.UserId).ToListAsync();
-            if (assignments.Any()) _context.StaffAssignments.RemoveRange(assignments);
-
-            _context.Users.Remove(staff);
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            return Ok(new ApiResponse<object> { Success = true, Message = $"Đã xóa hoàn toàn nhân viên '{staff.FullName}' ra khỏi hệ thống." });
+            warningMessage = $"Cảnh báo: Nhân viên đang có {string.Join(", ", usageDetails)}. Thông tin này sẽ được giữ lại nhưng không thể khôi phục.";
         }
-        catch (Exception ex)
+
+        // Thực hiện soft delete
+        staff.Status = "DELETED";
+        staff.IsActive = 0;
+        await _context.SaveChangesAsync();
+
+        var response = new ApiResponse<object>
         {
-            await transaction.RollbackAsync();
-            return BadRequest(new ApiResponse<object>
+            Success = true,
+            Message = $"Đã xóa mềm nhân viên '{staff.FullName}'."
+        };
+
+        // Thêm cảnh báo vào response nếu có
+        if (hasUsage)
+        {
+            response.Data = new
             {
-                Success = false,
-                Message = "Không thể xóa cứng nhân viên này vì tài khoản đã phát sinh dữ liệu nghiệp vụ (Hóa đơn, phiếu kho...). Vui lòng chọn giải pháp Tắt hoạt động.",
-                Errors = new List<string> { ex.Message }
-            });
+                warning = warningMessage,
+                deletedStaffId = staff.UserId,
+                deletedStaffName = staff.FullName
+            };
         }
+
+        return Ok(response);
     }
     #endregion
 }

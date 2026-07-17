@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace MEP_Management_System.DTOs.InventoryDTOs
 {
@@ -15,7 +16,27 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string ProductName { get; set; } = null!;
         public string? Barcode { get; set; }
         public string Unit { get; set; } = null!;
+
+        /// <summary>
+        /// Taxonomy ID for Brand (new approach). If set, use this instead of BrandName string.
+        /// </summary>
+        public Guid? BrandTaxonomyId { get; set; }
+
+        /// <summary>
+        /// Taxonomy ID for Category (new approach). If set, use this instead of CategoryName string.
+        /// </summary>
+        public Guid? CategoryTaxonomyId { get; set; }
+
+        /// <summary>
+        /// Legacy field: Brand name as string.
+        /// Use BrandTaxonomyId for new products.
+        /// </summary>
         public string? BrandName { get; set; }
+
+        /// <summary>
+        /// Legacy field: Category name as string.
+        /// Use CategoryTaxonomyId for new products.
+        /// </summary>
         public string? CategoryName { get; set; }
         public Guid? SupplierId { get; set; }
         public string? SupplierName { get; set; }
@@ -177,6 +198,25 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
     {
         public string OldName { get; set; } = null!;
         public string NewName { get; set; } = null!;
+    }
+
+    public class CreateAttributeTypeDto
+    {
+        [Required(ErrorMessage = "Tên loại thuộc tính là bắt buộc")]
+        [MaxLength(100, ErrorMessage = "Tên không quá 100 ký tự")]
+        public string TypeName { get; set; } = null!;
+
+        [MaxLength(50, ErrorMessage = "Mã không quá 50 ký tự")]
+        public string? TypeCode { get; set; }
+    }
+
+    public class UpdateAttributeTypeDto
+    {
+        [MaxLength(100, ErrorMessage = "Tên không quá 100 ký tự")]
+        public string? TypeName { get; set; }
+
+        [MaxLength(50, ErrorMessage = "Mã không quá 50 ký tự")]
+        public string? TypeCode { get; set; }
     }
 
 

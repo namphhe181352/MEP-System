@@ -1,9 +1,10 @@
 using MEP_Management_System.Authorization;
+using MEP_Management_System.DTOs.SaleDTOs;
+using MEP_Management_System.Hubs;
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
+using MEP_Management_System.Services.Email;
 using MEP_Management_System.Services.InventoryService;
-using MEP_Management_System.Hubs;
-using MEP_Management_System.DTOs.SaleDTOs;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -34,21 +35,23 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentBranchAccessor, CurrentBranchAccessor>();
 builder.Services.AddScoped<IOrderDiscountService, OrderDiscountService>();
 builder.Services.AddScoped<IInwardInventoryExcelService, InwardInventoryExcelService>();
-builder.Services.AddScoped<IReportService, ReportService>();
-builder.Services.AddScoped<IProductService, ProductService>();
-builder.Services.AddScoped<IInvoiceService, InvoiceService>();
-builder.Services.AddScoped<ISupplierDebtService, SupplierDebtService>();
-builder.Services.AddScoped<IInwardInventoryQueryService, InwardInventoryQueryService>();
-builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.ToolDispatcher>();
-
+builder.Services.AddScoped<ReportService>();
+//builder.Services.AddScoped<IProductService, ProductService>(); // Removed: using static ProductService methods directly
+//builder.Services.AddScoped<IInvoiceService, InvoiceService>(); // Removed: InvoiceService is now static
+//builder.Services.AddScoped<ISupplierDebtService, SupplierDebtService>(); // Removed: using direct instantiation
+builder.Services.AddScoped<InwardInventoryQueryService>();
+//builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.ToolDispatcher>(); // Removed: ToolDispatcher not found
+builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.SqlExecutor>();
+builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
+builder.Services.AddTransient<IEmailService, EmailService>();
 // OData
 var odataBuilder = new ODataConventionModelBuilder();
 odataBuilder.EntitySet<User>("Users");
 odataBuilder.EntitySet<Role>("Roles");
-var postsCfg = odataBuilder.EntitySet<CommunityPost>("CommunityPosts");
-postsCfg.EntityType.HasKey(p => p.PostId);
-var catsCfg = odataBuilder.EntitySet<CommunityCategory>("CommunityCategories");
-catsCfg.EntityType.HasKey(c => c.CategoryId);
+//var postsCfg = odataBuilder.EntitySet<CommunityPost>("CommunityPosts");
+//postsCfg.EntityType.HasKey(p => p.PostId);
+//var catsCfg = odataBuilder.EntitySet<CommunityCategory>("CommunityCategories");
+//catsCfg.EntityType.HasKey(c => c.CategoryId);
 var reportsCfg = odataBuilder.EntitySet<ViolationReport>("ViolationReports");
 reportsCfg.EntityType.HasKey(r => r.ReportId);
 var logsCfg = odataBuilder.EntitySet<SystemLog>("SystemLogs");
@@ -208,11 +211,19 @@ app.UseSwaggerUI(c =>
         <script>
             window.addEventListener('load', function() {
                 setTimeout(function() {
-                    
-                    var token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6IjIwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMiIsImh0dHA6Ly9zY2hlbWFzLnhtbHNvYXAub3JnL3dzLzIwMDUvMDUvaWRlbnRpdHkvY2xhaW1zL25hbWUiOiJvd25lci5iYWNAbWVwLnZuIiwiaHR0cDovL3NjaGVtYXMueG1sc29hcC5vcmcvd3MvMjAwNS8wNS9pZGVudGl0eS9jbGFpbXMvZ2l2ZW5uYW1lIjoiVHLhuqduIFbEg24gQuG6r2MgKE93bmVyKSIsImJyYW5jaElkIjoiMzAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAxIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiT3duZXIiLCJleHAiOjE4MTU0ODczNDYsImlzcyI6IkludmVudG9yeVNlcnZpY2VBUEkiLCJhdWQiOiJJbnZlbnRvcnlTZXJ2aWNlVXNlcnMifQ.Pxtw-X7Eb0-N9cPZmFMzAAu3aMYVP_ltkim4uDh5_WI';
-                        console.log('--- Swagger đã tự động Đăng nhập tài khoản Owner thành công! ---');
+                    // Lấy instance của Swagger UI đang chạy trên trang
+                    var ui = window.ui;
+                    if (ui) {
+                        var token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6IjIwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMiIsImh0dHA6Ly9zY2hlbWFzLnhtbHNvYXAub3JnL3dzLzIwMDUvMDUvaWRlbnRpdHkvY2xhaW1zL25hbWUiOiJvd25lci5iYWNAbWVwLnZuIiwiaHR0cDovL3NjaGVtYXMueG1sc29hcC5vcmcvd3MvMjAwNS8wNS9pZGVudGl0eS9jbGFpbXMvZ2l2ZW5uYW1lIjoiVHLhuqduIFbEg24gQuG6r2MgKE93bmVyKSIsImJyYW5jaElkIjoiMzAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAxIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiT3duZXIiLCJleHAiOjE4MTU0ODczNDYsImlzcyI6IkludmVudG9yeVNlcnZpY2VBUEkiLCJhdWQiOiJJbnZlbnRvcnlTZXJ2aWNlVXNlcnMifQ.Pxtw-X7Eb0-N9cPZmFMzAAu3aMYVP_ltkim4uDh5_WI';
+                        
+                        // Thực hiện gán token trực tiếp vào cấu hình Auth của Swagger UI
+                        ui.preauthorizeApiKey('Bearer', token);
+                        
+                        console.log('--- [MEP System] Swagger đã tự động Đăng nhập tài khoản Owner thành công! ---');
+                    } else {
+                        console.error('--- [MEP System] Không tìm thấy Swagger UI instance để tự động đăng nhập. ---');
                     }
-                }, 10000);
+                }, 1000); // Giảm xuống 1 giây (1000ms) để chạy ngay lập tức khi trang load xong
             });
         </script>
     ";

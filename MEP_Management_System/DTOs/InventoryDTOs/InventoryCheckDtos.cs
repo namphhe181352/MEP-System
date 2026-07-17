@@ -67,6 +67,7 @@ public class InventoryCheckDetailDto
     public string? ProductCode { get; set; }
     public string? ProductName { get; set; }
     public int SystemQuantity { get; set; }
+    public int CurrentActualStock { get; set; }
     public int ActualQuantity { get; set; }
     public int Discrepancy { get; set; }
     public bool IsCounted { get; set; }

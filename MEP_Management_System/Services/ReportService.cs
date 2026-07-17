@@ -15,7 +15,7 @@ namespace MEP_Management_System.Services;
 /// Logic tính toán được tách rời từ Controller để dùng chung cho Web UI và Chatbot.
 /// Refactored từ ReportsController - KHÔNG thay đổi logic, chỉ DI CHUYỂN code.
 /// </summary>
-public class ReportService : IReportService
+public class ReportService
 {
     private readonly MEPDatabaseContext _context;
     private readonly ICurrentBranchAccessor _currentBranch;
