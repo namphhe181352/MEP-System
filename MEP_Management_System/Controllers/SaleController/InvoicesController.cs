@@ -157,6 +157,15 @@ public class InvoicesController : ControllerBase
             }
         }
 
+        var draftCount = await _context.Invoices
+            .Where(i => i.Order.BranchId == branchId && i.Status == "Draft")
+            .CountAsync();
+
+        if (draftCount >= 20)
+        {
+            return BadRequest(ApiErrorResponse.Create("MSG-71", "Đã đạt tối đa 20 đơn nháp. Không thể tạo thêm."));
+        }
+
         var now = DateTime.UtcNow;
         var todayPrefixInv = $"INV-{now.Year}-";
         var todayPrefixOrder = $"POS-{now:yyyyMMdd}-";
@@ -450,35 +459,54 @@ public class InvoicesController : ControllerBase
                 return BadRequest(ApiErrorResponse.Create("MSG-59", $"Insufficient stock for product. Available: {item.BranchProduct.AvailableStock}"));
         }
 
-        // Deduct stock - POS bán lẻ: trừ cả ActualStock và AvailableStock
-        // (AvailableStock là stored field, không phải computed property)
-        foreach (var item in invoice.InvoiceItems)
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
         {
-            var actualQty = item.Quantity * (item.ConvertValue ?? 1m);
-            item.BranchProduct.ActualStock -= actualQty;
-            item.BranchProduct.AvailableStock -= actualQty;
+            // Deduct stock - POS bán lẻ: trừ cả ActualStock và AvailableStock
+            // (AvailableStock là stored field, không phải computed property)
+            // Fix concurrent checkout with atomic update
+            foreach (var item in invoice.InvoiceItems)
+            {
+                var actualQty = item.Quantity * (item.ConvertValue ?? 1m);
+                var rowsAffected = await _context.BranchProducts
+                    .Where(bp => bp.BranchProductId == item.BranchProductId && bp.AvailableStock >= actualQty && bp.ActualStock >= actualQty)
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(b => b.ActualStock, b => b.ActualStock - actualQty)
+                        .SetProperty(b => b.AvailableStock, b => b.AvailableStock - actualQty));
+
+                if (rowsAffected == 0)
+                {
+                    await transaction.RollbackAsync();
+                    return BadRequest(ApiErrorResponse.Create("MSG-59", $"Thanh toán thất bại. Sản phẩm trong giỏ hàng đã hết hàng hoặc không đủ số lượng. Available: {item.BranchProduct.AvailableStock}"));
+                }
+            }
+
+            invoice.Status = "Completed";
+            invoice.Order.Status = "Completed";
+
+            // Lưu các giá trị đã tính ở trên vào invoice
+            invoice.SubTotalAmount = subTotal;
+            invoice.DiscountPercent = discountPercent;
+            invoice.DiscountAmount = discountAmount;
+            invoice.TotalAmount = totalAmount;
+
+            // Update customer stats
+            if (invoice.Order.Customer != null)
+            {
+                invoice.Order.Customer.TotalSpent = (invoice.Order.Customer.TotalSpent ?? 0) + invoice.TotalAmount;
+                invoice.Order.Customer.OrderCount = (invoice.Order.Customer.OrderCount ?? 0) + 1;
+                invoice.Order.Customer.LastVisit = DateTime.UtcNow;
+                invoice.Order.Customer.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
         }
-
-        invoice.Status = "Completed";
-        invoice.Order.Status = "Completed";
-
-        // Lưu các giá trị đã tính ở trên vào invoice
-        invoice.SubTotalAmount = subTotal;
-        invoice.DiscountPercent = discountPercent;
-        invoice.DiscountAmount = discountAmount;
-        invoice.TotalAmount = totalAmount;
-
-
-        // Update customer stats
-        if (invoice.Order.Customer != null)
+        catch
         {
-            invoice.Order.Customer.TotalSpent = (invoice.Order.Customer.TotalSpent ?? 0) + invoice.TotalAmount;
-            invoice.Order.Customer.OrderCount = (invoice.Order.Customer.OrderCount ?? 0) + 1;
-            invoice.Order.Customer.LastVisit = DateTime.UtcNow;
-            invoice.Order.Customer.UpdatedAt = DateTime.UtcNow;
+            await transaction.RollbackAsync();
+            throw;
         }
-
-        await _context.SaveChangesAsync();
 
         var dto = _mapper.Map<InvoiceDto>(invoice);
         dto.OrderId = invoice.OrderId;
@@ -542,13 +570,13 @@ public class InvoicesController : ControllerBase
         if (invoice == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Invoice not found"));
         if (invoice.Status != "Draft") return BadRequest(ApiErrorResponse.Create("MSG-78", "Only draft invoices can be held"));
 
-        // BR-87: Max 10 held invoices per branch
+        // BR-87: Max 20 held invoices per branch
         var heldCount = await _context.Invoices
             .Where(i => i.Order.BranchId == branchId && i.Status == "OnHold")
             .CountAsync();
 
-        if (heldCount >= 10)
-            return BadRequest(ApiErrorResponse.Create("MSG-71", "Đã đạt tối đa 10 đơn treo. Không thể treo thêm."));
+        if (heldCount >= 20)
+            return BadRequest(ApiErrorResponse.Create("MSG-71", "Đã đạt tối đa 20 đơn treo. Không thể treo thêm."));
 
         // BR-86: Save current cart state, change status to "OnHold"
         var now = DateTime.UtcNow;
