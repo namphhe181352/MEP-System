@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace MEP_Management_System.DTOs.InventoryDTOs
 {
@@ -177,6 +178,25 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
     {
         public string OldName { get; set; } = null!;
         public string NewName { get; set; } = null!;
+    }
+
+    public class CreateAttributeTypeDto
+    {
+        [Required(ErrorMessage = "Tên loại thuộc tính là bắt buộc")]
+        [MaxLength(100, ErrorMessage = "Tên không quá 100 ký tự")]
+        public string TypeName { get; set; } = null!;
+
+        [MaxLength(50, ErrorMessage = "Mã không quá 50 ký tự")]
+        public string? TypeCode { get; set; }
+    }
+
+    public class UpdateAttributeTypeDto
+    {
+        [MaxLength(100, ErrorMessage = "Tên không quá 100 ký tự")]
+        public string? TypeName { get; set; }
+
+        [MaxLength(50, ErrorMessage = "Mã không quá 50 ký tự")]
+        public string? TypeCode { get; set; }
     }
 
 

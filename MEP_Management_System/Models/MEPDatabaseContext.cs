@@ -54,6 +54,8 @@ public partial class MEPDatabaseContext : DbContext
 
     public virtual DbSet<ProductConversionUnit> ProductConversionUnits { get; set; }
 
+    public virtual DbSet<ProductAttributeType> ProductAttributeTypes { get; set; }
+
     public virtual DbSet<PurchaseOrder> PurchaseOrders { get; set; }
 
     public virtual DbSet<PurchaseOrderItem> PurchaseOrderItems { get; set; }
@@ -2354,6 +2356,43 @@ public partial class MEPDatabaseContext : DbContext
             entity.HasIndex(e => e.MinOrderValue)
                 .IsUnique()
                 .HasDatabaseName("ix_order_discount_tiers_min_order_value");
+        });
+
+        // ============================================================
+        // PRODUCT ATTRIBUTE TYPE - Loại thuộc tính sản phẩm (kim khí điện nước)
+        // ============================================================
+        modelBuilder.Entity<ProductAttributeType>(entity =>
+        {
+            entity.HasKey(e => e.TypeId).HasName("product_attribute_types_pkey");
+            entity.ToTable("product_attribute_types");
+
+            entity.Property(e => e.TypeId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("type_id");
+            entity.Property(e => e.TypeName)
+                .IsRequired()
+                .HasMaxLength(100)
+                .HasColumnName("type_name");
+            entity.Property(e => e.TypeCode)
+                .HasMaxLength(50)
+                .HasColumnName("type_code");
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue((short)1)
+                .HasColumnName("is_active");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.Property(e => e.CreatedBy)
+                .HasColumnName("created_by");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("updated_at");
+            entity.Property(e => e.UpdatedBy)
+                .HasColumnName("updated_by");
+
+            entity.HasIndex(e => e.TypeName)
+                .IsUnique()
+                .HasDatabaseName("ix_product_attribute_types_type_name");
         });
     }
 
