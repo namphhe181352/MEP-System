@@ -635,7 +635,8 @@ public class OwnerStaffController : ControllerBase
                 IsVerified = true,
                 Status = "ACTIVE",
                 CreatedAt = now,
-                CreatedBy = ownerId.Value
+                CreatedBy = ownerId.Value,
+                DefaultBranchId = ownerBranchId
             };
 
             _context.Users.Add(user);
