@@ -66,11 +66,11 @@ public static class PermissionConstants
     public const string REPORT_VIEW = "REPORT_VIEW";
 
     // === STAFF / EMPLOYEE (Nhân viên) ===
-    //public const string STAFF_VIEW = "STAFF_VIEW";
-    //public const string STAFF_CREATE = "STAFF_CREATE";
-    //public const string STAFF_UPDATE = "STAFF_UPDATE";
-    //public const string STAFF_DELETE = "STAFF_DELETE";
-    //public const string STAFF_ASSIGN_BRANCH = "STAFF_ASSIGN_BRANCH";
+    public const string STAFF_VIEW = "STAFF_VIEW";
+    public const string STAFF_CREATE = "STAFF_CREATE";
+    public const string STAFF_UPDATE = "STAFF_UPDATE";
+    public const string STAFF_DELETE = "STAFF_DELETE";
+    public const string STAFF_ASSIGN_BRANCH = "STAFF_ASSIGN_BRANCH";
 
     // === ROLE & CLAIM TYPE ===
     /// <summary>Role Owner - được bypass mọi Permission check.</summary>

@@ -1688,43 +1688,39 @@ namespace MEP_Management_System.Controllers.InventoryController
         [HasPermission(PermissionConstants.PRODUCT_UPDATE)]
         public async Task<IActionResult> RenameLocation([FromBody] RenameTaxonomyDto dto)
         {
+            var branchId = await GetCurrentBranchId();
+            if (branchId == null)
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy chi nhánh hợp lệ."
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(dto.OldName) || string.IsNullOrWhiteSpace(dto.NewName))
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Tên cũ và tên mới là bắt buộc."
+                });
+            }
+
+            var oldTrimmed = dto.OldName.Trim();
+            var newTrimmed = dto.NewName.Trim();
+
+            // Sử dụng transaction để tránh race condition
+            await using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                var branchId = await GetCurrentBranchId();
-                if (branchId == null)
-                {
-                    return BadRequest(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "Không tìm thấy chi nhánh hợp lệ."
-                    });
-                }
+                // Kiểm tra trùng tên location mới với lock
+                var newLocationExists = await _context.BranchProducts
+                    .AnyAsync(bp => bp.BranchId == branchId &&
+                        bp.ShelfLocation != null &&
+                        bp.ShelfLocation.ToLower() == newTrimmed.ToLower());
 
-                if (string.IsNullOrWhiteSpace(dto.OldName) || string.IsNullOrWhiteSpace(dto.NewName))
-                {
-                    return BadRequest(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "Tên cũ và tên mới là bắt buộc."
-                    });
-                }
-
-                var oldTrimmed = dto.OldName.Trim();
-                var newTrimmed = dto.NewName.Trim();
-
-                // Lấy tất cả location hiện có trong branch
-                var existingLocations = await _context.BranchProducts
-                    .Where(bp => bp.BranchId == branchId && bp.ShelfLocation != null)
-                    .Select(bp => bp.ShelfLocation!.ToLower())
-                    .Distinct()
-                    .ToListAsync();
-
-                // Kiểm tra location cũ có tồn tại không
-                bool oldLocationExists = existingLocations.Contains(oldTrimmed.ToLower());
-                bool newLocationExists = existingLocations.Contains(newTrimmed.ToLower());
-
-                // Nếu location mới đã tồn tại, không cho đổi trùng
-                if (oldLocationExists && newLocationExists && oldTrimmed.ToLower() != newTrimmed.ToLower())
+                if (newLocationExists && oldTrimmed.ToLower() != newTrimmed.ToLower())
                 {
                     return BadRequest(new ApiResponse<object>
                     {
@@ -1733,29 +1729,11 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                // Nếu location cũ không tồn tại trong danh sách, vẫn cho rename (đăng ký location mới)
-                if (!oldLocationExists)
-                {
-                    // Kiểm tra xem có sản phẩm nào đang dùng location này không
-                    var productsWithOldLocation = await _context.BranchProducts
-                        .Where(bp => bp.BranchId == branchId && bp.ShelfLocation != null && bp.ShelfLocation.ToLower() == oldTrimmed.ToLower())
-                        .CountAsync();
-
-                    if (productsWithOldLocation == 0)
-                    {
-                        // Location chưa được sử dụng, vẫn cho phép đổi tên (đăng ký location mới)
-                        return Ok(new ApiResponse<object>
-                        {
-                            Success = true,
-                            Message = $"Đã đổi tên vị trí '{oldTrimmed}' thành '{newTrimmed}'. Vị trí cũ chưa được sử dụng.",
-                            Data = new { UpdatedCount = 0 }
-                        });
-                    }
-                }
-
-                // Thực hiện đổi tên cho các sản phẩm đang dùng location cũ
+                // Lấy và update trong cùng transaction
                 var affectedProducts = await _context.BranchProducts
-                    .Where(bp => bp.BranchId == branchId && bp.ShelfLocation != null && bp.ShelfLocation.ToLower() == oldTrimmed.ToLower())
+                    .Where(bp => bp.BranchId == branchId &&
+                        bp.ShelfLocation != null &&
+                        bp.ShelfLocation.ToLower() == oldTrimmed.ToLower())
                     .ToListAsync();
 
                 foreach (var bp in affectedProducts)
@@ -1764,16 +1742,22 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                var message = affectedProducts.Count > 0
+                    ? $"Đã đổi tên vị trí '{oldTrimmed}' thành '{newTrimmed}' cho {affectedProducts.Count} sản phẩm"
+                    : $"Đã đổi tên vị trí '{oldTrimmed}' thành '{newTrimmed}'. Vị trí cũ chưa được sử dụng.";
 
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = $"Đã đổi tên vị trí '{oldTrimmed}' thành '{newTrimmed}' cho {affectedProducts.Count} sản phẩm",
+                    Message = message,
                     Data = new { UpdatedCount = affectedProducts.Count }
                 });
             }
             catch (Exception ex)
             {
+                await transaction.RollbackAsync();
                 return StatusCode(500, new ApiResponse<object>
                 {
                     Success = false,

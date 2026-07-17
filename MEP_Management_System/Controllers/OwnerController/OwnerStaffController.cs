@@ -231,6 +231,7 @@ public class OwnerStaffController : ControllerBase
     /// Kiểm tra quan hệ dữ liệu của nhân viên trước khi xóa.
     /// </summary>
     [HttpGet("{id:guid}/check-relations")]
+    [HasPermission(PermissionConstants.STAFF_DELETE)]
     public async Task<IActionResult> CheckStaffRelations(Guid id)
     {
         var ownerId = GetCurrentUserId();
