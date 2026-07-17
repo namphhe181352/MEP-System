@@ -42,6 +42,7 @@ public class ProductsController : ControllerBase
             Unit = b.Product?.BaseUnit,
             AvailableStock = b.AvailableStock,
             ImageUrl = b.Product?.MediaResources?.Where(m => m.IsPrimary == 1).Select(m => m.MediaUrl).FirstOrDefault(),
+            ProductStatus = b.Product?.Status == 1 ? "active" : "inactive",
             ConversionUnits = b.Product?.ProductConversionUnits
                 ?.Where(u => u.DirectSale == 1 || u.DirectSale == null)
                 .Select(u => new ConversionUnitDto
@@ -67,7 +68,7 @@ public class ProductsController : ControllerBase
             .ThenInclude(p => p!.ProductConversionUnits)
             .Include(b => b.Product)
             .ThenInclude(p => p!.MediaResources)
-            .Where(b => b.BranchId == branchId && b.IsActive == 1);
+            .Where(b => b.BranchId == branchId && b.IsActive == 1 && b.Product != null && b.Product.Status == 1);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
