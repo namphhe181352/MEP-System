@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
+using MEP_Management_System.Authorization;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -31,6 +33,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// GET /api/locations - Lấy danh sách vị trí
         /// </summary>
         [HttpGet]
+        [HasPermission(PermissionConstants.LOCATION_VIEW)]
         public async Task<IActionResult> GetLocations([FromQuery] bool? activeOnly = true)
         {
             try
@@ -68,6 +71,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// GET /api/locations/{id} - Lấy chi tiết một vị trí
         /// </summary>
         [HttpGet("{id:guid}")]
+        [HasPermission(PermissionConstants.LOCATION_VIEW)]
         public async Task<IActionResult> GetLocationById(Guid id)
         {
             try
@@ -105,6 +109,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// POST /api/locations - Tạo vị trí mới
         /// </summary>
         [HttpPost]
+        [HasPermission(PermissionConstants.LOCATION_CREATE)]
         public async Task<IActionResult> CreateLocation([FromBody] CreateLocationDto dto)
         {
             try
@@ -178,6 +183,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// PUT /api/locations/{id} - Cập nhật vị trí
         /// </summary>
         [HttpPut("{id:guid}")]
+        [HasPermission(PermissionConstants.LOCATION_UPDATE)]
         public async Task<IActionResult> UpdateLocation(Guid id, [FromBody] UpdateLocationDto dto)
         {
             try
@@ -262,6 +268,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// DELETE /api/locations/{id} - Xóa vị trí
         /// </summary>
         [HttpDelete("{id:guid}")]
+        [HasPermission(PermissionConstants.LOCATION_DELETE)]
         public async Task<IActionResult> DeleteLocation(Guid id)
         {
             try
