@@ -18,12 +18,12 @@ namespace MEP_Management_System.Controllers.SaleController;
 public class ProductsController : ControllerBase
 {
     private readonly Models.MEPDatabaseContext _context;
-    private readonly IProductService _productService;
+    private readonly ICurrentBranchAccessor _currentBranch;
 
-    public ProductsController(Models.MEPDatabaseContext context, IProductService productService)
+    public ProductsController(Models.MEPDatabaseContext context, ICurrentBranchAccessor currentBranch)
     {
         _context = context;
-        _productService = productService;
+        _currentBranch = currentBranch;
     }
 
     private Guid GetBranchId() =>
@@ -88,7 +88,7 @@ public class ProductsController : ControllerBase
     [HttpGet("{productId:guid}/price")]
     public async Task<ActionResult<ProductPriceDto>> GetPrice(Guid productId)
     {
-        var dto = await _productService.GetProductPriceAsync(productId, User);
+        var dto = await ProductService.GetProductPriceAsync(productId, User, _context, _currentBranch);
         if (dto == null) return NotFound(ApiErrorResponse.Create("MSG-59", "Product not found"));
         return Ok(dto);
     }
@@ -100,7 +100,7 @@ public class ProductsController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 100)
     {
-        var dto = await _productService.GetProductStockAsync(productId, User);
+        var dto = await ProductService.GetProductStockAsync(productId, User, _context);
         if (dto == null) return NotFound(ApiErrorResponse.Create("MSG-59", "Product not found"));
 
         // apply pagination at controller level to preserve original behavior

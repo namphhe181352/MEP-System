@@ -35,12 +35,12 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentBranchAccessor, CurrentBranchAccessor>();
 builder.Services.AddScoped<IOrderDiscountService, OrderDiscountService>();
 builder.Services.AddScoped<IInwardInventoryExcelService, InwardInventoryExcelService>();
-builder.Services.AddScoped<IReportService, ReportService>();
-builder.Services.AddScoped<IProductService, ProductService>();
-builder.Services.AddScoped<IInvoiceService, InvoiceService>();
-builder.Services.AddScoped<ISupplierDebtService, SupplierDebtService>();
-builder.Services.AddScoped<IInwardInventoryQueryService, InwardInventoryQueryService>();
-builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.ToolDispatcher>();
+builder.Services.AddScoped<ReportService>();
+//builder.Services.AddScoped<IProductService, ProductService>(); // Removed: using static ProductService methods directly
+//builder.Services.AddScoped<IInvoiceService, InvoiceService>(); // Removed: InvoiceService is now static
+//builder.Services.AddScoped<ISupplierDebtService, SupplierDebtService>(); // Removed: using direct instantiation
+builder.Services.AddScoped<InwardInventoryQueryService>();
+//builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.ToolDispatcher>(); // Removed: ToolDispatcher not found
 builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.SqlExecutor>();
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
 builder.Services.AddTransient<IEmailService, EmailService>();

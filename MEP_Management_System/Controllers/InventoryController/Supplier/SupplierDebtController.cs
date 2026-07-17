@@ -16,12 +16,10 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
     public class SupplierDebtController : ControllerBase
     {
         private readonly MEPDatabaseContext _context;
-            private readonly ISupplierDebtService _supplierDebtService;
 
-        public SupplierDebtController(MEPDatabaseContext context, ISupplierDebtService supplierDebtService)
+        public SupplierDebtController(MEPDatabaseContext context)
         {
             _context = context;
-            _supplierDebtService = supplierDebtService;
         }
 
         // 🌟 TỐI ƯU 3: Helper escape dấu phẩy và nháy kép trong CSV, tránh lỗi lệch cột dữ liệu
@@ -206,7 +204,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         {
             try
             {
-                var result = await _supplierDebtService.GetSupplierDebtDetailAsync(supplierId, User);
+                var result = await new SupplierDebtService(_context).GetSupplierDebtDetailAsync(supplierId, User);
                 if (result == null)
                 {
                     return NotFound(new ApiResponse<object>

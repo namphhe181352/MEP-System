@@ -21,13 +21,13 @@ namespace MEP_Management_System.Controllers.InventoryController
     {
         private readonly MEPDatabaseContext _context;
         private readonly IMapper _mapper;
-        private readonly IProductService _productService;
+        private readonly ICurrentBranchAccessor _currentBranch;
 
-        public ProductsController(MEPDatabaseContext context, IMapper mapper, IProductService productService)
+        public ProductsController(MEPDatabaseContext context, IMapper mapper, ICurrentBranchAccessor currentBranch)
         {
             _context = context;
             _mapper = mapper;
-            _productService = productService;
+            _currentBranch = currentBranch;
         }
 
         // Lấy UserId hiện tại từ JWT (dùng cho audit log)
@@ -391,7 +391,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var dto = await _productService.GetProductByIdAsync(id, User);
+                var dto = await ProductService.GetProductByIdAsync(id, User, _context, _currentBranch, _mapper);
                 if (dto == null)
                 {
                     return NotFound(new ApiResponse<object>

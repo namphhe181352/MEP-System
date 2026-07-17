@@ -21,9 +21,9 @@ public class ReportsController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
     private readonly ICurrentBranchAccessor _currentBranch;
-    private readonly IReportService _reportService;
+    private readonly ReportService _reportService;
 
-    public ReportsController(MEPDatabaseContext context, ICurrentBranchAccessor currentBranch, IReportService reportService)
+    public ReportsController(MEPDatabaseContext context, ICurrentBranchAccessor currentBranch, ReportService reportService)
     {
         _context = context;
         _currentBranch = currentBranch;

@@ -27,21 +27,18 @@ public class InvoicesController : ControllerBase
 
     private readonly IOrderDiscountService _orderDiscountService;
     private readonly ILogger<InvoicesController> _logger;
-    private readonly IInvoiceService _invoiceService;
     public InvoicesController(
        Models.MEPDatabaseContext context,
        IMapper mapper,
        MepNotificationService notifications,
        IOrderDiscountService orderDiscountService,
-       ILogger<InvoicesController> logger,
-       IInvoiceService invoiceService)
+       ILogger<InvoicesController> logger)
     {
         _context = context;
         _mapper = mapper;
         _notifications = notifications;
         _orderDiscountService = orderDiscountService;
         _logger = logger;
-        _invoiceService = invoiceService;
     }
 
     private Guid GetBranchId() =>
@@ -234,7 +231,7 @@ public class InvoicesController : ControllerBase
     [HttpGet("{invoiceId:guid}")]
     public async Task<ActionResult<InvoiceDto>> GetInvoice(Guid invoiceId)
     {
-        var dto = await _invoiceService.GetInvoiceByIdAsync(invoiceId, User);
+        var dto = await InvoiceService.GetInvoiceByIdAsync(_context, _mapper, _orderDiscountService, invoiceId, User);
 
         if (dto == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Invoice not found"));
 
