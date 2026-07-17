@@ -1628,11 +1628,21 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.CreatedBy)
                 .HasColumnName("created_by");
 
+            entity.Property(e => e.DefaultBranchId)
+                .HasColumnName("default_branch_id");
+
             // Self-referencing foreign key: User created by another User (Owner)
             entity.HasOne(e => e.CreatedByUser)
                 .WithMany()
                 .HasForeignKey(e => e.CreatedBy)
                 .HasConstraintName("users_created_by_fkey")
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Foreign key: User's default branch
+            entity.HasOne(e => e.DefaultBranch)
+                .WithMany()
+                .HasForeignKey(e => e.DefaultBranchId)
+                .HasConstraintName("users_default_branch_id_fkey")
                 .OnDelete(DeleteBehavior.SetNull);
 
             entity.HasMany(d => d.Roles).WithMany(p => p.Users)
