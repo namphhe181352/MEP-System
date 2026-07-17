@@ -1712,18 +1712,51 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var oldTrimmed = dto.OldName.Trim();
                 var newTrimmed = dto.NewName.Trim();
 
+                // Lấy tất cả location hiện có trong branch
+                var existingLocations = await _context.BranchProducts
+                    .Where(bp => bp.BranchId == branchId && bp.ShelfLocation != null)
+                    .Select(bp => bp.ShelfLocation!.ToLower())
+                    .Distinct()
+                    .ToListAsync();
+
+                // Kiểm tra location cũ có tồn tại không
+                bool oldLocationExists = existingLocations.Contains(oldTrimmed.ToLower());
+                bool newLocationExists = existingLocations.Contains(newTrimmed.ToLower());
+
+                // Nếu location mới đã tồn tại, không cho đổi trùng
+                if (oldLocationExists && newLocationExists && oldTrimmed.ToLower() != newTrimmed.ToLower())
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = $"Vị trí '{newTrimmed}' đã tồn tại"
+                    });
+                }
+
+                // Nếu location cũ không tồn tại trong danh sách, vẫn cho rename (đăng ký location mới)
+                if (!oldLocationExists)
+                {
+                    // Kiểm tra xem có sản phẩm nào đang dùng location này không
+                    var productsWithOldLocation = await _context.BranchProducts
+                        .Where(bp => bp.BranchId == branchId && bp.ShelfLocation != null && bp.ShelfLocation.ToLower() == oldTrimmed.ToLower())
+                        .CountAsync();
+
+                    if (productsWithOldLocation == 0)
+                    {
+                        // Location chưa được sử dụng, vẫn cho phép đổi tên (đăng ký location mới)
+                        return Ok(new ApiResponse<object>
+                        {
+                            Success = true,
+                            Message = $"Đã đổi tên vị trí '{oldTrimmed}' thành '{newTrimmed}'. Vị trí cũ chưa được sử dụng.",
+                            Data = new { UpdatedCount = 0 }
+                        });
+                    }
+                }
+
+                // Thực hiện đổi tên cho các sản phẩm đang dùng location cũ
                 var affectedProducts = await _context.BranchProducts
                     .Where(bp => bp.BranchId == branchId && bp.ShelfLocation != null && bp.ShelfLocation.ToLower() == oldTrimmed.ToLower())
                     .ToListAsync();
-
-                if (!affectedProducts.Any())
-                {
-                    return NotFound(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = $"Không tìm thấy vị trí '{oldTrimmed}'"
-                    });
-                }
 
                 foreach (var bp in affectedProducts)
                 {
