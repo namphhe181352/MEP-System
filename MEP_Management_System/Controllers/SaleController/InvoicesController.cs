@@ -151,6 +151,15 @@ public class InvoicesController : ControllerBase
         if (openShift == null)
             return BadRequest(ApiErrorResponse.Create("MSG-76", "Vui lòng mở ca bán trước khi tạo đơn hàng"));
 
+        if (request.CustomerId.HasValue)
+        {
+            var customerExists = await _context.Customers.AnyAsync(c => c.CustomerId == request.CustomerId.Value);
+            if (!customerExists)
+            {
+                return BadRequest(ApiErrorResponse.Create("MSG-01", "Không tìm thấy khách hàng"));
+            }
+        }
+
         var now = DateTime.UtcNow;
         var todayPrefixInv = $"INV-{now.Year}-";
         var todayPrefixOrder = $"POS-{now:yyyyMMdd}-";
@@ -284,7 +293,13 @@ public class InvoicesController : ControllerBase
             if (currentStock < actualQuantity)
                 return BadRequest(ApiErrorResponse.Create("MSG-59", $"Insufficient stock. Available: {currentStock} {bp.Product.BaseUnit}"));
 
-            if (unitPrice < bp.CostPrice) return BadRequest(ApiErrorResponse.Create("MSG-63", "Price override below floor price"));
+            // Validate floor price with proper unit conversion scaling
+            // effectiveCost = costPrice * convertValue / baseConvertValue
+            var baseConvUnit = bp.Product.ProductConversionUnits.FirstOrDefault(u => u.UnitName == bp.Product.BaseUnit);
+            var baseConvertValue = baseConvUnit?.ConvertValue ?? 1m;
+            var effectiveCost = bp.CostPrice * convertValue / baseConvertValue;
+
+            if (unitPrice < effectiveCost) return BadRequest(ApiErrorResponse.Create("MSG-63", "Price override below floor price"));
 
             var existingItem = invoice.InvoiceItems
                 .FirstOrDefault(ii => ii.BranchProductId == bp.BranchProductId && ii.SellPrice == unitPrice && ii.SelectedUnit == selectedUnit);
@@ -415,9 +430,14 @@ public class InvoicesController : ControllerBase
         var subTotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
         var (discountPercent, discountAmount, totalAmount) = await _orderDiscountService.CalculateDiscountAsync(subTotal);
 
-        // Validate payment - chấp nhận cả Confirmed và Pending (Transfer đã tạo QR)
+        var hasPending = invoice.Payments.Any(p => p.Status == "Pending");
+        if (hasPending)
+        {
+            return BadRequest(ApiErrorResponse.Create("payment_not_confirmed", "Thanh toán chuyển khoản chưa được xác nhận. Vui lòng kiểm tra lại."));
+        }
+
         var totalPaid = invoice.Payments
-            .Where(p => p.Status == "Confirmed" || p.Status == "Pending")
+            .Where(p => p.Status == "Confirmed")
             .Sum(p => p.Amount);
 
         if (totalPaid < totalAmount)

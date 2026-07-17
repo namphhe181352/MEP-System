@@ -112,7 +112,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Include(bp => bp.Product).ThenInclude(p => p.ProductConversionUnits)
                     .Include(bp => bp.Product).ThenInclude(p => p.CreatedByUser)
                     .Include(bp => bp.Product).ThenInclude(p => p.UpdatedByUser)
-                    .Where(bp => bp.BranchId == branchId).AsQueryable();
+                    .Where(bp => bp.BranchId == branchId && bp.IsActive == 1).AsQueryable();
 
                 // Search by product name, code, or barcode
                 if (!string.IsNullOrWhiteSpace(@params.SearchTerm))
@@ -383,8 +383,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return NotFound(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Product not found",
-                        Errors = new() { $"No product with ID: {id}" }
+                        Message = "Không tìm thấy sản phẩm",
+                        Errors = new() { $"Không có sản phẩm với ID: {id}" }
                     });
                 }
 
@@ -430,7 +430,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 bool isCodeExist = await _context.Products.AnyAsync(p => p.ProductCode.ToLower() == dto.ProductCode.Trim().ToLower());
                 if (isCodeExist)
                 {
-                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Product code already exists", Errors = new() { $"Code '{dto.ProductCode}' exists" } });
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Mã hàng đã tồn tại", Errors = new() { $"Mã '{dto.ProductCode}' đã tồn tại" } });
                 }
 
                 var currentLocalTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
@@ -581,7 +581,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 bool isCodeExist = await _context.Products.AnyAsync(p => p.ProductId != id && p.ProductCode.ToLower() == dto.ProductCode.Trim().ToLower());
                 if (isCodeExist)
                 {
-                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Product code already exists", Errors = new() { $"Code '{dto.ProductCode}' exists" } });
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Mã hàng đã tồn tại", Errors = new() { $"Mã '{dto.ProductCode}' đã tồn tại" } });
                 }
 
                 // UOM: Không cho sửa BaseUnit khi sản phẩm đã có giao dịch
@@ -747,8 +747,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return NotFound(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Product not found",
-                        Errors = new() { $"No product with ID: {id}" }
+                        Message = "Không tìm thấy sản phẩm",
+                        Errors = new() { $"Không có sản phẩm với ID: {id}" }
                     });
                 }
 
@@ -765,7 +765,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = "Product deleted successfully"
+                    Message = "Đã xoá sản phẩm thành công"
                 });
             }
             catch (Exception ex)
@@ -773,7 +773,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return StatusCode(500, new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Error deleting product",
+                    Message = "Lỗi khi xoá sản phẩm",
                     Errors = new() { ex.Message }
                 });
             }
@@ -1059,16 +1059,37 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var result = await _context.Products
+                // Categories từ sản phẩm
+                var fromProducts = await _context.Products
                     .Where(p => p.CategoryName != null && p.CategoryName != "")
                     .GroupBy(p => p.CategoryName)
-                    .Select(g => new TaxonomyItemDto
-                    {
-                        Name = g.Key!,
-                        ProductCount = g.Count()
-                    })
-                    .OrderBy(x => x.Name)
+                    .Select(g => new { Name = g.Key!, Count = g.Count() })
                     .ToListAsync();
+
+                // Categories từ bảng taxonomy (tạo thủ công, chưa có SP)
+                var fromTaxonomy = await _context.ProductTaxonomies
+                    .Where(t => t.Type == "Category")
+                    .Select(t => t.Name)
+                    .ToListAsync();
+
+                // Merge: ưu tiên count từ Products, thêm taxonomy chưa có SP với count = 0
+                var result = fromProducts
+                    .Select(p => new TaxonomyItemDto
+                    {
+                        Name = p.Name!,
+                        ProductCount = p.Count
+                    })
+                    .Concat(
+                        fromTaxonomy
+                            .Where(name => !fromProducts.Any(p => p.Name!.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                            .Select(name => new TaxonomyItemDto
+                            {
+                                Name = name,
+                                ProductCount = 0
+                            })
+                    )
+                    .OrderBy(x => x.Name)
+                    .ToList();
 
                 return Ok(new ApiResponse<List<TaxonomyItemDto>>
                 {
@@ -1097,16 +1118,37 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var result = await _context.Products
+                // Brands từ sản phẩm
+                var fromProducts = await _context.Products
                     .Where(p => p.BrandName != null && p.BrandName != "")
                     .GroupBy(p => p.BrandName)
-                    .Select(g => new TaxonomyItemDto
-                    {
-                        Name = g.Key!,
-                        ProductCount = g.Count()
-                    })
-                    .OrderBy(x => x.Name)
+                    .Select(g => new { Name = g.Key!, Count = g.Count() })
                     .ToListAsync();
+
+                // Brands từ bảng taxonomy (tạo thủ công, chưa có SP)
+                var fromTaxonomy = await _context.ProductTaxonomies
+                    .Where(t => t.Type == "Brand")
+                    .Select(t => t.Name)
+                    .ToListAsync();
+
+                // Merge: ưu tiên count từ Products, thêm taxonomy chưa có SP với count = 0
+                var result = fromProducts
+                    .Select(p => new TaxonomyItemDto
+                    {
+                        Name = p.Name!,
+                        ProductCount = p.Count
+                    })
+                    .Concat(
+                        fromTaxonomy
+                            .Where(name => !fromProducts.Any(p => p.Name!.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                            .Select(name => new TaxonomyItemDto
+                            {
+                                Name = name,
+                                ProductCount = 0
+                            })
+                    )
+                    .OrderBy(x => x.Name)
+                    .ToList();
 
                 return Ok(new ApiResponse<List<TaxonomyItemDto>>
                 {
@@ -1155,8 +1197,21 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                // Không cần tạo record trong bảng riêng, chỉ cần trả về thông báo thành công
-                // Category sẽ được tạo khi có sản phẩm đầu tiên sử dụng tên này
+                // Lưu vào bảng taxonomy để danh sách hiển thị ngay cả khi chưa có SP
+                var taxonomyExists = await _context.ProductTaxonomies
+                    .AnyAsync(t => t.Name.ToLower() == trimmedName.ToLower() && t.Type == "Category");
+                if (!taxonomyExists)
+                {
+                    _context.ProductTaxonomies.Add(new ProductTaxonomy
+                    {
+                        TaxonomyId = Guid.NewGuid(),
+                        Name = trimmedName,
+                        Type = "Category",
+                        CreatedAt = DateTime.UtcNow
+                    });
+                    await _context.SaveChangesAsync();
+                }
+
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
@@ -1204,7 +1259,21 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                // Brand sẽ được tạo khi có sản phẩm đầu tiên sử dụng tên này
+                // Lưu vào bảng taxonomy để danh sách hiển thị ngay cả khi chưa có SP
+                var taxonomyExists = await _context.ProductTaxonomies
+                    .AnyAsync(t => t.Name.ToLower() == trimmedName.ToLower() && t.Type == "Brand");
+                if (!taxonomyExists)
+                {
+                    _context.ProductTaxonomies.Add(new ProductTaxonomy
+                    {
+                        TaxonomyId = Guid.NewGuid(),
+                        Name = trimmedName,
+                        Type = "Brand",
+                        CreatedAt = DateTime.UtcNow
+                    });
+                    await _context.SaveChangesAsync();
+                }
+
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
@@ -1244,12 +1313,38 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 var newName = dto.NewName.Trim();
                 var oldName = dto.OldName.Trim();
+                var updatedCount = 0;
 
+                // Cập nhật sản phẩm đang dùng nhóm hàng cũ
                 var affectedProducts = await _context.Products
                     .Where(p => p.CategoryName != null && p.CategoryName.ToLower() == oldName.ToLower())
                     .ToListAsync();
 
-                if (!affectedProducts.Any())
+                if (affectedProducts.Any())
+                {
+                    var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+                    var currentUserId = GetUserInfo();
+
+                    foreach (var product in affectedProducts)
+                    {
+                        product.CategoryName = newName;
+                        product.UpdatedAt = currentTime;
+                        product.UpdatedBy = currentUserId;
+                    }
+                    await _context.SaveChangesAsync();
+                    updatedCount = affectedProducts.Count;
+                }
+
+                // Cập nhật tên trong bảng taxonomy (kể cả khi chưa có SP nào)
+                var taxItem = await _context.ProductTaxonomies
+                    .FirstOrDefaultAsync(t => t.Name.ToLower() == oldName.ToLower() && t.Type == "Category");
+                if (taxItem != null)
+                {
+                    taxItem.Name = newName;
+                    await _context.SaveChangesAsync();
+                }
+
+                if (updatedCount == 0 && taxItem == null)
                 {
                     return NotFound(new ApiResponse<object>
                     {
@@ -1259,23 +1354,11 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
-                var currentUserId = GetUserInfo();
-
-                foreach (var product in affectedProducts)
-                {
-                    product.CategoryName = newName;
-                    product.UpdatedAt = currentTime;
-                    product.UpdatedBy = currentUserId;
-                }
-
-                await _context.SaveChangesAsync();
-
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = $"Đã đổi tên nhóm hàng '{oldName}' thành '{newName}' cho {affectedProducts.Count} sản phẩm",
-                    Data = new { UpdatedCount = affectedProducts.Count }
+                    Message = $"Đã đổi tên nhóm hàng '{oldName}' thành '{newName}' cho {updatedCount} sản phẩm",
+                    Data = new { UpdatedCount = updatedCount }
                 });
             }
             catch (Exception ex)
@@ -1310,12 +1393,38 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 var newName = dto.NewName.Trim();
                 var oldName = dto.OldName.Trim();
+                var updatedCount = 0;
 
+                // Cập nhật sản phẩm đang dùng thương hiệu cũ
                 var affectedProducts = await _context.Products
                     .Where(p => p.BrandName != null && p.BrandName.ToLower() == oldName.ToLower())
                     .ToListAsync();
 
-                if (!affectedProducts.Any())
+                if (affectedProducts.Any())
+                {
+                    var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+                    var currentUserId = GetUserInfo();
+
+                    foreach (var product in affectedProducts)
+                    {
+                        product.BrandName = newName;
+                        product.UpdatedAt = currentTime;
+                        product.UpdatedBy = currentUserId;
+                    }
+                    await _context.SaveChangesAsync();
+                    updatedCount = affectedProducts.Count;
+                }
+
+                // Cập nhật tên trong bảng taxonomy (kể cả khi chưa có SP nào)
+                var taxItem = await _context.ProductTaxonomies
+                    .FirstOrDefaultAsync(t => t.Name.ToLower() == oldName.ToLower() && t.Type == "Brand");
+                if (taxItem != null)
+                {
+                    taxItem.Name = newName;
+                    await _context.SaveChangesAsync();
+                }
+
+                if (updatedCount == 0 && taxItem == null)
                 {
                     return NotFound(new ApiResponse<object>
                     {
@@ -1325,23 +1434,11 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
-                var currentUserId = GetUserInfo();
-
-                foreach (var product in affectedProducts)
-                {
-                    product.BrandName = newName;
-                    product.UpdatedAt = currentTime;
-                    product.UpdatedBy = currentUserId;
-                }
-
-                await _context.SaveChangesAsync();
-
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = $"Đã đổi tên thương hiệu '{oldName}' thành '{newName}' cho {affectedProducts.Count} sản phẩm",
-                    Data = new { UpdatedCount = affectedProducts.Count }
+                    Message = $"Đã đổi tên thương hiệu '{oldName}' thành '{newName}' cho {updatedCount} sản phẩm",
+                    Data = new { UpdatedCount = updatedCount }
                 });
             }
             catch (Exception ex)
@@ -1366,37 +1463,39 @@ namespace MEP_Management_System.Controllers.InventoryController
             {
                 var trimmed = name.Trim();
 
-                var affectedProducts = await _context.Products
-                    .Where(p => p.CategoryName != null && p.CategoryName.ToLower() == trimmed.ToLower())
-                    .ToListAsync();
+                // Kiểm tra sản phẩm đang dùng — không cho xoá nếu có SP
+                var affectedCount = await _context.Products
+                    .CountAsync(p => p.CategoryName != null && p.CategoryName.ToLower() == trimmed.ToLower());
 
-                if (!affectedProducts.Any())
+                if (affectedCount > 0)
                 {
-                    return NotFound(new ApiResponse<object>
+                    return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Không tìm thấy nhóm hàng",
-                        Errors = new() { $"Không có sản phẩm nào đang dùng nhóm hàng '{trimmed}'" }
+                        Message = $"Không thể xoá nhóm hàng '{trimmed}' vì có {affectedCount} sản phẩm đang sử dụng. Hãy gỡ nhóm hàng khỏi sản phẩm trước."
                     });
                 }
 
-                var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
-                var currentUserId = GetUserInfo();
-
-                foreach (var product in affectedProducts)
+                // Xoá khỏi bảng taxonomy nếu có
+                var taxItem = await _context.ProductTaxonomies
+                    .FirstOrDefaultAsync(t => t.Name.ToLower() == trimmed.ToLower() && t.Type == "Category");
+                if (taxItem != null)
                 {
-                    product.CategoryName = null;
-                    product.UpdatedAt = currentTime;
-                    product.UpdatedBy = currentUserId;
+                    _context.ProductTaxonomies.Remove(taxItem);
+                    await _context.SaveChangesAsync();
+                    return Ok(new ApiResponse<object>
+                    {
+                        Success = true,
+                        Message = $"Đã xoá nhóm hàng '{trimmed}'",
+                        Data = new { UpdatedCount = 0 }
+                    });
                 }
 
-                await _context.SaveChangesAsync();
-
-                return Ok(new ApiResponse<object>
+                return NotFound(new ApiResponse<object>
                 {
-                    Success = true,
-                    Message = $"Đã gỡ nhóm hàng '{trimmed}' khỏi {affectedProducts.Count} sản phẩm",
-                    Data = new { UpdatedCount = affectedProducts.Count }
+                    Success = false,
+                    Message = "Không tìm thấy nhóm hàng",
+                    Errors = new() { $"Không có sản phẩm nào đang dùng nhóm hàng '{trimmed}'" }
                 });
             }
             catch (Exception ex)
@@ -1421,37 +1520,39 @@ namespace MEP_Management_System.Controllers.InventoryController
             {
                 var trimmed = name.Trim();
 
-                var affectedProducts = await _context.Products
-                    .Where(p => p.BrandName != null && p.BrandName.ToLower() == trimmed.ToLower())
-                    .ToListAsync();
+                // Kiểm tra sản phẩm đang dùng — không cho xoá nếu có SP
+                var affectedCount = await _context.Products
+                    .CountAsync(p => p.BrandName != null && p.BrandName.ToLower() == trimmed.ToLower());
 
-                if (!affectedProducts.Any())
+                if (affectedCount > 0)
                 {
-                    return NotFound(new ApiResponse<object>
+                    return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Không tìm thấy thương hiệu",
-                        Errors = new() { $"Không có sản phẩm nào đang dùng thương hiệu '{trimmed}'" }
+                        Message = $"Không thể xoá thương hiệu '{trimmed}' vì có {affectedCount} sản phẩm đang sử dụng. Hãy gỡ thương hiệu khỏi sản phẩm trước."
                     });
                 }
 
-                var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
-                var currentUserId = GetUserInfo();
-
-                foreach (var product in affectedProducts)
+                // Xoá khỏi bảng taxonomy nếu có
+                var taxItem = await _context.ProductTaxonomies
+                    .FirstOrDefaultAsync(t => t.Name.ToLower() == trimmed.ToLower() && t.Type == "Brand");
+                if (taxItem != null)
                 {
-                    product.BrandName = null;
-                    product.UpdatedAt = currentTime;
-                    product.UpdatedBy = currentUserId;
+                    _context.ProductTaxonomies.Remove(taxItem);
+                    await _context.SaveChangesAsync();
+                    return Ok(new ApiResponse<object>
+                    {
+                        Success = true,
+                        Message = $"Đã xoá thương hiệu '{trimmed}'",
+                        Data = new { UpdatedCount = 0 }
+                    });
                 }
 
-                await _context.SaveChangesAsync();
-
-                return Ok(new ApiResponse<object>
+                return NotFound(new ApiResponse<object>
                 {
-                    Success = true,
-                    Message = $"Đã gỡ thương hiệu '{trimmed}' khỏi {affectedProducts.Count} sản phẩm",
-                    Data = new { UpdatedCount = affectedProducts.Count }
+                    Success = false,
+                    Message = "Không tìm thấy thương hiệu",
+                    Errors = new() { $"Không có sản phẩm nào đang dùng thương hiệu '{trimmed}'" }
                 });
             }
             catch (Exception ex)

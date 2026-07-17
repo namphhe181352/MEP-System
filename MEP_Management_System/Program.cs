@@ -6,6 +6,7 @@ using MEP_Management_System.Hubs;
 using MEP_Management_System.DTOs.SaleDTOs;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OData;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -61,6 +62,37 @@ approvalsCfg.EntityType.HasKey(a => a.ApprovalId);
 builder.Services.Configure<VietQrOptions>(builder.Configuration.GetSection("VietQr"));
 builder.Services.AddHttpClient<VietQrService>();
 builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var errors = context.ModelState
+                .Where(e => e.Value?.Errors.Count > 0)
+                .SelectMany(e => e.Value!.Errors.Select(x =>
+                {
+                    var fieldName = e.Key.Split('.').Last();
+                    var msg = x.ErrorMessage;
+                    if (string.IsNullOrEmpty(msg) && x.Exception != null)
+                        msg = x.Exception.Message;
+                    if (string.IsNullOrEmpty(msg))
+                        msg = $"Trường '{fieldName}' không hợp lệ.";
+                    else if (msg.Contains("is required"))
+                        msg = $"Trường '{fieldName}' là bắt buộc.";
+                    else if (msg.Contains("Could not convert") || msg.Contains("could not convert"))
+                        msg = $"Trường '{fieldName}' không đúng định dạng.";
+                    else if (msg.Contains("The JSON value"))
+                        msg = $"Trường '{fieldName}' không đúng định dạng.";
+                    return msg;
+                }));
+
+            return new BadRequestObjectResult(new
+            {
+                success = false,
+                message = "Dữ liệu không hợp lệ.",
+                errors = errors.Any() ? errors.ToArray() : new[] { "Dữ liệu gửi lên không đúng định dạng." }
+            });
+        };
+    })
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new UtcDateTimeConverter());
@@ -201,6 +233,45 @@ using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<MEPDatabaseContext>();
     await MEP_Management_System.Seed.DatabaseSeeder.SeedAsync(context);
+}
+
+// Đảm bảo bảng product_taxonomies tồn tại (cho nhóm hàng & thương hiệu)
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<MEPDatabaseContext>();
+    try
+    {
+        await context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS product_taxonomies (
+                taxonomy_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                name VARCHAR(255) NOT NULL,
+                type VARCHAR(50) NOT NULL CHECK (type IN ('Category', 'Brand')),
+                created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(name, type)
+            );
+            CREATE INDEX IF NOT EXISTS idx_product_taxonomies_type ON product_taxonomies(type);
+        ");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Startup] Tạo bảng product_taxonomies thất bại: {ex.Message}");
+    }
+}
+
+// Đảm bảo cột media_url có thể lưu base64 images (mặc định VARCHAR(255) là quá nhỏ)
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<MEPDatabaseContext>();
+    try
+    {
+        await context.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE media_resources ALTER COLUMN media_url TYPE TEXT;"
+        );
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Startup] Alter media_url thất bại: {ex.Message}");
+    }
 }
 
 app.Run();

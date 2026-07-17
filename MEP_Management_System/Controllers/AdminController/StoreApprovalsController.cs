@@ -85,7 +85,7 @@ public class StoreApprovalsController : ControllerBase
             .Include(x => x.ReviewedByUser)
             .FirstOrDefaultAsync(x => x.ApprovalId == id);
 
-        if (s == null) return NotFound(new { error = new { code = "MSG-404", message = "Not found." } });
+        if (s == null) return NotFound(new { error = new { code = "MSG-404", message = "Không tìm thấy." } });
 
         return Ok(new StoreApprovalDto
         {
@@ -114,7 +114,7 @@ public class StoreApprovalsController : ControllerBase
         var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
         var approval = await _context.StoreApprovals.Include(a => a.User).FirstOrDefaultAsync(a => a.ApprovalId == id);
-        if (approval == null) return NotFound(new { error = new { code = "MSG-404", message = "Not found." } });
+        if (approval == null) return NotFound(new { error = new { code = "MSG-404", message = "Không tìm thấy." } });
         if (approval.Status != "PENDING") return BadRequest(new { error = new { code = "MSG-400", message = "Chỉ duyệt đơn PENDING." } });
 
         approval.Status = "APPROVED";
@@ -167,7 +167,7 @@ public class StoreApprovalsController : ControllerBase
         var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
         var approval = await _context.StoreApprovals.FirstOrDefaultAsync(a => a.ApprovalId == id);
-        if (approval == null) return NotFound(new { error = new { code = "MSG-404", message = "Not found." } });
+        if (approval == null) return NotFound(new { error = new { code = "MSG-404", message = "Không tìm thấy." } });
         if (approval.Status != "PENDING") return BadRequest(new { error = new { code = "MSG-400", message = "Chỉ duyệt đơn PENDING." } });
 
         approval.Status = "REJECTED";
