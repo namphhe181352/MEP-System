@@ -220,21 +220,49 @@ namespace MEP_Management_System.Controllers
             }
             else
             {
+                // Ưu tiên dùng DefaultBranchId nếu đã có
                 if (user.DefaultBranchId.HasValue)
                 {
                     branchIdForToken = user.DefaultBranchId.Value.ToString();
                 }
                 else
                 {
+                    // Fallback: tìm trong StaffAssignments
                     var assignment = await _context.StaffAssignments
                         .Where(sa => sa.UserId == user.UserId)
                         .OrderBy(sa => sa.AssignedAt)
                         .FirstOrDefaultAsync();
 
                     if (assignment == null)
-                        return BadRequest(new { message = "Tài khoản chưa được phân công chi nhánh." });
-
-                    branchIdForToken = assignment.BranchId.ToString();
+                    {
+                        // Fallback cuối cùng: lấy chi nhánh đầu tiên trong hệ thống (single-branch)
+                        var firstBranch = await _context.Branches.FirstOrDefaultAsync(b => b.IsActive == 1);
+                        if (firstBranch != null)
+                        {
+                            user.DefaultBranchId = firstBranch.BranchId;
+                            // Tạo StaffAssignment nếu chưa có
+                            _context.StaffAssignments.Add(new StaffAssignment
+                            {
+                                AssignmentId = Guid.NewGuid(),
+                                UserId = user.UserId,
+                                BranchId = firstBranch.BranchId,
+                                AssignedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
+                            });
+                            await _context.SaveChangesAsync();
+                            branchIdForToken = firstBranch.BranchId.ToString();
+                        }
+                        else
+                        {
+                            return BadRequest(new { message = "Tài khoản chưa được phân công chi nhánh." });
+                        }
+                    }
+                    else
+                    {
+                        // Đồng bộ DefaultBranchId để lần sau không cần query nữa
+                        user.DefaultBranchId = assignment.BranchId;
+                        await _context.SaveChangesAsync();
+                        branchIdForToken = assignment.BranchId.ToString();
+                    }
                 }
             }
 
