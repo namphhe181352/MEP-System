@@ -304,7 +304,18 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 var namePart = term.Trim();
 
-                // Sinh mã gợi ý không trùng
+                // Get current branch for per-branch suggestions
+                var branchId = await GetCurrentBranchId();
+                if (branchId == null)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy chi nhánh hợp lệ."
+                    });
+                }
+
+                // Sinh mã gợi ý không trùng trong chi nhánh hiện tại
                 string baseCode = new string(namePart
                     .ToUpper()
                     .Replace(' ', '_')
@@ -314,9 +325,10 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (baseCode.Length > 12) baseCode = baseCode.Substring(0, 12);
                 if (string.IsNullOrEmpty(baseCode)) baseCode = "SP";
 
-                var existingCodes = await _context.Products
-                    .Where(p => p.ProductCode.StartsWith(baseCode))
-                    .Select(p => p.ProductCode)
+                var existingCodes = await _context.BranchProducts
+                    .Include(bp => bp.Product)
+                    .Where(bp => bp.BranchId == branchId && bp.Product.ProductCode.StartsWith(baseCode))
+                    .Select(bp => bp.Product.ProductCode)
                     .ToListAsync();
 
                 string suggestedCode = baseCode;
@@ -327,19 +339,21 @@ namespace MEP_Management_System.Controllers.InventoryController
                     suggestedCode = $"{baseCode}{suffix:000}";
                 }
 
-                // Gợi ý brand/category có sẵn
-                var brandSuggestions = await _context.Products
-                    .Where(p => p.BrandName != null && p.BrandName != "")
-                    .GroupBy(p => p.BrandName)
-                    .Select(g => g.Key!)
+                // Gợi ý brand/category có sẵn TRONG CHI NHÁNH HIỆN TẠI
+                var brandSuggestions = await _context.BranchProducts
+                    .Include(bp => bp.Product)
+                    .Where(bp => bp.BranchId == branchId && bp.Product.BrandName != null && bp.Product.BrandName != "")
+                    .Select(bp => bp.Product.BrandName!)
+                    .Distinct()
                     .OrderBy(b => b)
                     .Take(10)
                     .ToListAsync();
 
-                var categorySuggestions = await _context.Products
-                    .Where(p => p.CategoryName != null && p.CategoryName != "")
-                    .GroupBy(p => p.CategoryName)
-                    .Select(g => g.Key!)
+                var categorySuggestions = await _context.BranchProducts
+                    .Include(bp => bp.Product)
+                    .Where(bp => bp.BranchId == branchId && bp.Product.CategoryName != null && bp.Product.CategoryName != "")
+                    .Select(bp => bp.Product.CategoryName!)
+                    .Distinct()
                     .OrderBy(c => c)
                     .Take(10)
                     .ToListAsync();
@@ -427,10 +441,12 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return BadRequest(new ApiResponse<object> { Success = false, Message = "Validation failed", Errors = errors });
                 }
 
-                bool isCodeExist = await _context.Products.AnyAsync(p => p.ProductCode.ToLower() == dto.ProductCode.Trim().ToLower());
+                // Check product code uniqueness WITHIN CURRENT BRANCH only
+                bool isCodeExist = await _context.BranchProducts
+                    .AnyAsync(bp => bp.BranchId == branchId.Value && bp.Product.ProductCode.ToLower() == dto.ProductCode.Trim().ToLower());
                 if (isCodeExist)
                 {
-                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Product code already exists", Errors = new() { $"Code '{dto.ProductCode}' exists" } });
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Mã sản phẩm đã tồn tại trong chi nhánh này", Errors = new() { $"Code '{dto.ProductCode}' exists" } });
                 }
 
                 var currentLocalTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
@@ -1059,9 +1075,20 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var result = await _context.Products
-                    .Where(p => p.CategoryName != null && p.CategoryName != "")
-                    .GroupBy(p => p.CategoryName)
+                var branchId = await GetCurrentBranchId();
+                if (branchId == null)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy chi nhánh hợp lệ."
+                    });
+                }
+
+                var result = await _context.BranchProducts
+                    .Include(bp => bp.Product)
+                    .Where(bp => bp.BranchId == branchId && bp.Product.CategoryName != null && bp.Product.CategoryName != "")
+                    .GroupBy(bp => bp.Product.CategoryName)
                     .Select(g => new TaxonomyItemDto
                     {
                         Name = g.Key!,
@@ -1097,9 +1124,20 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var result = await _context.Products
-                    .Where(p => p.BrandName != null && p.BrandName != "")
-                    .GroupBy(p => p.BrandName)
+                var branchId = await GetCurrentBranchId();
+                if (branchId == null)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy chi nhánh hợp lệ."
+                    });
+                }
+
+                var result = await _context.BranchProducts
+                    .Include(bp => bp.Product)
+                    .Where(bp => bp.BranchId == branchId && bp.Product.BrandName != null && bp.Product.BrandName != "")
+                    .GroupBy(bp => bp.Product.BrandName)
                     .Select(g => new TaxonomyItemDto
                     {
                         Name = g.Key!,
@@ -1135,6 +1173,16 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
+                var branchId = await GetCurrentBranchId();
+                if (branchId == null)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy chi nhánh hợp lệ."
+                    });
+                }
+
                 if (string.IsNullOrWhiteSpace(dto.Name))
                 {
                     return BadRequest(new ApiResponse<object>
@@ -1145,13 +1193,16 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 var trimmedName = dto.Name.Trim();
-                var exists = await _context.Products.AnyAsync(p => p.CategoryName != null && p.CategoryName.ToLower() == trimmedName.ToLower());
+                // Check per-branch only
+                var exists = await _context.BranchProducts
+                    .Include(bp => bp.Product)
+                    .AnyAsync(bp => bp.BranchId == branchId && bp.Product.CategoryName != null && bp.Product.CategoryName.ToLower() == trimmedName.ToLower());
                 if (exists)
                 {
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = $"Nhóm hàng '{trimmedName}' đã tồn tại."
+                        Message = $"Nhóm hàng '{trimmedName}' đã tồn tại trong chi nhánh này."
                     });
                 }
 
@@ -1184,6 +1235,16 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
+                var branchId = await GetCurrentBranchId();
+                if (branchId == null)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy chi nhánh hợp lệ."
+                    });
+                }
+
                 if (string.IsNullOrWhiteSpace(dto.Name))
                 {
                     return BadRequest(new ApiResponse<object>
@@ -1194,13 +1255,16 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 var trimmedName = dto.Name.Trim();
-                var exists = await _context.Products.AnyAsync(p => p.BrandName != null && p.BrandName.ToLower() == trimmedName.ToLower());
+                // Check per-branch only
+                var exists = await _context.BranchProducts
+                    .Include(bp => bp.Product)
+                    .AnyAsync(bp => bp.BranchId == branchId && bp.Product.BrandName != null && bp.Product.BrandName.ToLower() == trimmedName.ToLower());
                 if (exists)
                 {
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = $"Thương hiệu '{trimmedName}' đã tồn tại."
+                        Message = $"Thương hiệu '{trimmedName}' đã tồn tại trong chi nhánh này."
                     });
                 }
 
