@@ -11,12 +11,7 @@ namespace MEP_Management_System.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<decimal>(
-                name: "UnitPrice",
-                table: "stock_ticket_items",
-                type: "numeric",
-                nullable: true);
-
+            // UnitPrice column already exists, skipping
             migrationBuilder.AddColumn<Guid>(
                 name: "BrandTaxonomyId",
                 table: "products",
