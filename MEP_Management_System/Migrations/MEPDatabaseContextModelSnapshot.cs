@@ -1711,6 +1711,57 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("product_attributes", (string)null);
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.ProductAttributeType", b =>
+                {
+                    b.Property<Guid>("TypeId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("type_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<short>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)1)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("TypeCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("type_code");
+
+                    b.Property<string>("TypeName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("type_name");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("TypeId")
+                        .HasName("product_attribute_types_pkey");
+
+                    b.HasIndex("TypeName")
+                        .IsUnique()
+                        .HasDatabaseName("ix_product_attribute_types_type_name");
+
+                    b.ToTable("product_attribute_types", (string)null);
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.ProductConversionUnit", b =>
                 {
                     b.Property<Guid>("ConversionId")
