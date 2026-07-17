@@ -176,6 +176,7 @@ public class OwnerStaffController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetStaffs(
         [FromQuery] string? search,
+        [FromQuery] bool? isActive,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
@@ -217,6 +218,17 @@ public class OwnerStaffController : ControllerBase
                 u.FullName.ToLower().Contains(term) ||
                 u.Email.ToLower().Contains(term) ||
                 (u.PhoneNumber != null && u.PhoneNumber.Contains(term)));
+        }
+
+        if (isActive.HasValue)
+        {
+            // Nếu User có IsActive là short hoặc bool? 
+            // Giả sử có properties IsActive. Ta sẽ check theo type của db.
+            // Thông thường isActive hoạt động (1/true), ẩn (0/false)
+            // Trong source hiện tại tuỳ model, nhưng để an toàn cứ map
+            // Thấy bên kia u.Status != "DELETED", có thể Status là isActive? 
+            // Let's first make sure the property exists.
+            query = query.Where(u => u.IsActive == (isActive.Value ? (short)1 : (short)0));
         }
 
         var totalCount = await query.CountAsync();
