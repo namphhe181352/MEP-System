@@ -13,16 +13,23 @@ namespace MEP_Management_System.Services
     {
         private readonly MEPDatabaseContext _context;
         private readonly IMapper _mapper;
+        private readonly IOrderDiscountService _orderDiscountService;
 
-        public InvoiceService(MEPDatabaseContext context, IMapper mapper)
+        public InvoiceService(MEPDatabaseContext context, IMapper mapper, IOrderDiscountService orderDiscountService)
         {
             _context = context;
             _mapper = mapper;
+            _orderDiscountService = orderDiscountService;
         }
 
         private Guid GetBranchId(ClaimsPrincipal user)
         {
-            return Guid.Parse(user.FindFirst("branchId")?.Value ?? throw new Exception("branchId not found in token"));
+            var branchIdStr = user.FindFirst("branchId")?.Value;
+            if (Guid.TryParse(branchIdStr, out var branchId))
+            {
+                return branchId;
+            }
+            throw new UnauthorizedAccessException("branchId not found in token.");
         }
 
         public async Task<InvoiceDto?> GetInvoiceByIdAsync(Guid invoiceId, ClaimsPrincipal currentUser)
@@ -41,14 +48,25 @@ namespace MEP_Management_System.Services
             dto.OrderId = invoice.OrderId;
             dto.UserId = invoice.UserId;
             dto.UserName = invoice.Order?.User?.FullName;
+            
+            // Map the discount manually in case AutoMapper missed it from SaleMappingProfile
+            dto.DiscountPercent = invoice.DiscountPercent;
+            dto.DiscountAmount = invoice.DiscountAmount;
 
             if (invoice.InvoiceItems != null && invoice.InvoiceItems.Any())
             {
                 var subtotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
                 dto.Subtotal = subtotal;
-                dto.DiscountAmount = invoice.DiscountAmount;
-                dto.DiscountPercent = invoice.DiscountPercent;
-                dto.TotalAmount = subtotal - invoice.DiscountAmount;
+
+                // Nếu hóa đơn đang Draft, tính discount on the fly để POS hiển thị
+                if (invoice.Status == "Draft")
+                {
+                    var (dynDiscountPercent, dynDiscountAmount, _) = await _orderDiscountService.CalculateDiscountAsync(subtotal);
+                    dto.DiscountPercent = dynDiscountPercent;
+                    dto.DiscountAmount = dynDiscountAmount;
+                }
+
+                dto.TotalAmount = subtotal - dto.DiscountAmount;
                 dto.Items = _mapper.Map<System.Collections.Generic.List<DTOs.SaleDTOs.InvoiceItemDto>>(invoice.InvoiceItems);
             }
 

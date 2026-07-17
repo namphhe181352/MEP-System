@@ -225,7 +225,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Supplier name already exists",
+                        Message = "Tên nhà cung cấp đã tồn tại",
                         Errors = new() { $"Nhà cung cấp '{req.SupplierName}' đã tồn tại." }
                     });
 
@@ -337,7 +337,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Supplier name already exists",
+                        Message = "Tên nhà cung cấp đã tồn tại",
                         Errors = new() { $"Nhà cung cấp '{req.SupplierName}' đã tồn tại." }
                     });
 

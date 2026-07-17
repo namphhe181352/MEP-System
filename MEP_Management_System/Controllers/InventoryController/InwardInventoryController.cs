@@ -295,7 +295,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 {
                     Success = false,
                     Message = "Validation failed",
-                    Errors = new() { "At least one item is required." }
+                    Errors = new() { "Phải có ít nhất 1 sản phẩm." }
                 });
             }
 
@@ -305,7 +305,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 {
                     Success = false,
                     Message = "Validation failed",
-                    Errors = new() { "SupplierId is required for Purchase inward inventory." }
+                    Errors = new() { "Nhà cung cấp là bắt buộc đối với phiếu nhập mua." }
                 });
             }
 
@@ -923,7 +923,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                     SystemQuantity = item.SystemQuantity,
                     Quantity = item.Discrepancy,
                     ActualQuantity = item.ActualQuantity,
-                    CostPrice = item.BranchProduct?.CostPrice ?? 0
+                    CostPrice = item.BranchProduct?.CostPrice ?? 0,
+                    UnitPrice = item.UnitPrice,
+                    UnitName = item.BranchProduct?.Product?.BaseUnit
                 }).ToList() ?? new()
             };
         }

@@ -92,7 +92,7 @@ public class SystemNotificationsController : ControllerBase
     public async Task<IActionResult> UpdateNotification(Guid id, [FromBody] UpdateNotificationRequest dto)
     {
         var notification = await _context.SystemNotifications.FindAsync(id);
-        if (notification == null) return NotFound(new { error = new { code = "MSG-404", message = "Not found." } });
+        if (notification == null) return NotFound(new { error = new { code = "MSG-404", message = "Không tìm thấy." } });
 
         if (notification.Status != "DRAFT")
             return BadRequest(new { error = new { code = "MSG-400", message = "Chỉ edit được DRAFT." } });
@@ -115,7 +115,7 @@ public class SystemNotificationsController : ControllerBase
     public async Task<IActionResult> SendNotification(Guid id)
     {
         var notification = await _context.SystemNotifications.FindAsync(id);
-        if (notification == null) return NotFound(new { error = new { code = "MSG-404", message = "Not found." } });
+        if (notification == null) return NotFound(new { error = new { code = "MSG-404", message = "Không tìm thấy." } });
 
         if (notification.Status == "SENT") return BadRequest(new { error = new { code = "MSG-409", message = "Đã gửi rồi." } });
         if (notification.Status == "CANCELLED") return BadRequest(new { error = new { code = "MSG-400", message = "Đã hủy." } });
@@ -134,7 +134,7 @@ public class SystemNotificationsController : ControllerBase
     public async Task<IActionResult> CancelNotification(Guid id)
     {
         var notification = await _context.SystemNotifications.FindAsync(id);
-        if (notification == null) return NotFound(new { error = new { code = "MSG-404", message = "Not found." } });
+        if (notification == null) return NotFound(new { error = new { code = "MSG-404", message = "Không tìm thấy." } });
 
         if (notification.Status == "SENT") return BadRequest(new { error = new { code = "MSG-400", message = "Đã gửi." } });
         if (notification.Status == "CANCELLED") return BadRequest(new { error = new { code = "MSG-409", message = "Đã hủy." } });
@@ -148,7 +148,7 @@ public class SystemNotificationsController : ControllerBase
     public async Task<IActionResult> DeleteNotification(Guid id)
     {
         var notification = await _context.SystemNotifications.FindAsync(id);
-        if (notification == null) return NotFound(new { error = new { code = "MSG-404", message = "Not found." } });
+        if (notification == null) return NotFound(new { error = new { code = "MSG-404", message = "Không tìm thấy." } });
 
         if (notification.Status != "DRAFT" && notification.Status != "CANCELLED")
             return BadRequest(new { error = new { code = "MSG-400", message = "Chỉ xóa được DRAFT/CANCELLED." } });
