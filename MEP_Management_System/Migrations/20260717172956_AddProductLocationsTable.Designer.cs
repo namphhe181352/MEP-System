@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MEP_Management_System.Migrations
 {
     [DbContext(typeof(MEPDatabaseContext))]
-    [Migration("20260717133757_AddBranchIdToTaxonomyAndProductTaxonomyId")]
-    partial class AddBranchIdToTaxonomyAndProductTaxonomyId
+    [Migration("20260717172956_AddProductLocationsTable")]
+    partial class AddProductLocationsTable
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -1816,6 +1816,62 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("product_conversion_units", (string)null);
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.ProductLocation", b =>
+                {
+                    b.Property<Guid>("LocationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("location_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<short>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)1)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("LocationCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("location_code");
+
+                    b.Property<string>("LocationName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("location_name");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("LocationId")
+                        .HasName("product_locations_pkey");
+
+                    b.HasIndex("LocationName")
+                        .IsUnique()
+                        .HasDatabaseName("ix_product_locations_location_name");
+
+                    b.ToTable("product_locations", (string)null);
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.ProductTaxonomy", b =>
                 {
                     b.Property<Guid>("TaxonomyId")
@@ -3111,7 +3167,8 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("created_by");
 
                     b.Property<Guid?>("DefaultBranchId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("default_branch_id");
 
                     b.Property<string>("Email")
                         .IsRequired()
@@ -3172,6 +3229,8 @@ namespace MEP_Management_System.Migrations
                         .HasName("users_pkey");
 
                     b.HasIndex("CreatedBy");
+
+                    b.HasIndex("DefaultBranchId");
 
                     b.HasIndex(new[] { "Email" }, "users_email_unique")
                         .IsUnique();
@@ -4252,7 +4311,15 @@ namespace MEP_Management_System.Migrations
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("users_created_by_fkey");
 
+                    b.HasOne("MEP_Management_System.Models.Branch", "DefaultBranch")
+                        .WithMany()
+                        .HasForeignKey("DefaultBranchId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("users_default_branch_id_fkey");
+
                     b.Navigation("CreatedByUser");
+
+                    b.Navigation("DefaultBranch");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.UserPermission", b =>
