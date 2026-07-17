@@ -445,18 +445,6 @@ public class InvoicesController : ControllerBase
             return BadRequest(ApiErrorResponse.Create("MSG-82", $"Thanh toán chưa đủ. Cần thanh toán {totalAmount:N0} VNĐ, nhưng mới nhận {totalPaid:N0} VNĐ."));
         }
 
-        // BR-90: Block finalize if any product is in a pending StockCheckTicket
-        var productIds = invoice.InvoiceItems.Select(ii => ii.BranchProduct.ProductId).ToList();
-        var hasPendingStockCheck = await _context.InventoryCheckTickets
-            .Where(t => t.BranchId == branchId &&
-                        (t.Status == InventoryCheckTicketStatus.Draft ||
-                         t.Status == InventoryCheckTicketStatus.WaitingForApproval) &&
-                        t.Details.Any(d => productIds.Contains(d.ProductId)))
-            .AnyAsync();
-
-        if (hasPendingStockCheck)
-            return BadRequest(ApiErrorResponse.Create("MSG-80", "Một số sản phẩm đang nằm trong phiếu kiểm kho chưa hoàn tất. Không thể thanh toán."));
-
         // Validate stock
         foreach (var item in invoice.InvoiceItems)
         {
