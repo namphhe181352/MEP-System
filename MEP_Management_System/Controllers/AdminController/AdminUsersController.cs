@@ -132,33 +132,63 @@ public class AdminUsersController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateUser([FromBody] AdminUserCreateDto dto)
     {
-        if (await _context.Users.AnyAsync(u => u.Email.ToLower() == dto.Email.Trim().ToLower()))
+        // Validate required fields
+        if (string.IsNullOrWhiteSpace(dto.Email))
+            return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Email là bắt buộc." } });
+
+        if (string.IsNullOrWhiteSpace(dto.FullName))
+            return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Họ tên là bắt buộc." } });
+
+        if (string.IsNullOrWhiteSpace(dto.Password) || dto.Password.Length < 6)
+            return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Mật khẩu phải có ít nhất 6 ký tự." } });
+
+        var emailTrimmed = dto.Email.Trim().ToLower();
+        if (await _context.Users.AnyAsync(u => u.Email.ToLower() == emailTrimmed))
             return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-409", Message = "Email đã tồn tại." } });
 
-        if (!string.IsNullOrWhiteSpace(dto.PhoneNumber) && await _context.Users.AnyAsync(u => u.PhoneNumber == dto.PhoneNumber.Trim()))
-            return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-409", Message = "Số điện thoại đã tồn tại." } });
+        if (!string.IsNullOrWhiteSpace(dto.PhoneNumber))
+        {
+            var phoneTrimmed = dto.PhoneNumber.Trim();
+            if (await _context.Users.AnyAsync(u => u.PhoneNumber == phoneTrimmed))
+                return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-409", Message = "Số điện thoại đã tồn tại." } });
+        }
+
+        // Get current admin user ID to check for role security
+        var currentAdminId = GetCurrentUserId();
+
+        // Validate RoleIds - check if roles exist and prevent assigning Admin role
+        var validRoles = new List<Role>();
+        if (dto.RoleIds != null && dto.RoleIds.Any())
+        {
+            var roles = await _context.Roles.Where(r => dto.RoleIds.Contains(r.RoleId)).ToListAsync();
+
+            // Check if trying to assign Admin role
+            var adminRole = roles.FirstOrDefault(r => r.RoleName.Equals("Admin", StringComparison.OrdinalIgnoreCase));
+            if (adminRole != null)
+            {
+                return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-403", Message = "Không thể gán vai trò Admin." } });
+            }
+
+            validRoles = roles;
+        }
 
         var user = new User
         {
             UserId = Guid.NewGuid(),
-            Username = dto.Email.Trim(), // Using email as username by default
+            Username = dto.Email.Trim(),
             Email = dto.Email.Trim(),
             FullName = dto.FullName.Trim(),
-            PhoneNumber = dto.PhoneNumber?.Trim(),
+            PhoneNumber = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
             IsActive = 1,
             Status = "ACTIVE",
             CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified),
-            CreatedBy = GetCurrentUserId()
+            CreatedBy = currentAdminId
         };
 
-        if (dto.RoleIds != null && dto.RoleIds.Any())
+        foreach (var role in validRoles)
         {
-            var roles = await _context.Roles.Where(r => dto.RoleIds.Contains(r.RoleId)).ToListAsync();
-            foreach (var role in roles)
-            {
-                user.Roles.Add(role);
-            }
+            user.Roles.Add(role);
         }
 
         _context.Users.Add(user);
@@ -179,11 +209,18 @@ public class AdminUsersController : ControllerBase
         if (user == null)
             return NotFound(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-404", Message = "Không tìm thấy người dùng." } });
 
-        if (!string.IsNullOrWhiteSpace(dto.PhoneNumber) && dto.PhoneNumber.Trim() != user.PhoneNumber && await _context.Users.AnyAsync(u => u.PhoneNumber == dto.PhoneNumber.Trim()))
-            return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-409", Message = "Số điện thoại đã tồn tại." } });
+        if (string.IsNullOrWhiteSpace(dto.FullName))
+            return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Họ tên là bắt buộc." } });
+
+        if (!string.IsNullOrWhiteSpace(dto.PhoneNumber))
+        {
+            var phoneTrimmed = dto.PhoneNumber.Trim();
+            if (phoneTrimmed != (user.PhoneNumber ?? "") && await _context.Users.AnyAsync(u => u.PhoneNumber == phoneTrimmed))
+                return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-409", Message = "Số điện thoại đã tồn tại." } });
+        }
 
         user.FullName = dto.FullName.Trim();
-        user.PhoneNumber = dto.PhoneNumber?.Trim();
+        user.PhoneNumber = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim();
 
         await LogAction(user.UserId, "UPDATE_USER", "users", "User", $"Cập nhật người dùng: {user.Email}");
         await _context.SaveChangesAsync();
@@ -202,8 +239,38 @@ public class AdminUsersController : ControllerBase
         if (user == null)
             return NotFound(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-404", Message = "Không tìm thấy người dùng." } });
 
+        if (dto.RoleIds == null || !dto.RoleIds.Any())
+            return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Phải chọn ít nhất một vai trò." } });
+
         var roles = await _context.Roles.Where(r => dto.RoleIds.Contains(r.RoleId)).ToListAsync();
-        
+
+        // Check if all requested role IDs exist
+        var existingRoleIds = roles.Select(r => r.RoleId).ToHashSet();
+        var missingRoleIds = dto.RoleIds.Where(rid => !existingRoleIds.Contains(rid)).ToList();
+        if (missingRoleIds.Any())
+        {
+            return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = $"Vai trò không tồn tại: {string.Join(", ", missingRoleIds)}" } });
+        }
+
+        // Check if trying to assign Admin role
+        var adminRole = roles.FirstOrDefault(r => r.RoleName.Equals("Admin", StringComparison.OrdinalIgnoreCase));
+        if (adminRole != null)
+        {
+            return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-403", Message = "Không thể gán vai trò Admin." } });
+        }
+
+        // Check if current user is trying to remove their own Admin role
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId == user.UserId)
+        {
+            var hasAdminRole = user.Roles.Any(r => r.RoleName.Equals("Admin", StringComparison.OrdinalIgnoreCase));
+            var willHaveAdminRole = roles.Any(r => r.RoleName.Equals("Admin", StringComparison.OrdinalIgnoreCase));
+            if (hasAdminRole && !willHaveAdminRole)
+            {
+                return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-403", Message = "Không thể tự xóa vai trò Admin của chính mình." } });
+            }
+        }
+
         user.Roles.Clear();
         foreach (var role in roles)
         {
@@ -227,6 +294,13 @@ public class AdminUsersController : ControllerBase
         if (user == null)
             return NotFound(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-404", Message = "Không tìm thấy người dùng." } });
 
+        // Prevent admin from locking themselves
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId == user.UserId)
+        {
+            return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-403", Message = "Không thể thay đổi trạng thái của chính mình." } });
+        }
+
         user.IsActive = (short)(dto.IsActive ? 1 : 0);
         user.Status = dto.IsActive ? "ACTIVE" : "SUSPENDED";
 
@@ -248,6 +322,10 @@ public class AdminUsersController : ControllerBase
         if (user == null)
             return NotFound(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-404", Message = "Không tìm thấy người dùng." } });
 
+        // Validate password
+        if (string.IsNullOrWhiteSpace(dto.NewPassword) || dto.NewPassword.Length < 6)
+            return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Mật khẩu phải có ít nhất 6 ký tự." } });
+
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
 
         await LogAction(user.UserId, "RESET_PASSWORD", "users", "User", $"Reset mật khẩu cho: {user.Email}");
@@ -263,10 +341,17 @@ public class AdminUsersController : ControllerBase
     [HttpGet("{id:guid}/activities")]
     public async Task<IActionResult> GetUserActivities(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
-        var query = _context.SystemLogs.Where(l => l.UserId == id).AsQueryable();
-        
+        // Verify user exists
+        var userExists = await _context.Users.AnyAsync(u => u.UserId == id);
+        if (!userExists)
+            return NotFound(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-404", Message = "Không tìm thấy người dùng." } });
+
+        var query = _context.SystemLogs
+            .Include(l => l.User)
+            .Where(l => l.UserId == id);
+
         var totalCount = await query.CountAsync();
-        
+
         var items = await query
             .OrderByDescending(l => l.Timestamp)
             .Skip((page - 1) * pageSize)
@@ -282,7 +367,7 @@ public class AdminUsersController : ControllerBase
                 UserAgent = l.UserAgent,
                 Level = l.Level,
                 Source = l.Source,
-                UserName = l.User.FullName, // Or u.Email
+                UserName = l.User != null ? l.User.FullName : "System",
                 Timestamp = l.Timestamp
             })
             .ToListAsync();

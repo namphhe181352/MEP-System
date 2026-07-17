@@ -101,10 +101,28 @@ public class AdminRolesController : ControllerBase
         if (role == null)
             return NotFound(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-404", Message = "Không tìm thấy vai trò (Role)." } });
 
-        // Chặn cấu hình quyền cho Super Admin nếu có (giả định Super Admin luôn full quyền)
+        // Validate PermissionIds
+        if (dto.PermissionIds == null)
+            return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Danh sách quyền không được để trống." } });
+
+        // Check if all permission IDs exist
+        var existingPermIdsSet = (await _context.Permissions
+            .Where(p => dto.PermissionIds.Contains(p.PermissionId))
+            .Select(p => p.PermissionId)
+            .ToListAsync())
+            .ToHashSet();
+
+        var missingPermIds = dto.PermissionIds.Where(pid => !existingPermIdsSet.Contains(pid)).ToList();
+
+        if (missingPermIds.Any())
+        {
+            return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = $"Quyền không tồn tại: {string.Join(", ", missingPermIds)}" } });
+        }
+
+        // Chặn cấu hình quyền cho Admin
         if (role.RoleName.Equals("Admin", StringComparison.OrdinalIgnoreCase))
         {
-            return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Không thể chỉnh sửa quyền của Super Admin." } });
+            return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Không thể chỉnh sửa quyền của Admin." } });
         }
 
         var permissionsToAssign = await _context.Permissions
