@@ -13,6 +13,7 @@ public class ProductPriceDto
     public string? Unit { get; set; }
     public decimal? AvailableStock { get; set; }
     public string? ImageUrl { get; set; }
+    public string? ProductStatus { get; set; }
 
     /// <summary>Các đơn vị quy đổi có thể bán (ví dụ: Cuộn, Hộp).</summary>
     public List<ConversionUnitDto>? ConversionUnits { get; set; }

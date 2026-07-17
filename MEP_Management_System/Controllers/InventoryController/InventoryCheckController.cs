@@ -1100,6 +1100,27 @@ public class InventoryCheckController : ControllerBase
                     };
                     _context.StockTicketItems.Add(stockTicketItem);
                 }
+
+                // Log khi phát hiện có giao dịch bán/nhập xen vào trong lúc kiểm kê
+                // So sánh SystemQuantity (tại Fill) với ActualStock tại Approve
+                var stockChangeDuringCheck = branchProduct.ActualStock - detail.SystemQuantity;
+                if (stockChangeDuringCheck != 0)
+                {
+                    var systemLog = new SystemLog
+                    {
+                        LogId = Guid.NewGuid(),
+                        UserId = userId ?? Guid.Empty,
+                        Action = "INVENTORY_CHECK_RECONCILIATION",
+                        TableName = "InventoryCheckTickets",
+                        EntityType = "InventoryCheck",
+                        EntityId = ticket.TicketId,
+                        Description = $"Phiếu {ticket.TicketCode} có chênh lệch {stockChangeDuringCheck} tại sản phẩm {detail.ProductId} do giao dịch phát sinh trong lúc kiểm kê (SystemQuantity={detail.SystemQuantity}, ActualStock tại Approve={branchProduct.ActualStock}). Discrepancy kiểm kê: {discrepancy}",
+                        Level = "INFO",
+                        Source = "InventoryCheckController",
+                        Timestamp = DateTime.UtcNow
+                    };
+                    _context.SystemLogs.Add(systemLog);
+                }
             }
 
             ticket.Status = InventoryCheckTicketStatus.Completed;
@@ -1709,8 +1730,25 @@ public class InventoryCheckController : ControllerBase
 
     #region Helper Methods
 
-    private InventoryCheckResponseDto MapToResponseDto(InventoryCheckTicket ticket)
+    private async Task<InventoryCheckResponseDto> MapToResponseDtoAsync(InventoryCheckTicket ticket)
     {
+        var isDraft = ticket.Status == InventoryCheckTicketStatus.Draft;
+
+        var currentStockMap = new Dictionary<Guid, int>();
+        if (isDraft)
+        {
+            var productIds = ticket.Details.Select(d => d.ProductId).Distinct().ToList();
+            var branchProducts = await _context.BranchProducts
+                .Where(bp => bp.BranchId == ticket.BranchId && productIds.Contains(bp.ProductId))
+                .Select(bp => new { bp.ProductId, bp.ActualStock })
+                .ToListAsync();
+
+            foreach (var bp in branchProducts)
+            {
+                currentStockMap[bp.ProductId] = Convert.ToInt32(Math.Floor(bp.ActualStock));
+            }
+        }
+
         return new InventoryCheckResponseDto
         {
             TicketId = ticket.TicketId,
@@ -1746,6 +1784,7 @@ public class InventoryCheckController : ControllerBase
                 ProductCode = d.Product?.ProductCode,
                 ProductName = d.Product?.ProductName,
                 SystemQuantity = d.SystemQuantity,
+                CurrentActualStock = currentStockMap.TryGetValue(d.ProductId, out var stock) ? stock : d.SystemQuantity,
                 ActualQuantity = d.ActualQuantity,
                 Discrepancy = d.Discrepancy,
                 IsCounted = d.IsCounted,
@@ -1754,6 +1793,11 @@ public class InventoryCheckController : ControllerBase
                 CountedAt = d.CountedAt
             }).ToList()
         };
+    }
+
+    private InventoryCheckResponseDto MapToResponseDto(InventoryCheckTicket ticket)
+    {
+        return MapToResponseDtoAsync(ticket).GetAwaiter().GetResult();
     }
 
     private async Task<string> GenerateTicketCodeAsync()
