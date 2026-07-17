@@ -299,6 +299,85 @@ public class OwnerStaffController : ControllerBase
     }
     #endregion
 
+    #region GET /api/owner/staffs/{id}/check-usage
+    /// <summary>
+    /// Kiểm tra xem nhân viên có đang liên kết với các bảng dữ liệu nào không.
+    /// </summary>
+    [HttpGet("{id:guid}/check-usage")]
+    [HasPermission(PermissionConstants.STAFF_DELETE)]
+    public async Task<IActionResult> CheckStaffUsage(Guid id)
+    {
+        var ownerId = GetCurrentUserId();
+        if (!ownerId.HasValue)
+            return Unauthorized(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Không thể xác định người dùng từ token."
+            });
+
+        var staff = await _context.Users
+            .FirstOrDefaultAsync(u => u.UserId == id && u.CreatedBy == ownerId.Value);
+
+        if (staff == null)
+            return NotFound(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Nhân viên không tồn tại hoặc không thuộc quyền quản lý của bạn."
+            });
+
+        // Đếm số lượng liên kết trong các bảng
+        var orderCount = await _context.Orders.CountAsync(o => o.UserId == id);
+        var invoiceCount = await _context.Invoices.CountAsync(i => i.UserId == id);
+        var shiftCount = await _context.Shifts.CountAsync(s => s.UserId == id);
+
+        // StockTickets: UserId (người tạo), ConfirmedBy (người xác nhận), CancelledBy (người hủy)
+        var stockTicketCreatedCount = await _context.StockTickets.CountAsync(s => s.UserId == id);
+        var stockTicketConfirmedCount = await _context.StockTickets.CountAsync(s => s.ConfirmedBy == id);
+        var stockTicketCancelledCount = await _context.StockTickets.CountAsync(s => s.CancelledBy == id);
+        var stockTicketTotalCount = stockTicketCreatedCount + stockTicketConfirmedCount + stockTicketCancelledCount;
+
+        var violationReportCount = await _context.ViolationReports.CountAsync(v => v.UserId == id);
+
+        var hasUsage = orderCount > 0 || invoiceCount > 0 || shiftCount > 0
+            || stockTicketTotalCount > 0 || violationReportCount > 0;
+
+        // Tạo thông báo chi tiết
+        var usageDetails = new List<string>();
+        if (orderCount > 0) usageDetails.Add($"{orderCount} đơn hàng");
+        if (invoiceCount > 0) usageDetails.Add($"{invoiceCount} hóa đơn");
+        if (shiftCount > 0) usageDetails.Add($"{shiftCount} ca làm việc");
+        if (stockTicketCreatedCount > 0) usageDetails.Add($"{stockTicketCreatedCount} phiếu kho (người tạo)");
+        if (stockTicketConfirmedCount > 0) usageDetails.Add($"{stockTicketConfirmedCount} phiếu kho (người xác nhận)");
+        if (stockTicketCancelledCount > 0) usageDetails.Add($"{stockTicketCancelledCount} phiếu kho (người hủy)");
+        if (violationReportCount > 0) usageDetails.Add($"{violationReportCount} báo cáo vi phạm");
+
+        var warningMessage = hasUsage
+            ? $"Nhân viên đang có {string.Join(", ", usageDetails)}. Nếu xóa sẽ mất thông tin này."
+            : "Nhân viên chưa có dữ liệu nghiệp vụ.";
+
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Message = warningMessage,
+            Data = new
+            {
+                hasUsage,
+                orderCount,
+                invoiceCount,
+                shiftCount,
+                stockTicket = new
+                {
+                    createdCount = stockTicketCreatedCount,
+                    confirmedCount = stockTicketConfirmedCount,
+                    cancelledCount = stockTicketCancelledCount,
+                    totalCount = stockTicketTotalCount
+                },
+                violationReportCount
+            }
+        });
+    }
+    #endregion
+
     #region GET /api/owner/staffs/available-permissions
 
     /// <summary>
@@ -735,11 +814,58 @@ public class OwnerStaffController : ControllerBase
         if (staff.UserId == ownerId.Value)
             return BadRequest(new ApiResponse<object> { Success = false, Message = "Bạn không thể tự xóa tài khoản của chính mình." });
 
+        // Kiểm tra các liên kết dữ liệu trước khi xóa
+        var orderCount = await _context.Orders.CountAsync(o => o.UserId == id);
+        var invoiceCount = await _context.Invoices.CountAsync(i => i.UserId == id);
+        var shiftCount = await _context.Shifts.CountAsync(s => s.UserId == id);
+        var stockTicketCreatedCount = await _context.StockTickets.CountAsync(s => s.UserId == id);
+        var stockTicketConfirmedCount = await _context.StockTickets.CountAsync(s => s.ConfirmedBy == id);
+        var stockTicketCancelledCount = await _context.StockTickets.CountAsync(s => s.CancelledBy == id);
+        var violationReportCount = await _context.ViolationReports.CountAsync(v => v.UserId == id);
+
+        var hasUsage = orderCount > 0 || invoiceCount > 0 || shiftCount > 0
+            || stockTicketCreatedCount > 0 || stockTicketConfirmedCount > 0 || stockTicketCancelledCount > 0
+            || violationReportCount > 0;
+
+        // Tạo cảnh báo nếu có liên kết
+        string? warningMessage = null;
+        if (hasUsage)
+        {
+            var usageDetails = new List<string>();
+            if (orderCount > 0) usageDetails.Add($"{orderCount} đơn hàng");
+            if (invoiceCount > 0) usageDetails.Add($"{invoiceCount} hóa đơn");
+            if (shiftCount > 0) usageDetails.Add($"{shiftCount} ca làm việc");
+            if (stockTicketCreatedCount > 0) usageDetails.Add($"{stockTicketCreatedCount} phiếu kho (người tạo)");
+            if (stockTicketConfirmedCount > 0) usageDetails.Add($"{stockTicketConfirmedCount} phiếu kho (người xác nhận)");
+            if (stockTicketCancelledCount > 0) usageDetails.Add($"{stockTicketCancelledCount} phiếu kho (người hủy)");
+            if (violationReportCount > 0) usageDetails.Add($"{violationReportCount} báo cáo vi phạm");
+
+            warningMessage = $"Cảnh báo: Nhân viên đang có {string.Join(", ", usageDetails)}. Thông tin này sẽ được giữ lại nhưng không thể khôi phục.";
+        }
+
+        // Thực hiện soft delete
         staff.Status = "DELETED";
         staff.IsActive = 0;
         await _context.SaveChangesAsync();
 
-        return Ok(new ApiResponse<object> { Success = true, Message = $"Đã xóa mềm nhân viên '{staff.FullName}'." });
+        var response = new ApiResponse<object>
+        {
+            Success = true,
+            Message = $"Đã xóa mềm nhân viên '{staff.FullName}'."
+        };
+
+        // Thêm cảnh báo vào response nếu có
+        if (hasUsage)
+        {
+            response.Data = new
+            {
+                warning = warningMessage,
+                deletedStaffId = staff.UserId,
+                deletedStaffName = staff.FullName
+            };
+        }
+
+        return Ok(response);
     }
     #endregion
 }

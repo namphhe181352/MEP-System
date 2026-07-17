@@ -12,6 +12,13 @@ public class ProductTaxonomy
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid TaxonomyId { get; set; }
 
+    /// <summary>
+    /// Branch ID để phân biệt taxonomy theo từng chi nhánh.
+    /// Null = taxonomy toàn hệ thống (legacy).
+    /// </summary>
+    [Column("branch_id")]
+    public Guid? BranchId { get; set; }
+
     [Required]
     [MaxLength(255)]
     [Column("name")]
@@ -24,4 +31,7 @@ public class ProductTaxonomy
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [ForeignKey("BranchId")]
+    public virtual Branch? Branch { get; set; }
 }

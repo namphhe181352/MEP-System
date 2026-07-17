@@ -40,6 +40,12 @@ namespace MEP_Management_System.DTOs.AdminDTOs
         public string? PhoneNumber { get; set; }
 
         public List<Guid>? RoleIds { get; set; }
+
+        /// <summary>
+        /// Branch ID để gán user vào chi nhánh.
+        /// Nếu null, hệ thống sẽ tự động gán vào branch đầu tiên.
+        /// </summary>
+        public Guid? BranchId { get; set; }
     }
 
     public class AdminUserUpdateDto
