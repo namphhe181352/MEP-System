@@ -126,25 +126,18 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Where(st => st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER")
                     .AsQueryable();
 
-                if (HasGlobalAccess())
+                // Lọc theo branch từ token - áp dụng cho TẤT CẢ user (bao gồm Owner)
+                var staffBranchId = _currentBranch.GetBranchId();
+                if (staffBranchId == null)
                 {
-                    if (branchId.HasValue)
-                        query = query.Where(st => st.BranchId == branchId.Value);
-                }
-                else
-                {
-                    var staffBranchId = _currentBranch.GetBranchId();
-                    if (staffBranchId == null)
+                    return Unauthorized(new ApiResponse<object>
                     {
-                        return Unauthorized(new ApiResponse<object>
-                        {
-                            Success = false,
-                            Message = "Tài khoản của bạn chưa được cấu hình chi nhánh hợp lệ.",
-                            Errors = new() { "Branch context is missing in token." }
-                        });
-                    }
-                    query = query.Where(st => st.BranchId == staffBranchId.Value);
+                        Success = false,
+                        Message = "Tài khoản của bạn chưa được cấu hình chi nhánh hợp lệ.",
+                        Errors = new() { "Branch context is missing in token." }
+                    });
                 }
+                query = query.Where(st => st.BranchId == staffBranchId.Value);
 
                 // ============================================================
                 // QUY TẮC MỚI: Mặc định chỉ hiển thị PENDING + COMPLETED
