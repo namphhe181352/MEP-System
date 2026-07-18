@@ -56,6 +56,9 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<int?>("ExchangeDaysAllowed")
+                        .HasColumnType("integer");
+
                     b.Property<short>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("smallint")
@@ -70,6 +73,9 @@ namespace MEP_Management_System.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
                         .HasColumnName("phone");
+
+                    b.Property<int?>("ReturnDaysAllowed")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Type")
                         .HasMaxLength(50)

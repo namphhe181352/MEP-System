@@ -208,7 +208,11 @@ public class OwnerStaffController : ControllerBase
         var query = _context.Users
             .Include(u => u.UserPermissions).ThenInclude(up => up.Permission)
             .Include(u => u.Roles)
-            .Where(u => staffUserIds.Contains(u.UserId) && u.Status != "DELETED" && u.UserId != ownerId.Value)
+.Where(u => staffUserIds.Contains(u.UserId)
+                && u.Status != "DELETED"
+                && u.UserId != ownerId.Value
+                // Loại trừ Admin/Owner - chỉ hiển thị staff (Sale, Kho, etc.)
+                && !u.Roles.Any(r => r.RoleName == "Admin" || r.RoleName == "Owner"))
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
