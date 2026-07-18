@@ -208,7 +208,11 @@ public class OwnerStaffController : ControllerBase
         var query = _context.Users
             .Include(u => u.UserPermissions).ThenInclude(up => up.Permission)
             .Include(u => u.Roles)
-            .Where(u => staffUserIds.Contains(u.UserId) && u.Status != "DELETED")
+            .Where(u => staffUserIds.Contains(u.UserId)
+                && u.Status != "DELETED"
+                && u.UserId != ownerId.Value
+                // Loại trừ Admin/Owner - chỉ hiển thị staff (Sale, Kho, etc.)
+                && !u.Roles.Any(r => r.RoleName == "Admin" || r.RoleName == "Owner"))
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -715,6 +719,7 @@ public class OwnerStaffController : ControllerBase
         var staff = await _context.Users
             .Include(u => u.UserPermissions)
             .Include(u => u.Roles)
+            .ThenInclude(r => r.Permissions)
             .FirstOrDefaultAsync(u =>
                 u.UserId == id && u.CreatedBy == ownerId.Value);
 
@@ -774,16 +779,43 @@ public class OwnerStaffController : ControllerBase
                 });
             }
 
+            // Get role permission codes for this staff
+            var rolePermissionCodes = staff.Roles
+                .SelectMany(r => r.Permissions)
+                .Select(p => p.PermissionCode)
+                .ToHashSet();
+
+            var requestedCodes = validPermissions.Select(p => p.PermissionCode).ToHashSet();
+
+            // Remove all existing user permissions
             _context.UserPermissions.RemoveRange(staff.UserPermissions);
 
+            // Add explicit allows (IsGranted = true) for requested permissions
             foreach (var permission in validPermissions)
             {
                 _context.UserPermissions.Add(new UserPermission
                 {
                     UserPermissionId = Guid.NewGuid(),
                     UserId = staff.UserId,
-                    PermissionId = permission.PermissionId
+                    PermissionId = permission.PermissionId,
+                    IsGranted = true
                 });
+            }
+
+            // Add explicit denies (IsGranted = false) for role permissions NOT in the requested list
+            foreach (var rolePermCode in rolePermissionCodes.Where(c => !requestedCodes.Contains(c)))
+            {
+                var perm = await _context.Permissions.FirstOrDefaultAsync(p => p.PermissionCode == rolePermCode);
+                if (perm != null)
+                {
+                    _context.UserPermissions.Add(new UserPermission
+                    {
+                        UserPermissionId = Guid.NewGuid(),
+                        UserId = staff.UserId,
+                        PermissionId = perm.PermissionId,
+                        IsGranted = false
+                    });
+                }
             }
         }
 
