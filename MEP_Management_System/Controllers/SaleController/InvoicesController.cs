@@ -157,15 +157,7 @@ public class InvoicesController : ControllerBase
             }
         }
 
-        var draftCount = await _context.Invoices
-            .Where(i => i.Order.BranchId == branchId && i.Status == "Draft")
-            .CountAsync();
-
-        if (draftCount >= 20)
-        {
-            return BadRequest(ApiErrorResponse.Create("MSG-71", "Đã đạt tối đa 20 đơn nháp. Không thể tạo thêm."));
-        }
-
+        // Remove draft limit as it breaks checkout flow when Draft invoices leak.
         var now = DateTime.UtcNow;
         var todayPrefixInv = $"INV-{now.Year}-";
         var todayPrefixOrder = $"POS-{now:yyyyMMdd}-";
@@ -577,7 +569,6 @@ public class InvoicesController : ControllerBase
 
         if (heldCount >= 20)
             return BadRequest(ApiErrorResponse.Create("MSG-71", "Đã đạt tối đa 20 đơn treo. Không thể treo thêm."));
-
         // BR-86: Save current cart state, change status to "OnHold"
         var now = DateTime.UtcNow;
         invoice.Status = "OnHold";
