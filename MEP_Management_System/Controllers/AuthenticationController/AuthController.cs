@@ -179,11 +179,18 @@ namespace MEP_Management_System.Controllers
                 .ToListAsync();
 
             var isOwner = userRoles.Contains("Owner");
+            var isAdmin = userRoles.Contains("Admin");
 
             string? branchIdForToken = null;
             object? branchesForResponse = null;
 
-            if (isOwner)
+            // Admin: không gán branchId - toàn hệ thống
+            if (isAdmin)
+            {
+                branchIdForToken = null;
+                branchesForResponse = null;
+            }
+            else if (isOwner)
             {
                 var branches = await _context.StaffAssignments
                     .Where(sa => sa.UserId == user.UserId)
@@ -220,14 +227,13 @@ namespace MEP_Management_System.Controllers
             }
             else
             {
-                // Ưu tiên dùng DefaultBranchId nếu đã có
+                // Sale, Warehouse, etc.: lấy branch từ StaffAssignments
                 if (user.DefaultBranchId.HasValue)
                 {
                     branchIdForToken = user.DefaultBranchId.Value.ToString();
                 }
                 else
                 {
-                    // Fallback: tìm trong StaffAssignments
                     var assignment = await _context.StaffAssignments
                         .Where(sa => sa.UserId == user.UserId)
                         .OrderBy(sa => sa.AssignedAt)
@@ -235,12 +241,10 @@ namespace MEP_Management_System.Controllers
 
                     if (assignment == null)
                     {
-                        // Fallback cuối cùng: lấy chi nhánh đầu tiên trong hệ thống (single-branch)
                         var firstBranch = await _context.Branches.FirstOrDefaultAsync(b => b.IsActive == 1);
                         if (firstBranch != null)
                         {
                             user.DefaultBranchId = firstBranch.BranchId;
-                            // Tạo StaffAssignment nếu chưa có
                             _context.StaffAssignments.Add(new StaffAssignment
                             {
                                 AssignmentId = Guid.NewGuid(),
@@ -258,7 +262,6 @@ namespace MEP_Management_System.Controllers
                     }
                     else
                     {
-                        // Đồng bộ DefaultBranchId để lần sau không cần query nữa
                         user.DefaultBranchId = assignment.BranchId;
                         await _context.SaveChangesAsync();
                         branchIdForToken = assignment.BranchId.ToString();
@@ -274,11 +277,23 @@ namespace MEP_Management_System.Controllers
 
             var userPermissions = await _context.UserPermissions
                 .Where(up => up.UserId == user.UserId)
-                .Select(up => up.Permission.PermissionCode)
+                .Select(up => new { up.Permission.PermissionCode, up.IsGranted })
                 .ToListAsync();
 
+            // Deny list: permissions explicitly denied (IsGranted = false)
+            var deniedPermissions = userPermissions
+                .Where(up => up.IsGranted == false)
+                .Select(up => up.PermissionCode)
+                .ToHashSet();
+
+            // Allowed list: role permissions, minus denied, plus explicitly allowed user permissions
+            var allowedUserPermissions = userPermissions
+                .Where(up => up.IsGranted != false)
+                .Select(up => up.PermissionCode);
+
             var allPermissions = rolePermissions
-                .Union(userPermissions)
+                .Union(allowedUserPermissions)
+                .Except(deniedPermissions)
                 .Distinct()
                 .ToList();
 
@@ -294,6 +309,7 @@ namespace MEP_Management_System.Controllers
             var responseDto = _mapper.Map<UserResponseDto>(user);
             responseDto.Token = jwtToken;
             responseDto.Roles = userRoles;
+            responseDto.Permissions = allPermissions;
 
             return Ok(new
             {

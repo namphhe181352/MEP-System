@@ -136,12 +136,14 @@ public class ReturnsController : ControllerBase
                 return BadRequest(ApiErrorResponse.Create("MSG-78", "Chỉ hóa đơn đã hoàn tất mới được đổi trả."));
             }
 
-            // BR-80: kiểm tra cửa sổ 30 ngày
+            // BR-80: kiểm tra cửa sổ thời gian đổi/trả từ branch settings
+            var branch = invoice.Order?.Branch;
+            var allowedDays = branch?.ReturnDaysAllowed ?? (int?)30; // default 30 days if not set
             var invoiceDate = invoice.CreatedAt ?? DateTime.UtcNow;
-            if (invoiceDate.AddDays(30) < DateTime.UtcNow)
+            if (allowedDays.HasValue && invoiceDate.AddDays(allowedDays.Value) < DateTime.UtcNow)
             {
-                Console.WriteLine($"[Returns API 400]: Quá 30 ngày. InvoiceDate: {invoiceDate}, Now: {DateTime.UtcNow}");
-                return BadRequest(ApiErrorResponse.Create("MSG-65", "Đã quá thời hạn 30 ngày kể từ ngày mua. Không thể đổi trả."));
+                Console.WriteLine($"[Returns API 400]: Quá {allowedDays} ngày. InvoiceDate: {invoiceDate}, Now: {DateTime.UtcNow}");
+                return BadRequest(ApiErrorResponse.Create("MSG-65", $"Đã quá thời hạn {allowedDays} ngày kể từ ngày mua. Không thể đổi trả."));
             }
 
             // Kiểm tra chưa có return đang xử lý

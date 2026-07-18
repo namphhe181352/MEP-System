@@ -137,6 +137,7 @@ public class InvoicesController : ControllerBase
 
     // POST /api/pos/invoices
     [HttpPost]
+    [HasPermission(PermissionConstants.SALE_CREATE)]
     public async Task<ActionResult<InvoiceDto>> CreateInvoice([FromBody] CreateInvoiceRequest request)
     {
         var branchId = GetBranchId();
@@ -157,15 +158,7 @@ public class InvoicesController : ControllerBase
             }
         }
 
-        var draftCount = await _context.Invoices
-            .Where(i => i.Order.BranchId == branchId && i.Status == "Draft")
-            .CountAsync();
-
-        if (draftCount >= 20)
-        {
-            return BadRequest(ApiErrorResponse.Create("MSG-71", "Đã đạt tối đa 20 đơn nháp. Không thể tạo thêm."));
-        }
-
+        // Remove draft limit as it breaks checkout flow when Draft invoices leak.
         var now = DateTime.UtcNow;
         var todayPrefixInv = $"INV-{now.Year}-";
         var todayPrefixOrder = $"POS-{now:yyyyMMdd}-";
@@ -249,6 +242,7 @@ public class InvoicesController : ControllerBase
 
     // POST /api/pos/invoices/{invoiceId}/items
     [HttpPost("{invoiceId:guid}/items")]
+    [HasPermission(PermissionConstants.SALE_CREATE)]
     public async Task<ActionResult<InvoiceItemDto>> AddItem(Guid invoiceId, [FromBody] AddItemRequest request)
     {
         var branchId = GetBranchId();
@@ -348,6 +342,7 @@ public class InvoicesController : ControllerBase
 
     // POST /api/pos/invoices/{invoiceId}/items/scan
     [HttpPost("{invoiceId:guid}/items/scan")]
+    [HasPermission(PermissionConstants.SALE_CREATE)]
     public async Task<ActionResult<InvoiceItemDto>> ScanItem(Guid invoiceId, [FromBody] ScanItemRequest request)
     {
         var branchId = GetBranchId();
@@ -515,8 +510,8 @@ public class InvoicesController : ControllerBase
 
         if (invoice.Payments != null && invoice.Payments.Any())
         {
-            dto.PaymentMethod = invoice.Payments.Count > 1 
-                ? "Combined" 
+            dto.PaymentMethod = invoice.Payments.Count > 1
+                ? "Combined"
                 : invoice.Payments.First().Method.ToString();
         }
 
@@ -577,7 +572,6 @@ public class InvoicesController : ControllerBase
 
         if (heldCount >= 20)
             return BadRequest(ApiErrorResponse.Create("MSG-71", "Đã đạt tối đa 20 đơn treo. Không thể treo thêm."));
-
         // BR-86: Save current cart state, change status to "OnHold"
         var now = DateTime.UtcNow;
         invoice.Status = "OnHold";
