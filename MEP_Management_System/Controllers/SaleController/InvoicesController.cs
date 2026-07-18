@@ -137,6 +137,7 @@ public class InvoicesController : ControllerBase
 
     // POST /api/pos/invoices
     [HttpPost]
+    [HasPermission(PermissionConstants.SALE_CREATE)]
     public async Task<ActionResult<InvoiceDto>> CreateInvoice([FromBody] CreateInvoiceRequest request)
     {
         var branchId = GetBranchId();
@@ -241,6 +242,7 @@ public class InvoicesController : ControllerBase
 
     // POST /api/pos/invoices/{invoiceId}/items
     [HttpPost("{invoiceId:guid}/items")]
+    [HasPermission(PermissionConstants.SALE_CREATE)]
     public async Task<ActionResult<InvoiceItemDto>> AddItem(Guid invoiceId, [FromBody] AddItemRequest request)
     {
         var branchId = GetBranchId();
@@ -340,6 +342,7 @@ public class InvoicesController : ControllerBase
 
     // POST /api/pos/invoices/{invoiceId}/items/scan
     [HttpPost("{invoiceId:guid}/items/scan")]
+    [HasPermission(PermissionConstants.SALE_CREATE)]
     public async Task<ActionResult<InvoiceItemDto>> ScanItem(Guid invoiceId, [FromBody] ScanItemRequest request)
     {
         var branchId = GetBranchId();
@@ -507,8 +510,8 @@ public class InvoicesController : ControllerBase
 
         if (invoice.Payments != null && invoice.Payments.Any())
         {
-            dto.PaymentMethod = invoice.Payments.Count > 1 
-                ? "Combined" 
+            dto.PaymentMethod = invoice.Payments.Count > 1
+                ? "Combined"
                 : invoice.Payments.First().Method.ToString();
         }
 

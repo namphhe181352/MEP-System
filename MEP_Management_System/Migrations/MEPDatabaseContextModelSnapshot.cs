@@ -3249,6 +3249,10 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("user_permission_id")
                         .HasDefaultValueSql("uuid_generate_v4()");
 
+                    b.Property<bool?>("IsGranted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_granted");
+
                     b.Property<Guid>("PermissionId")
                         .HasColumnType("uuid")
                         .HasColumnName("permission_id");

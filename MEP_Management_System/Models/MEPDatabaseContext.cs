@@ -898,6 +898,8 @@ public partial class MEPDatabaseContext : DbContext
                 .HasColumnName("user_id");
             entity.Property(e => e.PermissionId)
                 .HasColumnName("permission_id");
+            entity.Property(e => e.IsGranted)
+                .HasColumnName("is_granted");
 
             entity.HasOne(d => d.User)
                 .WithMany(p => p.UserPermissions)
