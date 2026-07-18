@@ -180,6 +180,7 @@ public class OwnerStaffController : ControllerBase
     public async Task<IActionResult> GetStaffs(
         [FromQuery] string? search,
         [FromQuery] bool? isActive,
+        [FromQuery] bool? isDeleted = false,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
@@ -212,7 +213,7 @@ public class OwnerStaffController : ControllerBase
             .Include(u => u.UserPermissions).ThenInclude(up => up.Permission)
             .Include(u => u.Roles)
             .Where(u => staffUserIds.Contains(u.UserId)
-                && u.Status != "DELETED"
+                && (isDeleted == true ? u.Status == "DELETED" : (u.Status != "DELETED" || u.Status == null))
                 && u.UserId != ownerId.Value
                 // Loại trừ Admin/Owner - chỉ hiển thị staff (Sale, Kho, etc.)
                 && !u.Roles.Any(r => r.RoleName == "Admin" || r.RoleName == "Owner"))
@@ -998,14 +999,16 @@ public class OwnerStaffController : ControllerBase
 
         var retentionDays = _configuration.GetValue<int>("AccountSettings:RetentionDays", 15);
 
-        // Lấy user đã xóa thuộc chi nhánh
-        var deletedStaffs = await _context.StaffAssignments
+        // Lấy user đã xóa do owner này tạo hoặc thuộc chi nhánh
+        var staffUserIds = await _context.StaffAssignments
             .Where(sa => sa.BranchId == branchId.Value)
             .Select(sa => sa.UserId)
             .ToListAsync();
 
         var deletedUsers = await _context.Users
-            .Where(u => deletedStaffs.Contains(u.UserId) && u.Status == "DELETED" && u.DeletedAt != null)
+            .Where(u => (staffUserIds.Contains(u.UserId) || u.CreatedBy == ownerId.Value)
+                && u.Status == "DELETED"
+                && u.DeletedAt != null)
             .ToListAsync();
 
         var result = deletedUsers.Select(u => new DeletedStaffDto
