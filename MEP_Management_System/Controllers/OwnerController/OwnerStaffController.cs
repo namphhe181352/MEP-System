@@ -1005,7 +1005,7 @@ public class OwnerStaffController : ControllerBase
             .ToListAsync();
 
         var deletedUsers = await _context.Users
-            .Where(u => deletedStaffs.Contains(u.UserId) && u.Status == "DELETED")
+            .Where(u => deletedStaffs.Contains(u.UserId) && u.Status == "DELETED" && u.DeletedAt != null)
             .ToListAsync();
 
         var result = deletedUsers.Select(u => new DeletedStaffDto
