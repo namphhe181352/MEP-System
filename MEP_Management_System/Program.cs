@@ -44,6 +44,9 @@ builder.Services.AddScoped<InwardInventoryQueryService>();
 builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.SqlExecutor>();
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
 builder.Services.AddTransient<IEmailService, EmailService>();
+
+// Background Services
+builder.Services.AddHostedService<UserCleanupService>();
 // OData
 var odataBuilder = new ODataConventionModelBuilder();
 odataBuilder.EntitySet<User>("Users");
