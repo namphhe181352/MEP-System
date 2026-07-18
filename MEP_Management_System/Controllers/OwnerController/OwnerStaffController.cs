@@ -11,6 +11,7 @@ using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace MEP_Management_System.Controllers.OwnerController;
 
@@ -25,11 +26,13 @@ public class OwnerStaffController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
     private readonly ICurrentBranchAccessor _currentBranch;
+    private readonly IConfiguration _configuration;
 
-    public OwnerStaffController(MEPDatabaseContext context, ICurrentBranchAccessor currentBranch)
+    public OwnerStaffController(MEPDatabaseContext context, ICurrentBranchAccessor currentBranch, IConfiguration configuration)
     {
         _context = context;
         _currentBranch = currentBranch;
+        _configuration = configuration;
     }
 
     #region Private Helper Methods
@@ -177,6 +180,7 @@ public class OwnerStaffController : ControllerBase
     public async Task<IActionResult> GetStaffs(
         [FromQuery] string? search,
         [FromQuery] bool? isActive,
+        [FromQuery] bool? isDeleted = false,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
@@ -208,8 +212,8 @@ public class OwnerStaffController : ControllerBase
         var query = _context.Users
             .Include(u => u.UserPermissions).ThenInclude(up => up.Permission)
             .Include(u => u.Roles)
-.Where(u => staffUserIds.Contains(u.UserId)
-                && u.Status != "DELETED"
+            .Where(u => staffUserIds.Contains(u.UserId)
+                && (isDeleted == true ? u.Status == "DELETED" : (u.Status != "DELETED" || u.Status == null))
                 && u.UserId != ownerId.Value
                 // Loại trừ Admin/Owner - chỉ hiển thị staff (Sale, Kho, etc.)
                 && !u.Roles.Any(r => r.RoleName == "Admin" || r.RoleName == "Owner"))
@@ -954,6 +958,7 @@ public class OwnerStaffController : ControllerBase
         // Thực hiện soft delete
         staff.Status = "DELETED";
         staff.IsActive = 0;
+        staff.DeletedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
         await _context.SaveChangesAsync();
 
         var response = new ApiResponse<object>
@@ -974,6 +979,138 @@ public class OwnerStaffController : ControllerBase
         }
 
         return Ok(response);
+    }
+    #endregion
+
+    #region GET /api/owner/staffs/deleted
+    /// <summary>
+    /// Lấy danh sách nhân viên đã xóa mềm của chi nhánh hiện tại.
+    /// </summary>
+    [HttpGet("deleted")]
+    public async Task<IActionResult> GetDeletedStaffs()
+    {
+        var ownerId = GetCurrentUserId();
+        if (!ownerId.HasValue)
+            return Unauthorized(new ApiResponse<object> { Success = false, Message = "Không thể xác định người dùng từ token." });
+
+        var branchId = GetCurrentBranchId();
+        if (!branchId.HasValue)
+            return BadRequest(new ApiResponse<object> { Success = false, Message = "Không tìm thấy thông tin chi nhánh." });
+
+        var retentionDays = _configuration.GetValue<int>("AccountSettings:RetentionDays", 15);
+
+        // Lấy user đã xóa do owner này tạo hoặc thuộc chi nhánh
+        var staffUserIds = await _context.StaffAssignments
+            .Where(sa => sa.BranchId == branchId.Value)
+            .Select(sa => sa.UserId)
+            .ToListAsync();
+
+        var deletedUsers = await _context.Users
+            .Where(u => (staffUserIds.Contains(u.UserId) || u.CreatedBy == ownerId.Value)
+                && u.Status == "DELETED"
+                && u.DeletedAt != null)
+            .ToListAsync();
+
+        var result = deletedUsers.Select(u => new DeletedStaffDto
+        {
+            UserId = u.UserId,
+            FullName = u.FullName,
+            Email = u.Email,
+            PhoneNumber = u.PhoneNumber,
+            DeletedAt = u.DeletedAt,
+            DaysUntilPermanentDelete = u.DeletedAt.HasValue
+                ? Math.Max(0, retentionDays - (int)(DateTime.UtcNow - u.DeletedAt.Value).TotalDays)
+                : retentionDays
+        }).ToList();
+
+        return Ok(new ApiResponse<List<DeletedStaffDto>>
+        {
+            Success = true,
+            Message = "Danh sách nhân viên đã xóa.",
+            Data = result
+        });
+    }
+    #endregion
+
+    #region POST /api/owner/staffs/{id}/restore
+    /// <summary>
+    /// Khôi phục nhân viên đã xóa mềm.
+    /// </summary>
+    [HttpPost("{id:guid}/restore")]
+    public async Task<IActionResult> RestoreStaff(Guid id)
+    {
+        var ownerId = GetCurrentUserId();
+        if (!ownerId.HasValue)
+            return Unauthorized(new ApiResponse<object> { Success = false, Message = "Không thể xác định người dùng từ token." });
+
+        var branchId = GetCurrentBranchId();
+        if (!branchId.HasValue)
+            return BadRequest(new ApiResponse<object> { Success = false, Message = "Không tìm thấy thông tin chi nhánh." });
+
+        // Kiểm tra nhân viên có thuộc chi nhánh hiện tại không
+        var isInBranch = await _context.StaffAssignments
+            .AnyAsync(sa => sa.UserId == id && sa.BranchId == branchId.Value);
+
+        if (!isInBranch)
+            return NotFound(new ApiResponse<object> { Success = false, Message = "Nhân viên không tồn tại hoặc không thuộc chi nhánh này." });
+
+        var staff = await _context.Users
+            .FirstOrDefaultAsync(u => u.UserId == id && u.Status == "DELETED");
+
+        if (staff == null)
+            return NotFound(new ApiResponse<object> { Success = false, Message = "Nhân viên không tồn tại hoặc chưa bị xóa." });
+
+        // Khôi phục
+        staff.Status = "ACTIVE";
+        staff.IsActive = 1;
+        staff.DeletedAt = null;
+        await _context.SaveChangesAsync();
+
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Message = $"Đã khôi phục nhân viên '{staff.FullName}'."
+        });
+    }
+    #endregion
+
+    #region DELETE /api/owner/staffs/{id}/permanent
+    /// <summary>
+    /// Xóa vĩnh viễn nhân viên (hard delete).
+    /// </summary>
+    [HttpDelete("{id:guid}/permanent")]
+    public async Task<IActionResult> PermanentDeleteStaff(Guid id)
+    {
+        var ownerId = GetCurrentUserId();
+        if (!ownerId.HasValue)
+            return Unauthorized(new ApiResponse<object> { Success = false, Message = "Không thể xác định người dùng từ token." });
+
+        var branchId = GetCurrentBranchId();
+        if (!branchId.HasValue)
+            return BadRequest(new ApiResponse<object> { Success = false, Message = "Không tìm thấy thông tin chi nhánh." });
+
+        // Kiểm tra nhân viên có thuộc chi nhánh hiện tại không
+        var isInBranch = await _context.StaffAssignments
+            .AnyAsync(sa => sa.UserId == id && sa.BranchId == branchId.Value);
+
+        if (!isInBranch)
+            return NotFound(new ApiResponse<object> { Success = false, Message = "Nhân viên không tồn tại hoặc không thuộc chi nhánh này." });
+
+        var staff = await _context.Users
+            .FirstOrDefaultAsync(u => u.UserId == id && u.Status == "DELETED");
+
+        if (staff == null)
+            return NotFound(new ApiResponse<object> { Success = false, Message = "Nhân viên không tồn tại hoặc chưa bị xóa." });
+
+        // Xóa vĩnh viễn
+        _context.Users.Remove(staff);
+        await _context.SaveChangesAsync();
+
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Message = $"Đã xóa vĩnh viễn nhân viên '{staff.FullName}'."
+        });
     }
     #endregion
 }
