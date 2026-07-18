@@ -3172,6 +3172,9 @@ namespace MEP_Management_System.Migrations
                     b.Property<Guid?>("DefaultBranchId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(150)
