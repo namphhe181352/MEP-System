@@ -274,11 +274,23 @@ namespace MEP_Management_System.Controllers
 
             var userPermissions = await _context.UserPermissions
                 .Where(up => up.UserId == user.UserId)
-                .Select(up => up.Permission.PermissionCode)
+                .Select(up => new { up.Permission.PermissionCode, up.IsGranted })
                 .ToListAsync();
 
+            // Deny list: permissions explicitly denied (IsGranted = false)
+            var deniedPermissions = userPermissions
+                .Where(up => up.IsGranted == false)
+                .Select(up => up.PermissionCode)
+                .ToHashSet();
+
+            // Allowed list: role permissions, minus denied, plus explicitly allowed user permissions
+            var allowedUserPermissions = userPermissions
+                .Where(up => up.IsGranted != false)
+                .Select(up => up.PermissionCode);
+
             var allPermissions = rolePermissions
-                .Union(userPermissions)
+                .Union(allowedUserPermissions)
+                .Except(deniedPermissions)
                 .Distinct()
                 .ToList();
 
@@ -294,6 +306,7 @@ namespace MEP_Management_System.Controllers
             var responseDto = _mapper.Map<UserResponseDto>(user);
             responseDto.Token = jwtToken;
             responseDto.Roles = userRoles;
+            responseDto.Permissions = allPermissions;
 
             return Ok(new
             {
