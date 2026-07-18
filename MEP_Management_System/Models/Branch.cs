@@ -27,6 +27,10 @@ public partial class Branch
 
     public DateTime? UpdatedAt { get; set; }
 
+    // Return/Exchange policy settings
+    public int? ReturnDaysAllowed { get; set; }
+    public int? ExchangeDaysAllowed { get; set; }
+
     public virtual User? ManagerUser { get; set; }
 
     public virtual ICollection<BranchProduct> BranchProducts { get; set; } = new List<BranchProduct>();

@@ -314,6 +314,104 @@ namespace MEP_Management_System.Controllers.OwnerController
             }
         }
 
+        /// <summary>
+        /// GET /api/owner/branches/{id}/settings
+        /// Returns return/exchange policy settings for the branch.
+        /// </summary>
+        [HttpGet("{id:guid}/settings")]
+        public async Task<IActionResult> GetBranchSettings(Guid id)
+        {
+            try
+            {
+                var ownerUserId = GetOwnerUserIdFromClaim();
+
+                if (!await IsOwnerOfBranch(ownerUserId, id))
+                    return Forbid();
+
+                var branch = await _context.Branches.FirstOrDefaultAsync(b => b.BranchId == id);
+                if (branch == null)
+                    return NotFound(new ApiResponse<object> { Success = false, Message = "Chi nhánh không tồn tại." });
+
+                return Ok(new ApiResponse<BranchSettingsDto>
+                {
+                    Success = true,
+                    Message = "Cài đặt chi nhánh.",
+                    Data = new BranchSettingsDto
+                    {
+                        BranchId = branch.BranchId,
+                        BranchName = branch.BranchName,
+                        ReturnDaysAllowed = branch.ReturnDaysAllowed,
+                        ExchangeDaysAllowed = branch.ExchangeDaysAllowed
+                    }
+                });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new ApiResponse<object> { Success = false, Message = "Unauthorized.", Errors = new() { ex.Message } });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "Lỗi hệ thống.", Errors = new() { ex.Message } });
+            }
+        }
+
+        /// <summary>
+        /// PUT /api/owner/branches/{id}/settings
+        /// Updates return/exchange policy settings for the branch.
+        /// </summary>
+        [HttpPut("{id:guid}/settings")]
+        public async Task<IActionResult> UpdateBranchSettings(Guid id, [FromBody] UpdateBranchSettingsRequest dto)
+        {
+            try
+            {
+                var ownerUserId = GetOwnerUserIdFromClaim();
+
+                if (!await IsOwnerOfBranch(ownerUserId, id))
+                    return Forbid();
+
+                var branch = await _context.Branches.FirstOrDefaultAsync(b => b.BranchId == id);
+                if (branch == null)
+                    return NotFound(new ApiResponse<object> { Success = false, Message = "Chi nhánh không tồn tại." });
+
+                // Validate: if set, must be non-negative
+                if (dto.ReturnDaysAllowed.HasValue && dto.ReturnDaysAllowed.Value < 0)
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Thời hạn trả hàng phải >= 0." });
+                if (dto.ExchangeDaysAllowed.HasValue && dto.ExchangeDaysAllowed.Value < 0)
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Thời hạn đổi hàng phải >= 0." });
+
+                // Only update if explicitly provided (setting to 0 disables the policy)
+                if (dto.ReturnDaysAllowed.HasValue)
+                    branch.ReturnDaysAllowed = dto.ReturnDaysAllowed.Value == 0 ? null : dto.ReturnDaysAllowed.Value;
+                if (dto.ExchangeDaysAllowed.HasValue)
+                    branch.ExchangeDaysAllowed = dto.ExchangeDaysAllowed.Value == 0 ? null : dto.ExchangeDaysAllowed.Value;
+
+                branch.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<BranchSettingsDto>
+                {
+                    Success = true,
+                    Message = "Cập nhật cài đặt chi nhánh thành công.",
+                    Data = new BranchSettingsDto
+                    {
+                        BranchId = branch.BranchId,
+                        BranchName = branch.BranchName,
+                        ReturnDaysAllowed = branch.ReturnDaysAllowed,
+                        ExchangeDaysAllowed = branch.ExchangeDaysAllowed
+                    }
+                });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new ApiResponse<object> { Success = false, Message = "Unauthorized.", Errors = new() { ex.Message } });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "Lỗi hệ thống.", Errors = new() { ex.Message } });
+            }
+        }
+
         private static OwnerBranchDto MapToDto(Branch branch)
         {
             return new OwnerBranchDto

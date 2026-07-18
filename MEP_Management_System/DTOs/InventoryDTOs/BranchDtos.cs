@@ -56,4 +56,18 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? UserEmail { get; set; }
         public int ItemCount { get; set; }
     }
+
+    public class BranchSettingsDto
+    {
+        public Guid BranchId { get; set; }
+        public string BranchName { get; set; } = null!;
+        public int? ReturnDaysAllowed { get; set; }
+        public int? ExchangeDaysAllowed { get; set; }
+    }
+
+    public class UpdateBranchSettingsRequest
+    {
+        public int? ReturnDaysAllowed { get; set; }
+        public int? ExchangeDaysAllowed { get; set; }
+    }
 }
