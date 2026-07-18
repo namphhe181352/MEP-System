@@ -55,3 +55,16 @@ public class UpdateStaffPermissionRequest
     public short? IsActive { get; set; }
     public string? Password { get; set; }
 }
+
+/// <summary>
+/// DTO cho danh sách staff đã xóa
+/// </summary>
+public class DeletedStaffDto
+{
+    public Guid UserId { get; set; }
+    public string FullName { get; set; } = null!;
+    public string Email { get; set; } = null!;
+    public string? PhoneNumber { get; set; }
+    public DateTime? DeletedAt { get; set; }
+    public int DaysUntilPermanentDelete { get; set; }
+}

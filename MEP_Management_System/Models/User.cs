@@ -22,7 +22,8 @@ public partial class User
     public string? PhoneNumber { get; set; }
 
     public bool IsVerified { get; set; } // NEW: for Owner store approval
-    public string? Status { get; set; } // ACTIVE / SUSPENDED / BANNED
+    public string? Status { get; set; } // ACTIVE / SUSPENDED / BANNED / DELETED
+    public DateTime? DeletedAt { get; set; } // Soft delete timestamp for auto-purge
     public DateTime? SuspendedUntil { get; set; } // suspension end date
     public string? SubscriptionPlan { get; set; } // BASIC / PREMIUM / ENTERPRISE
     public Guid? CreatedBy { get; set; } // NEW: Self-referencing foreign key to track which Owner created this User
