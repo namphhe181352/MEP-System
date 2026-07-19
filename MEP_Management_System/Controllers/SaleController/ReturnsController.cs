@@ -1,8 +1,10 @@
 using System;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using AutoMapper;
 using MEP_Management_System.Authorization;
+using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.DTOs.SaleDTOs;
 using MEP_Management_System.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -198,7 +200,7 @@ public class ReturnsController : ControllerBase
         // Validate sản phẩm thuộc hóa đơn gốc
         var originalItems = await _context.InvoiceItems
             .Include(ii => ii.Invoice)
-            .Include(ii => ii.BranchProduct)
+            .Include(ii => ii.BranchProduct).ThenInclude(bp => bp.Product).ThenInclude(p => p.CategoryTaxonomy)
             .Where(ii => ii.Invoice != null && ii.Invoice.OrderId == ret.OrderId && ii.BranchProduct!.ProductId == req.ProductId)
             .ToListAsync();
 
@@ -214,6 +216,63 @@ public class ReturnsController : ControllerBase
 
         if (totalReturned + req.Quantity > totalBought)
             return BadRequest(ApiErrorResponse.Create("MSG-66", $"Số lượng trả vượt quá số lượng đã mua. Tối đa: {totalBought - totalReturned}"));
+
+        // Category-level policy check
+        var product = originalItems.First().BranchProduct?.Product;
+        var config = await _context.SystemConfigs
+            .FirstOrDefaultAsync(c => c.BranchId == branchId && c.ConfigKey == "CATEGORY_RETURN_POLICIES");
+
+        if (config != null && !string.IsNullOrWhiteSpace(config.ConfigValue))
+        {
+            // Có chính sách được cấu hình — enforce
+            List<CategoryPolicyDto>? categoryPolicies = null;
+            try
+            {
+                categoryPolicies = JsonSerializer.Deserialize<List<CategoryPolicyDto>>(config.ConfigValue,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch { }
+
+            var categoryName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName;
+
+            if (string.IsNullOrEmpty(categoryName))
+            {
+                return BadRequest(ApiErrorResponse.Create("MSG-80",
+                    "Sản phẩm không thuộc nhóm hàng nào, không được phép đổi/trả."));
+            }
+
+            var categoryPolicy = categoryPolicies?.FirstOrDefault(c =>
+                c.CategoryName != null && c.CategoryName.Equals(categoryName, StringComparison.OrdinalIgnoreCase));
+
+            if (categoryPolicy == null)
+            {
+                return BadRequest(ApiErrorResponse.Create("MSG-80",
+                    $"Sản phẩm thuộc nhóm \"{categoryName}\" không được phép {(ret.ReturnType == "EXCHANGE" ? "đổi" : "trả")}."));
+            }
+
+            var allowedDays = ret.ReturnType == "EXCHANGE"
+                ? categoryPolicy.ExchangeDays
+                : categoryPolicy.ReturnDays;
+
+            if (!allowedDays.HasValue || allowedDays.Value <= 0)
+            {
+                return BadRequest(ApiErrorResponse.Create("MSG-80",
+                    $"Sản phẩm thuộc nhóm \"{categoryName}\" không được phép {(ret.ReturnType == "EXCHANGE" ? "đổi" : "trả")}."));
+            }
+
+            var invoiceDate = originalItems.First().Invoice?.CreatedAt ?? DateTime.UtcNow;
+            if (invoiceDate.AddDays(allowedDays.Value) < DateTime.UtcNow)
+            {
+                return BadRequest(ApiErrorResponse.Create("MSG-79",
+                    $"Sản phẩm thuộc nhóm \"{categoryName}\" đã quá thời hạn {allowedDays} ngày. Không thể đổi trả."));
+            }
+        }
+        else
+        {
+            // Không có chính sách nào được cấu hình → không nhóm hàng nào được phép đổi/trả
+            return BadRequest(ApiErrorResponse.Create("MSG-80",
+                "Chưa có chính sách đổi/trả theo nhóm hàng. Vui lòng thiết lập trong phần Cài đặt trước khi thực hiện đổi/trả."));
+        }
 
         var avgPrice = originalItems.Sum(ii => ii.SellPrice * ii.Quantity) / totalBought;
         var grossRefundLine = req.Quantity * avgPrice;
