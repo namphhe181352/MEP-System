@@ -21,6 +21,8 @@ namespace MEP_Management_System.Controllers.OwnerController
     public class OwnerBranchController : ControllerBase
     {
         private readonly MEPDatabaseContext _context;
+        private static readonly System.Text.Json.JsonSerializerOptions _caseInsensitiveJsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        private static readonly System.Text.Json.JsonSerializerOptions _camelCaseJsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
 
         public OwnerBranchController(MEPDatabaseContext context)
         {
@@ -405,6 +407,98 @@ namespace MEP_Management_System.Controllers.OwnerController
             catch (UnauthorizedAccessException ex)
             {
                 return Unauthorized(new ApiResponse<object> { Success = false, Message = "Unauthorized.", Errors = new() { ex.Message } });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "Lỗi hệ thống.", Errors = new() { ex.Message } });
+            }
+        }
+
+        /// <summary>
+        /// GET /api/owner/branches/{id}/return-policies/categories
+        /// Lấy cài đặt đổi trả theo nhóm hàng.
+        /// </summary>
+        [HttpGet("{id:guid}/return-policies/categories")]
+        public async Task<IActionResult> GetCategoryPolicies(Guid id)
+        {
+            try
+            {
+                var ownerUserId = GetOwnerUserIdFromClaim();
+                if (!await IsOwnerOfBranch(ownerUserId, id)) return Forbid();
+
+                var branchExists = await _context.Branches.AnyAsync(b => b.BranchId == id);
+                if (!branchExists) return NotFound(new ApiResponse<object> { Success = false, Message = "Chi nhánh không tồn tại." });
+
+                var config = await _context.SystemConfigs
+                    .FirstOrDefaultAsync(c => c.BranchId == id && c.ConfigKey == "CATEGORY_RETURN_POLICIES");
+
+                var policies = new List<CategoryPolicyDto>();
+                if (config != null && !string.IsNullOrWhiteSpace(config.ConfigValue))
+                {
+                    try
+                    {
+                        policies = System.Text.Json.JsonSerializer.Deserialize<List<CategoryPolicyDto>>(config.ConfigValue, _caseInsensitiveJsonOptions);
+                    }
+                    catch { }
+                }
+
+                return Ok(new ApiResponse<List<CategoryPolicyDto>>
+                {
+                    Success = true,
+                    Message = "Thành công",
+                    Data = policies ?? new List<CategoryPolicyDto>()
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "Lỗi hệ thống.", Errors = new() { ex.Message } });
+            }
+        }
+
+        /// <summary>
+        /// PUT /api/owner/branches/{id}/return-policies/categories
+        /// Cập nhật cài đặt đổi trả theo nhóm hàng.
+        /// </summary>
+        [HttpPut("{id:guid}/return-policies/categories")]
+        public async Task<IActionResult> UpdateCategoryPolicies(Guid id, [FromBody] UpdateCategoryPoliciesRequest request)
+        {
+            try
+            {
+                var ownerUserId = GetOwnerUserIdFromClaim();
+                if (!await IsOwnerOfBranch(ownerUserId, id)) return Forbid();
+
+                var branchExists = await _context.Branches.AnyAsync(b => b.BranchId == id);
+                if (!branchExists) return NotFound(new ApiResponse<object> { Success = false, Message = "Chi nhánh không tồn tại." });
+
+                var config = await _context.SystemConfigs
+                    .FirstOrDefaultAsync(c => c.BranchId == id && c.ConfigKey == "CATEGORY_RETURN_POLICIES");
+
+                var jsonValue = System.Text.Json.JsonSerializer.Serialize(request.Policies ?? new List<CategoryPolicyDto>(), _camelCaseJsonOptions);
+
+                if (config == null)
+                {
+                    config = new SystemConfig
+                    {
+                        ConfigId = Guid.NewGuid(),
+                        BranchId = id,
+                        ConfigKey = "CATEGORY_RETURN_POLICIES",
+                        ConfigValue = jsonValue
+                    };
+                    _context.SystemConfigs.Add(config);
+                }
+                else
+                {
+                    config.ConfigValue = jsonValue;
+                    _context.SystemConfigs.Update(config);
+                }
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = "Cập nhật thành công."
+                });
             }
             catch (Exception ex)
             {
