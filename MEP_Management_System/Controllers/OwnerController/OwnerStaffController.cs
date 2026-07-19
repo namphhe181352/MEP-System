@@ -1076,7 +1076,8 @@ public class OwnerStaffController : ControllerBase
 
     #region DELETE /api/owner/staffs/{id}/permanent
     /// <summary>
-    /// Xóa vĩnh viễn nhân viên (hard delete).
+    /// Xóa vĩnh viễn nhân viên (Anonymization - giữ User record để bảo toàn FK).
+    /// Sau khi anonymize, UserId vẫn giữ nguyên nên các hoá đơn/đơn hàng vẫn trỏ đúng.
     /// </summary>
     [HttpDelete("{id:guid}/permanent")]
     public async Task<IActionResult> PermanentDeleteStaff(Guid id)
@@ -1102,14 +1103,23 @@ public class OwnerStaffController : ControllerBase
         if (staff == null)
             return NotFound(new ApiResponse<object> { Success = false, Message = "Nhân viên không tồn tại hoặc chưa bị xóa." });
 
-        // Xóa vĩnh viễn
-        _context.Users.Remove(staff);
+        var originalName = staff.FullName;
+
+        // Anonymize: xoá dữ liệu cá nhân nhưng GIỮ row để bảo toàn FK trong Orders/Invoices
+        staff.FullName = $"{originalName} (Đã xóa)";
+        staff.Email = $"deleted_{Guid.NewGuid()}@mep.deleted";
+        staff.PhoneNumber = null;
+        staff.PasswordHash = "PERMANENTLY_DELETED";
+        staff.Status = "PERMANENT_DELETED";
+        staff.IsActive = 0;
+        // UserId, CreatedBy, CreatedAt giữ nguyên → audit trail vẫn đầy đủ
+
         await _context.SaveChangesAsync();
 
         return Ok(new ApiResponse<object>
         {
             Success = true,
-            Message = $"Đã xóa vĩnh viễn nhân viên '{staff.FullName}'."
+            Message = $"Đã xóa vĩnh viễn nhân viên '{originalName}'. Dữ liệu cá nhân đã được ẩn danh, các hoá đơn vẫn được giữ nguyên."
         });
     }
     #endregion
