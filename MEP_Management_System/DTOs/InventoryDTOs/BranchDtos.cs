@@ -70,4 +70,16 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public int? ReturnDaysAllowed { get; set; }
         public int? ExchangeDaysAllowed { get; set; }
     }
+
+    public class CategoryPolicyDto
+    {
+        public string CategoryName { get; set; } = null!;
+        public int? ReturnDays { get; set; }
+        public int? ExchangeDays { get; set; }
+    }
+
+    public class UpdateCategoryPoliciesRequest
+    {
+        public List<CategoryPolicyDto> Policies { get; set; } = new();
+    }
 }
