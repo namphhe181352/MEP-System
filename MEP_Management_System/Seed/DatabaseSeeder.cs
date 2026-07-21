@@ -102,6 +102,41 @@ public static class DatabaseSeeder
         await context.SaveChangesAsync();
 
         // ============================================================
+        // 1.6. BRANCHES (2 chi nhánh mẫu)
+        // ============================================================
+        var branchEntities = new List<Branch>
+        {
+            new()
+            {
+                BranchId = Guid.Parse("30000000-0000-0000-0000-000000000001"),
+                BranchName = "Chi nhánh Miền Bắc",
+                BranchCode = "BAC",
+                Phone = "02439990001",
+                City = "Hà Nội",
+                Address = "123 Cầu Giấy, Hà Nội",
+                Type = "Cửa hàng",
+                IsActive = 1,
+                CreatedAt = SeedTime,
+                UpdatedAt = SeedTime
+            },
+            new()
+            {
+                BranchId = Guid.Parse("30000000-0000-0000-0000-000000000002"),
+                BranchName = "Chi nhánh Miền Nam",
+                BranchCode = "NAM",
+                Phone = "02839990002",
+                City = "TP. Hồ Chí Minh",
+                Address = "456 Quận 1, TP. Hồ Chí Minh",
+                Type = "Cửa hàng",
+                IsActive = 1,
+                CreatedAt = SeedTime,
+                UpdatedAt = SeedTime
+            }
+        };
+        await context.Branches.AddRangeAsync(branchEntities);
+        await context.SaveChangesAsync();
+
+        // ============================================================
         // 2. USER-ROLE MAPPING (gán role cho từng user)
         // ============================================================
         var userRoles = new[]

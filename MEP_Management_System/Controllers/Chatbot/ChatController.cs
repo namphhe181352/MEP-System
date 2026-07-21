@@ -425,7 +425,7 @@ LIMIT 20;
 --QUERY_START--
 SELECT COUNT(*) as total_orders, COALESCE(SUM(total_amount), 0) as total_revenue
 FROM orders
-WHERE DATE(created_at) = CURRENT_DATE AND status = 'COMPLETED';
+WHERE DATE(created_at) = CURRENT_DATE AND status = 'Completed';
 --QUERY_END--
 ```
 
@@ -434,7 +434,7 @@ WHERE DATE(created_at) = CURRENT_DATE AND status = 'COMPLETED';
 --QUERY_START--
 SELECT DATE(created_at) as date, COUNT(*) as orders, COALESCE(SUM(total_amount), 0) as revenue
 FROM orders
-WHERE created_at >= '{firstDayOfMonthStr}' AND status = 'COMPLETED'
+WHERE created_at >= '{firstDayOfMonthStr}' AND status = 'Completed'
 GROUP BY DATE(created_at) ORDER BY date;
 --QUERY_END--
 ```
@@ -458,7 +458,7 @@ FROM order_items oi
 JOIN orders o ON oi.order_id = o.order_id
 JOIN branch_products bp ON oi.branch_product_id = bp.branch_product_id
 JOIN products p ON bp.product_id = p.product_id
-WHERE o.created_at >= '{firstDayOfMonthStr}' AND o.status = 'COMPLETED'
+WHERE o.created_at >= '{firstDayOfMonthStr}' AND o.status = 'Completed'
 GROUP BY p.product_id, p.product_code, p.product_name
 ORDER BY total_sold DESC LIMIT 10;
 --QUERY_END--
@@ -474,7 +474,7 @@ SELECT
 FROM order_items oi
 JOIN orders o ON oi.order_id = o.order_id
 JOIN branch_products bp ON oi.branch_product_id = bp.branch_product_id
-WHERE DATE(o.created_at) = CURRENT_DATE AND o.status = 'COMPLETED';
+WHERE DATE(o.created_at) = CURRENT_DATE AND o.status = 'Completed';
 --QUERY_END--
 ```
 
@@ -488,7 +488,7 @@ SELECT
 FROM order_items oi
 JOIN orders o ON oi.order_id = o.order_id
 JOIN branch_products bp ON oi.branch_product_id = bp.branch_product_id
-WHERE o.created_at >= '{firstDayOfMonthStr}' AND o.status = 'COMPLETED';
+WHERE o.created_at >= '{firstDayOfMonthStr}' AND o.status = 'Completed';
 --QUERY_END--
 ```
 
@@ -508,7 +508,7 @@ ORDER BY current_debt DESC LIMIT 10;
 SELECT ec.category_name, COALESCE(SUM(ev.amount), 0) as total_amount
 FROM expense_vouchers ev
 JOIN expense_categories ec ON ev.category_id = ec.category_id
-WHERE ev.created_at >= '{firstDayOfMonthStr}' AND ev.status = 'COMPLETED'
+WHERE ev.created_at >= '{firstDayOfMonthStr}' AND ev.status = 'Completed'
 GROUP BY ec.category_name
 ORDER BY total_amount DESC;
 --QUERY_END--
@@ -520,7 +520,7 @@ ORDER BY total_amount DESC;
 - Doanh thu hôm nay: WHERE DATE(created_at) = CURRENT_DATE
 - Doanh thu tuần này: WHERE created_at >= '{mondayStr}'
 - Doanh thu tháng này: WHERE created_at >= '{firstDayOfMonthStr}'
-- Luôn thêm: AND status = 'COMPLETED' khi tính doanh thu/lợi nhuận từ orders
+- Luôn thêm: AND status = 'Completed' khi tính doanh thu/lợi nhuận từ orders
 - TUYỆT ĐỐI KHÔNG được viết SQL đụng tới các bảng ngoài danh sách DATABASE SCHEMA ở trên (ví dụ: users, roles, permissions, otp_verifications, system_configs, system_logs, store_approvals, hay bất kỳ bảng nào có tiền tố forum_/community_). Nếu user hỏi về những nội dung đó, trả lời rằng chatbot không hỗ trợ truy vấn thông tin này.
 - TUYỆT ĐỐI KHÔNG được viết INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE hay bất kỳ câu lệnh nào không phải SELECT.
 
