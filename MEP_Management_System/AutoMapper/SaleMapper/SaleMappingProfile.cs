@@ -35,9 +35,7 @@ public class SaleMappingProfile : Profile
         // Payment
         CreateMap<Payment, DTOs.SaleDTOs.PaymentDto>();
 
-        // Promotion
-        CreateMap<Promotion, DTOs.SaleDTOs.PromotionDto>()
-            .ForMember(d => d.DiscountAmount, o => o.Ignore());
+
 
         // Shift
         CreateMap<Shift, DTOs.SaleDTOs.ShiftDto>()

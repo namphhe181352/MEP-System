@@ -58,5 +58,5 @@ public partial class Customer
     public virtual Branch? Branch { get; set; }
 
     public virtual ICollection<Order> Orders { get; set; } = new List<Order>();
-    public virtual ICollection<LoyaltyTransaction> LoyaltyTransactions { get; set; } = new List<LoyaltyTransaction>();
 }
+

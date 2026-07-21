@@ -390,7 +390,7 @@ public class OwnerStaffController : ControllerBase
         var stockTicketCancelledCount = await _context.StockTickets.CountAsync(s => s.CancelledBy == id);
         var stockTicketTotalCount = stockTicketCreatedCount + stockTicketConfirmedCount + stockTicketCancelledCount;
 
-        var violationReportCount = await _context.ViolationReports.CountAsync(v => v.UserId == id);
+        var violationReportCount = 0;
 
         var hasUsage = orderCount > 0 || invoiceCount > 0 || shiftCount > 0
             || stockTicketTotalCount > 0 || violationReportCount > 0;
@@ -933,7 +933,7 @@ public class OwnerStaffController : ControllerBase
         var stockTicketCreatedCount = await _context.StockTickets.CountAsync(s => s.UserId == id);
         var stockTicketConfirmedCount = await _context.StockTickets.CountAsync(s => s.ConfirmedBy == id);
         var stockTicketCancelledCount = await _context.StockTickets.CountAsync(s => s.CancelledBy == id);
-        var violationReportCount = await _context.ViolationReports.CountAsync(v => v.UserId == id);
+        var violationReportCount = 0;
 
         var hasUsage = orderCount > 0 || invoiceCount > 0 || shiftCount > 0
             || stockTicketCreatedCount > 0 || stockTicketConfirmedCount > 0 || stockTicketCancelledCount > 0
