@@ -56,38 +56,36 @@ public class InvoicesController : ControllerBase
     {
         var branchId = GetBranchId();
 
-        // Count query first (lightweight)
-        var countQuery = _context.Orders.Where(o => o.BranchId == branchId);
-        if (!string.IsNullOrEmpty(status))
-            countQuery = countQuery.Where(o => o.Invoices.Any(i => i.Status == status));
-        if (dateFrom.HasValue)
-            countQuery = countQuery.Where(o => o.CreatedAt >= dateFrom.Value);
-        if (dateTo.HasValue)
-            countQuery = countQuery.Where(o => o.CreatedAt <= dateTo.Value);
-        if (customerId.HasValue)
-            countQuery = countQuery.Where(o => o.CustomerId == customerId.Value);
-        if (staffId.HasValue)
-            countQuery = countQuery.Where(o => o.UserId == staffId.Value);
-        var total = await countQuery.CountAsync();
-
-        // Projection query - only fetch needed fields (no entity tracking, no over-fetching)
-        var orderIds = await _context.Orders
+        // Build base query directly from Invoices (fix: don't depend on Orders table)
+        var baseQuery = _context.Invoices
             .AsNoTracking()
-            .Where(o => o.BranchId == branchId)
-            .Where(o => !string.IsNullOrEmpty(status) ? o.Invoices.Any(i => i.Status == status) : true)
-            .Where(o => dateFrom.HasValue ? o.CreatedAt >= dateFrom.Value : true)
-            .Where(o => dateTo.HasValue ? o.CreatedAt <= dateTo.Value : true)
-            .Where(o => customerId.HasValue ? o.CustomerId == customerId.Value : true)
-            .Where(o => staffId.HasValue ? o.UserId == staffId.Value : true)
-            .OrderByDescending(o => o.CreatedAt)
-            .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(o => o.OrderId)
-            .ToListAsync();
+            .Where(i => i.Order.BranchId == branchId);
+
+        // Count query
+        var countQuery = _context.Invoices.Where(i => i.Order.BranchId == branchId);
+        if (!string.IsNullOrEmpty(status))
+            countQuery = countQuery.Where(i => i.Status == status);
+        if (dateFrom.HasValue)
+            countQuery = countQuery.Where(i => i.CreatedAt >= dateFrom.Value);
+        if (dateTo.HasValue)
+            countQuery = countQuery.Where(i => i.CreatedAt <= dateTo.Value);
+        if (customerId.HasValue)
+            countQuery = countQuery.Where(i => i.Order.CustomerId == customerId.Value);
+        if (staffId.HasValue)
+            countQuery = countQuery.Where(i => i.Order.UserId == staffId.Value);
+        var total = await countQuery.CountAsync();
 
         // Fetch invoices + related data in single optimized query
         var invoiceData = await _context.Invoices
             .AsNoTracking()
-            .Where(i => orderIds.Contains(i.OrderId))
+            .Where(i => i.Order.BranchId == branchId)
+            .Where(i => !string.IsNullOrEmpty(status) ? i.Status == status : true)
+            .Where(i => dateFrom.HasValue ? i.CreatedAt >= dateFrom.Value : true)
+            .Where(i => dateTo.HasValue ? i.CreatedAt <= dateTo.Value : true)
+            .Where(i => customerId.HasValue ? i.Order.CustomerId == customerId.Value : true)
+            .Where(i => staffId.HasValue ? i.Order.UserId == staffId.Value : true)
+            .OrderByDescending(i => i.CreatedAt)
+            .Skip((page - 1) * pageSize).Take(pageSize)
             .Select(i => new
             {
                 Invoice = i,
@@ -484,6 +482,11 @@ public class InvoicesController : ControllerBase
             invoice.DiscountPercent = discountPercent;
             invoice.DiscountAmount = discountAmount;
             invoice.TotalAmount = totalAmount;
+
+            // Also update Order with the same values
+            invoice.Order.TotalAmount = totalAmount;
+            invoice.Order.DiscountAmount = discountAmount;
+            invoice.Order.TaxAmount = 0; // VAT handled in invoice, not order
 
             // Update customer stats
             if (invoice.Order.Customer != null)
