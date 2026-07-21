@@ -674,10 +674,13 @@ public partial class MEPDatabaseContext : DbContext
 
             entity.HasIndex(e => e.InvoiceCode, "invoices_invoice_code_key").IsUnique();
 
-            entity.HasOne(d => d.Order).WithMany(p => p.Invoices)
-                .HasForeignKey(d => d.OrderId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
+            entity.HasOne(d => d.Order).WithOne(p => p.Invoice)
+                .HasForeignKey<Invoice>(d => d.OrderId)
+                .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("invoices_order_id_fkey");
+
+            // Ensure 1-1 relationship: OrderId is unique in invoices table
+            entity.HasIndex(e => e.OrderId).IsUnique();
 
             entity.HasOne(d => d.User).WithMany(p => p.Invoices)
                 .HasForeignKey(d => d.UserId)
