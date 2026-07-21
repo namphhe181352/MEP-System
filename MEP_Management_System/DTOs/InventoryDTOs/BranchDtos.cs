@@ -73,6 +73,8 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
 
     public class CategoryPolicyDto
     {
+        /// <summary>ID của nhóm hàng (ProductTaxonomy.TaxonomyId). Null cho dữ liệu legacy.</summary>
+        public Guid? CategoryId { get; set; }
         public string CategoryName { get; set; } = null!;
         public int? ReturnDays { get; set; }
         public int? ExchangeDays { get; set; }
