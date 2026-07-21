@@ -30,7 +30,14 @@ public class SaleMappingProfile : Profile
             .ForMember(d => d.Barcode, o => o.MapFrom(s => s.BranchProduct != null && s.BranchProduct.Product != null ? s.BranchProduct.Product.Barcode : null))
             .ForMember(d => d.Unit, o => o.MapFrom(s => s.BranchProduct != null && s.BranchProduct.Product != null ? s.BranchProduct.Product.BaseUnit : null))
             .ForMember(d => d.SelectedUnit, o => o.MapFrom(s => s.SelectedUnit))
-            .ForMember(d => d.ConvertValue, o => o.MapFrom(s => s.ConvertValue));
+            .ForMember(d => d.ConvertValue, o => o.MapFrom(s => s.ConvertValue))
+            .ForMember(d => d.CategoryId, o => o.MapFrom(s =>
+                s.BranchProduct != null && s.BranchProduct.Product != null
+                    ? s.BranchProduct.Product.CategoryTaxonomyId : (Guid?)null))
+            .ForMember(d => d.CategoryName, o => o.MapFrom(s =>
+                s.BranchProduct != null && s.BranchProduct.Product != null && s.BranchProduct.Product.CategoryTaxonomy != null
+                    ? s.BranchProduct.Product.CategoryTaxonomy.Name : (s.BranchProduct != null && s.BranchProduct.Product != null
+                        ? s.BranchProduct.Product.CategoryName : null)));
 
         // Payment
         CreateMap<Payment, DTOs.SaleDTOs.PaymentDto>();
@@ -87,7 +94,14 @@ public class SaleMappingProfile : Profile
                     ? s.BranchProduct.Product.ProductName : null))
             .ForMember(d => d.ProductCode, o => o.MapFrom(s =>
                 s.BranchProduct != null && s.BranchProduct.Product != null
-                    ? s.BranchProduct.Product.ProductCode : null));
+                    ? s.BranchProduct.Product.ProductCode : null))
+            .ForMember(d => d.CategoryId, o => o.MapFrom(s =>
+                s.BranchProduct != null && s.BranchProduct.Product != null
+                    ? s.BranchProduct.Product.CategoryTaxonomyId : (Guid?)null))
+            .ForMember(d => d.CategoryName, o => o.MapFrom(s =>
+                s.BranchProduct != null && s.BranchProduct.Product != null && s.BranchProduct.Product.CategoryTaxonomy != null
+                    ? s.BranchProduct.Product.CategoryTaxonomy.Name : (s.BranchProduct != null && s.BranchProduct.Product != null
+                        ? s.BranchProduct.Product.CategoryName : null)));
     }
 
     private static string? CalculateTier(decimal? totalSpent)

@@ -32,4 +32,10 @@ public class ReturnItemDto
     public decimal Quantity { get; set; }
     public decimal? RefundAmount { get; set; }
     public string? Reason { get; set; }
+
+    /// <summary>ID nhóm hàng (ProductTaxonomy.TaxonomyId).</summary>
+    public Guid? CategoryId { get; set; }
+
+    /// <summary>Tên nhóm hàng (ProductTaxonomy.Name).</summary>
+    public string? CategoryName { get; set; }
 }

@@ -437,9 +437,26 @@ namespace MEP_Management_System.Controllers.OwnerController
                 {
                     try
                     {
-                        policies = System.Text.Json.JsonSerializer.Deserialize<List<CategoryPolicyDto>>(config.ConfigValue, _caseInsensitiveJsonOptions);
+                        var deserialized = System.Text.Json.JsonSerializer.Deserialize<List<CategoryPolicyDto>>(config.ConfigValue, _caseInsensitiveJsonOptions);
+                        if (deserialized != null) policies = deserialized;
                     }
                     catch { }
+                }
+
+                // Enrich legacy data: resolve CategoryId from ProductTaxonomy for entries missing it
+                var categories = await _context.ProductTaxonomies
+                    .Where(t => t.Type == "Category" && (t.BranchId == null || t.BranchId == id))
+                    .ToListAsync();
+
+                foreach (var policy in policies)
+                {
+                    if (policy.CategoryId == null && !string.IsNullOrEmpty(policy.CategoryName))
+                    {
+                        var match = categories.FirstOrDefault(c =>
+                            c.Name.Equals(policy.CategoryName, StringComparison.OrdinalIgnoreCase));
+                        if (match != null)
+                            policy.CategoryId = match.TaxonomyId;
+                    }
                 }
 
                 return Ok(new ApiResponse<List<CategoryPolicyDto>>
