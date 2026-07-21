@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace MEP_Management_System.Models;
@@ -32,10 +32,6 @@ public partial class User
 
     public virtual User? CreatedByUser { get; set; } // Navigation property: User who created this User
 
-    public virtual ICollection<Comment> Comments { get; set; } = new List<Comment>();
-
-    public virtual ICollection<CommunityPost> CommunityPosts { get; set; } = new List<CommunityPost>();
-
     public virtual ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
 
     public virtual ICollection<Order> Orders { get; set; } = new List<Order>();
@@ -52,14 +48,11 @@ public partial class User
 
     public virtual ICollection<UserPermission> UserPermissions { get; set; } = new List<UserPermission>();
 
-    public virtual ICollection<ViolationReport> ViolationReports { get; set; } = new List<ViolationReport>();
-
     public virtual ICollection<Role> Roles { get; set; } = new List<Role>();
 
     public virtual ICollection<SystemNotification> SystemNotifications { get; set; } = new List<SystemNotification>();
-
-    public virtual ICollection<StoreApproval> StoreApprovals { get; set; } = new List<StoreApproval>();
     public virtual ICollection<Shift> Shifts { get; set; } = new List<Shift>();
     public virtual ICollection<Notification> ReceivedNotifications { get; set; } = new List<Notification>();
     public virtual ICollection<Notification> TriggeredNotifications { get; set; } = new List<Notification>();
 }
+

@@ -6,134 +6,13 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace MEP_Management_System.Migrations
 {
     /// <inheritdoc />
-    public partial class UpdateSnapshotForMerge : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.RenameTable(
-                name: "Invoice",
-                newName: "invoices");
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "is_active",
-                table: "order_discount_tiers",
-                type: "boolean",
-                nullable: false,
-                defaultValue: true,
-                oldClrType: typeof(bool),
-                oldType: "boolean");
-
-            migrationBuilder.AddColumn<Guid>(
-                name: "branch_id",
-                table: "order_discount_tiers",
-                type: "uuid",
-                nullable: true);
-
-            migrationBuilder.AddColumn<Guid>(
-                name: "invoice_id",
-                table: "invoices",
-                type: "uuid",
-                nullable: false,
-                defaultValueSql: "uuid_generate_v4()");
-
-            migrationBuilder.AddColumn<DateTime>(
-                name: "created_at",
-                table: "invoices",
-                type: "timestamp without time zone",
-                nullable: true,
-                defaultValueSql: "CURRENT_TIMESTAMP");
-
-            migrationBuilder.AddColumn<DateTime>(
-                name: "held_at",
-                table: "invoices",
-                type: "timestamp without time zone",
-                nullable: true);
-
-            migrationBuilder.AddColumn<string>(
-                name: "hold_note",
-                table: "invoices",
-                type: "character varying(500)",
-                maxLength: 500,
-                nullable: true);
-
-            migrationBuilder.AddColumn<string>(
-                name: "invoice_code",
-                table: "invoices",
-                type: "character varying(50)",
-                maxLength: 50,
-                nullable: true);
-
-            migrationBuilder.AddColumn<string>(
-                name: "note",
-                table: "invoices",
-                type: "text",
-                nullable: true);
-
-            migrationBuilder.AddColumn<Guid>(
-                name: "order_id",
-                table: "invoices",
-                type: "uuid",
-                nullable: false,
-                defaultValue: new Guid("00000000-0000-0000-0000-000000000000"));
-
-            migrationBuilder.AddColumn<string>(
-                name: "payment_method",
-                table: "invoices",
-                type: "character varying(50)",
-                maxLength: 50,
-                nullable: true);
-
-            migrationBuilder.AddColumn<string>(
-                name: "status",
-                table: "invoices",
-                type: "character varying(50)",
-                maxLength: 50,
-                nullable: true);
-
-            migrationBuilder.AddColumn<decimal>(
-                name: "total_amount",
-                table: "invoices",
-                type: "numeric(15,2)",
-                precision: 15,
-                scale: 2,
-                nullable: false,
-                defaultValue: 0m);
-
-            migrationBuilder.AddColumn<Guid>(
-                name: "user_id",
-                table: "invoices",
-                type: "uuid",
-                nullable: false,
-                defaultValue: new Guid("00000000-0000-0000-0000-000000000000"));
-
-            migrationBuilder.AddPrimaryKey(
-                name: "invoices_pkey",
-                table: "invoices",
-                column: "invoice_id");
-
-            migrationBuilder.CreateTable(
-                name: "community_categories",
-                columns: table => new
-                {
-                    category_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    category_name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    description = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
-                    is_archived = table.Column<bool>(type: "boolean", nullable: false, defaultValue: false),
-                    sort_order = table.Column<int>(type: "integer", nullable: false, defaultValue: 0),
-                    slug = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
-                    parent_id = table.Column<Guid>(type: "uuid", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("community_categories_pkey", x => x.category_id);
-                    table.ForeignKey(
-                        name: "community_categories_parent_id_fkey",
-                        column: x => x.parent_id,
-                        principalTable: "community_categories",
-                        principalColumn: "category_id",
-                        onDelete: ReferentialAction.SetNull);
-                });
+            migrationBuilder.AlterDatabase()
+                .Annotation("Npgsql:PostgresExtension:uuid-ossp", ",,");
 
             migrationBuilder.CreateTable(
                 name: "inventory_transfer_tickets",
@@ -171,33 +50,6 @@ namespace MEP_Management_System.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "payments",
-                columns: table => new
-                {
-                    payment_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    invoice_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    method = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
-                    amount = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false),
-                    status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false, defaultValue: "Pending"),
-                    cash_received = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: true),
-                    change_amount = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: true),
-                    viet_qr_string = table.Column<string>(type: "text", nullable: true),
-                    qr_expired_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
-                    paid_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
-                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP"),
-                    branch_id = table.Column<Guid>(type: "uuid", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("payments_pkey", x => x.payment_id);
-                    table.ForeignKey(
-                        name: "payments_invoice_id_fkey",
-                        column: x => x.invoice_id,
-                        principalTable: "invoices",
-                        principalColumn: "invoice_id");
-                });
-
-            migrationBuilder.CreateTable(
                 name: "permissions",
                 columns: table => new
                 {
@@ -211,49 +63,40 @@ namespace MEP_Management_System.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "promotions",
+                name: "product_attribute_types",
                 columns: table => new
                 {
-                    promotion_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    promotion_code = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
-                    name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    description = table.Column<string>(type: "text", nullable: true),
-                    discount_type = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
-                    discount_value = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false),
-                    min_order_amount = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: true),
-                    max_discount_amount = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: true),
-                    start_date = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
-                    end_date = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
-                    usage_limit = table.Column<int>(type: "integer", nullable: true),
-                    used_count = table.Column<int>(type: "integer", nullable: false, defaultValue: 0),
-                    is_active = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
-                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")
+                    type_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
+                    type_name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    type_code = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    is_active = table.Column<short>(type: "smallint", nullable: false, defaultValue: (short)1),
+                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
+                    created_by = table.Column<Guid>(type: "uuid", nullable: true),
+                    updated_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
+                    updated_by = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("promotions_pkey", x => x.promotion_id);
+                    table.PrimaryKey("product_attribute_types_pkey", x => x.type_id);
                 });
 
             migrationBuilder.CreateTable(
-                name: "receipts",
+                name: "product_locations",
                 columns: table => new
                 {
-                    receipt_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    receipt_code = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
-                    invoice_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    html_content = table.Column<string>(type: "text", nullable: true),
-                    printed_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
-                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")
+                    location_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
+                    location_name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    location_code = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    description = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
+                    is_active = table.Column<short>(type: "smallint", nullable: false, defaultValue: (short)1),
+                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
+                    created_by = table.Column<Guid>(type: "uuid", nullable: true),
+                    updated_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
+                    updated_by = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("receipts_pkey", x => x.receipt_id);
-                    table.ForeignKey(
-                        name: "receipts_invoice_id_fkey",
-                        column: x => x.invoice_id,
-                        principalTable: "invoices",
-                        principalColumn: "invoice_id",
-                        onDelete: ReferentialAction.Cascade);
+                    table.PrimaryKey("product_locations_pkey", x => x.location_id);
                 });
 
             migrationBuilder.CreateTable(
@@ -284,6 +127,7 @@ namespace MEP_Management_System.Migrations
                     phone_number = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: true),
                     is_verified = table.Column<bool>(type: "boolean", nullable: false, defaultValue: false),
                     status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: true),
+                    DeletedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
                     suspended_until = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
                     subscription_plan = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: true),
                     created_by = table.Column<Guid>(type: "uuid", nullable: true),
@@ -338,7 +182,9 @@ namespace MEP_Management_System.Migrations
                     manager_user_id = table.Column<Guid>(type: "uuid", nullable: true),
                     is_active = table.Column<short>(type: "smallint", nullable: false, defaultValue: (short)1),
                     created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
-                    updated_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true)
+                    updated_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
+                    ReturnDaysAllowed = table.Column<int>(type: "integer", nullable: true),
+                    ExchangeDaysAllowed = table.Column<int>(type: "integer", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -349,37 +195,6 @@ namespace MEP_Management_System.Migrations
                         principalTable: "users",
                         principalColumn: "user_id",
                         onDelete: ReferentialAction.SetNull);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "community_posts",
-                columns: table => new
-                {
-                    post_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    category_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    user_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    title = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
-                    content = table.Column<string>(type: "text", nullable: false),
-                    status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true, defaultValue: "ACTIVE"),
-                    is_pinned = table.Column<short>(type: "smallint", nullable: true, defaultValue: (short)0),
-                    view_count = table.Column<int>(type: "integer", nullable: true, defaultValue: 0),
-                    group_buying_target = table.Column<int>(type: "integer", nullable: true),
-                    group_buying_price = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: true),
-                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true, defaultValueSql: "CURRENT_TIMESTAMP")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("community_posts_pkey", x => x.post_id);
-                    table.ForeignKey(
-                        name: "community_posts_category_id_fkey",
-                        column: x => x.category_id,
-                        principalTable: "community_categories",
-                        principalColumn: "category_id");
-                    table.ForeignKey(
-                        name: "community_posts_user_id_fkey",
-                        column: x => x.user_id,
-                        principalTable: "users",
-                        principalColumn: "user_id");
                 });
 
             migrationBuilder.CreateTable(
@@ -401,38 +216,6 @@ namespace MEP_Management_System.Migrations
                         principalTable: "users",
                         principalColumn: "user_id",
                         onDelete: ReferentialAction.SetNull);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "store_approvals",
-                columns: table => new
-                {
-                    approval_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    user_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    store_name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    business_license = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
-                    tax_code = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
-                    store_address = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
-                    document_urls = table.Column<string>(type: "text", nullable: true),
-                    status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false, defaultValue: "PENDING"),
-                    reject_reason = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
-                    reviewed_by = table.Column<Guid>(type: "uuid", nullable: true),
-                    reviewed_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
-                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("store_approvals_pkey", x => x.approval_id);
-                    table.ForeignKey(
-                        name: "store_approvals_reviewed_by_fkey",
-                        column: x => x.reviewed_by,
-                        principalTable: "users",
-                        principalColumn: "user_id");
-                    table.ForeignKey(
-                        name: "store_approvals_user_id_fkey",
-                        column: x => x.user_id,
-                        principalTable: "users",
-                        principalColumn: "user_id");
                 });
 
             migrationBuilder.CreateTable(
@@ -535,7 +318,8 @@ namespace MEP_Management_System.Migrations
                 {
                     user_permission_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
                     user_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    permission_id = table.Column<Guid>(type: "uuid", nullable: false)
+                    permission_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    is_granted = table.Column<bool>(type: "boolean", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -619,31 +403,45 @@ namespace MEP_Management_System.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "daily_summaries",
+                name: "order_discount_tiers",
                 columns: table => new
                 {
-                    summary_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    branch_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    summary_date = table.Column<DateTime>(type: "date", nullable: false),
-                    total_revenue = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false, defaultValue: 0m),
-                    total_orders = table.Column<int>(type: "integer", nullable: false, defaultValue: 0),
-                    total_refunds = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false, defaultValue: 0m),
-                    total_cash = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false, defaultValue: 0m),
-                    total_transfer = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false, defaultValue: 0m),
-                    total_debt = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false, defaultValue: 0m),
-                    opening_cash = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false, defaultValue: 0m),
-                    closing_cash = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false, defaultValue: 0m),
-                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")
+                    order_discount_tier_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
+                    branch_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    min_order_value = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false),
+                    discount_percent = table.Column<decimal>(type: "numeric(5,2)", precision: 5, scale: 2, nullable: false),
+                    is_active = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
+                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
+                    updated_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("daily_summaries_pkey", x => x.summary_id);
+                    table.PrimaryKey("order_discount_tiers_pkey", x => x.order_discount_tier_id);
                     table.ForeignKey(
-                        name: "daily_summaries_branch_id_fkey",
+                        name: "FK_order_discount_tiers_branches_branch_id",
                         column: x => x.branch_id,
                         principalTable: "branches",
-                        principalColumn: "branch_id",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "branch_id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "product_taxonomies",
+                columns: table => new
+                {
+                    taxonomy_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    branch_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    name = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
+                    type = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_product_taxonomies", x => x.taxonomy_id);
+                    table.ForeignKey(
+                        name: "FK_product_taxonomies_branches_branch_id",
+                        column: x => x.branch_id,
+                        principalTable: "branches",
+                        principalColumn: "branch_id");
                 });
 
             migrationBuilder.CreateTable(
@@ -729,32 +527,6 @@ namespace MEP_Management_System.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "comments",
-                columns: table => new
-                {
-                    comment_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    post_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    user_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    comment_text = table.Column<string>(type: "text", nullable: false),
-                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true, defaultValueSql: "CURRENT_TIMESTAMP")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("comments_pkey", x => x.comment_id);
-                    table.ForeignKey(
-                        name: "comments_post_id_fkey",
-                        column: x => x.post_id,
-                        principalTable: "community_posts",
-                        principalColumn: "post_id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "comments_user_id_fkey",
-                        column: x => x.user_id,
-                        principalTable: "users",
-                        principalColumn: "user_id");
-                });
-
-            migrationBuilder.CreateTable(
                 name: "expense_vouchers",
                 columns: table => new
                 {
@@ -811,55 +583,6 @@ namespace MEP_Management_System.Migrations
                         column: x => x.supplier_id,
                         principalTable: "suppliers",
                         principalColumn: "supplier_id",
-                        onDelete: ReferentialAction.SetNull);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "products",
-                columns: table => new
-                {
-                    product_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    product_code = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
-                    product_name = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
-                    barcode = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
-                    base_unit = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
-                    specification = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
-                    item_type = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
-                    brand_name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
-                    category_name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
-                    supplier_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    weight = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: true),
-                    weight_unit = table.Column<string>(type: "character varying(10)", maxLength: 10, nullable: true),
-                    width = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: true),
-                    length = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: true),
-                    height = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: true),
-                    size_unit = table.Column<string>(type: "character varying(10)", maxLength: 10, nullable: true),
-                    sales_channel_linked = table.Column<short>(type: "smallint", nullable: true, defaultValue: (short)1),
-                    status = table.Column<short>(type: "smallint", nullable: true, defaultValue: (short)1),
-                    created_by = table.Column<Guid>(type: "uuid", nullable: true),
-                    updated_by = table.Column<Guid>(type: "uuid", nullable: true),
-                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true, defaultValueSql: "CURRENT_TIMESTAMP"),
-                    updated_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("products_pkey", x => x.product_id);
-                    table.ForeignKey(
-                        name: "products_created_by_fkey",
-                        column: x => x.created_by,
-                        principalTable: "users",
-                        principalColumn: "user_id",
-                        onDelete: ReferentialAction.SetNull);
-                    table.ForeignKey(
-                        name: "products_supplier_id_fkey",
-                        column: x => x.supplier_id,
-                        principalTable: "suppliers",
-                        principalColumn: "supplier_id");
-                    table.ForeignKey(
-                        name: "products_updated_by_fkey",
-                        column: x => x.updated_by,
-                        principalTable: "users",
-                        principalColumn: "user_id",
                         onDelete: ReferentialAction.SetNull);
                 });
 
@@ -953,30 +676,6 @@ namespace MEP_Management_System.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "loyalty_transactions",
-                columns: table => new
-                {
-                    transaction_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    customer_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    points = table.Column<int>(type: "integer", nullable: false),
-                    transaction_type = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
-                    reference_type = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
-                    reference_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    description = table.Column<string>(type: "text", nullable: true),
-                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("loyalty_transactions_pkey", x => x.transaction_id);
-                    table.ForeignKey(
-                        name: "loyalty_transactions_customer_id_fkey",
-                        column: x => x.customer_id,
-                        principalTable: "customers",
-                        principalColumn: "customer_id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "orders",
                 columns: table => new
                 {
@@ -1015,285 +714,64 @@ namespace MEP_Management_System.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "promotion_usages",
+                name: "products",
                 columns: table => new
                 {
-                    usage_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    promotion_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    invoice_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    customer_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    user_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    discount_amount = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false),
-                    used_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")
+                    product_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
+                    product_code = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    product_name = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
+                    barcode = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    base_unit = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    specification = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
+                    item_type = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    BrandTaxonomyId = table.Column<Guid>(type: "uuid", nullable: true),
+                    CategoryTaxonomyId = table.Column<Guid>(type: "uuid", nullable: true),
+                    brand_name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
+                    category_name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
+                    supplier_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    weight = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: true),
+                    weight_unit = table.Column<string>(type: "character varying(10)", maxLength: 10, nullable: true),
+                    width = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: true),
+                    length = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: true),
+                    height = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: true),
+                    size_unit = table.Column<string>(type: "character varying(10)", maxLength: 10, nullable: true),
+                    sales_channel_linked = table.Column<short>(type: "smallint", nullable: true, defaultValue: (short)1),
+                    status = table.Column<short>(type: "smallint", nullable: true, defaultValue: (short)1),
+                    created_by = table.Column<Guid>(type: "uuid", nullable: true),
+                    updated_by = table.Column<Guid>(type: "uuid", nullable: true),
+                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true, defaultValueSql: "CURRENT_TIMESTAMP"),
+                    updated_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("promotion_usages_pkey", x => x.usage_id);
+                    table.PrimaryKey("products_pkey", x => x.product_id);
                     table.ForeignKey(
-                        name: "promotion_usages_customer_id_fkey",
-                        column: x => x.customer_id,
-                        principalTable: "customers",
-                        principalColumn: "customer_id");
+                        name: "FK_products_product_taxonomies_BrandTaxonomyId",
+                        column: x => x.BrandTaxonomyId,
+                        principalTable: "product_taxonomies",
+                        principalColumn: "taxonomy_id");
                     table.ForeignKey(
-                        name: "promotion_usages_invoice_id_fkey",
-                        column: x => x.invoice_id,
-                        principalTable: "invoices",
-                        principalColumn: "invoice_id");
+                        name: "FK_products_product_taxonomies_CategoryTaxonomyId",
+                        column: x => x.CategoryTaxonomyId,
+                        principalTable: "product_taxonomies",
+                        principalColumn: "taxonomy_id");
                     table.ForeignKey(
-                        name: "promotion_usages_promotion_id_fkey",
-                        column: x => x.promotion_id,
-                        principalTable: "promotions",
-                        principalColumn: "promotion_id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "promotion_usages_user_id_fkey",
-                        column: x => x.user_id,
-                        principalTable: "users",
-                        principalColumn: "user_id");
-                });
-
-            migrationBuilder.CreateTable(
-                name: "violation_reports",
-                columns: table => new
-                {
-                    report_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    post_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    comment_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    user_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    reason = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
-                    status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true, defaultValueSql: "'PENDING'::character varying"),
-                    resolved_by = table.Column<Guid>(type: "uuid", nullable: true),
-                    resolved_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
-                    admin_note = table.Column<string>(type: "text", nullable: true),
-                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true, defaultValueSql: "CURRENT_TIMESTAMP")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("violation_reports_pkey", x => x.report_id);
-                    table.ForeignKey(
-                        name: "violation_reports_comment_id_fkey",
-                        column: x => x.comment_id,
-                        principalTable: "comments",
-                        principalColumn: "comment_id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "violation_reports_post_id_fkey",
-                        column: x => x.post_id,
-                        principalTable: "community_posts",
-                        principalColumn: "post_id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "violation_reports_resolved_by_fkey",
-                        column: x => x.resolved_by,
-                        principalTable: "users",
-                        principalColumn: "user_id");
-                    table.ForeignKey(
-                        name: "violation_reports_user_id_fkey",
-                        column: x => x.user_id,
-                        principalTable: "users",
-                        principalColumn: "user_id");
-                });
-
-            migrationBuilder.CreateTable(
-                name: "branch_products",
-                columns: table => new
-                {
-                    branch_product_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    branch_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    product_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    cost_price = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false),
-                    sell_price = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false),
-                    actual_stock = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false, defaultValue: 0m),
-                    reserved_stock = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false, defaultValue: 0m),
-                    available_stock = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false, defaultValue: 0m),
-                    minimum_stock = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: true, defaultValue: 10m),
-                    maximum_stock = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: true, defaultValue: 100m),
-                    shelf_location = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
-                    is_active = table.Column<short>(type: "smallint", nullable: true, defaultValue: (short)1),
-                    direct_sale = table.Column<short>(type: "smallint", nullable: true, defaultValue: (short)1),
-                    estimated_out_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("branch_products_pkey", x => x.branch_product_id);
-                    table.ForeignKey(
-                        name: "branch_products_branch_id_fkey",
-                        column: x => x.branch_id,
-                        principalTable: "branches",
-                        principalColumn: "branch_id");
-                    table.ForeignKey(
-                        name: "branch_products_product_id_fkey",
-                        column: x => x.product_id,
-                        principalTable: "products",
-                        principalColumn: "product_id");
-                });
-
-            migrationBuilder.CreateTable(
-                name: "inventory_transfer_details",
-                columns: table => new
-                {
-                    detail_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    transfer_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    product_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    transfer_quantity = table.Column<int>(type: "integer", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("inventory_transfer_details_pkey", x => x.detail_id);
-                    table.ForeignKey(
-                        name: "FK_inventory_transfer_details_inventory_transfer_tickets_trans~",
-                        column: x => x.transfer_id,
-                        principalTable: "inventory_transfer_tickets",
-                        principalColumn: "transfer_id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_inventory_transfer_details_products_product_id",
-                        column: x => x.product_id,
-                        principalTable: "products",
-                        principalColumn: "product_id");
-                });
-
-            migrationBuilder.CreateTable(
-                name: "media_resources",
-                columns: table => new
-                {
-                    media_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    product_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    post_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    media_url = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
-                    media_type = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
-                    is_primary = table.Column<short>(type: "smallint", nullable: true, defaultValue: (short)0),
-                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true, defaultValueSql: "CURRENT_TIMESTAMP")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("media_resources_pkey", x => x.media_id);
-                    table.ForeignKey(
-                        name: "media_resources_post_id_fkey",
-                        column: x => x.post_id,
-                        principalTable: "community_posts",
-                        principalColumn: "post_id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "media_resources_product_id_fkey",
-                        column: x => x.product_id,
-                        principalTable: "products",
-                        principalColumn: "product_id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "product_attributes",
-                columns: table => new
-                {
-                    attribute_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    product_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    attribute_name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    attribute_value = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("product_attributes_pkey", x => x.attribute_id);
-                    table.ForeignKey(
-                        name: "product_attributes_product_id_fkey",
-                        column: x => x.product_id,
-                        principalTable: "products",
-                        principalColumn: "product_id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "product_conversion_units",
-                columns: table => new
-                {
-                    conversion_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    product_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    unit_name = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
-                    convert_value = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false),
-                    price = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false),
-                    direct_sale = table.Column<short>(type: "smallint", nullable: true, defaultValue: (short)1)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("product_conversion_units_pkey", x => x.conversion_id);
-                    table.ForeignKey(
-                        name: "product_conversion_units_product_id_fkey",
-                        column: x => x.product_id,
-                        principalTable: "products",
-                        principalColumn: "product_id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "purchase_order_items",
-                columns: table => new
-                {
-                    po_item_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    purchase_order_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    product_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    quantity = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false),
-                    unit_price = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("purchase_order_items_pkey", x => x.po_item_id);
-                    table.ForeignKey(
-                        name: "purchase_order_items_product_id_fkey",
-                        column: x => x.product_id,
-                        principalTable: "products",
-                        principalColumn: "product_id");
-                    table.ForeignKey(
-                        name: "purchase_order_items_purchase_order_id_fkey",
-                        column: x => x.purchase_order_id,
-                        principalTable: "purchase_orders",
-                        principalColumn: "purchase_order_id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "supplier_ratings",
-                columns: table => new
-                {
-                    rating_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    supplier_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    purchase_order_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    quality_score = table.Column<short>(type: "smallint", nullable: false),
-                    delivery_score = table.Column<short>(type: "smallint", nullable: false),
-                    price_score = table.Column<short>(type: "smallint", nullable: false),
-                    service_score = table.Column<short>(type: "smallint", nullable: false),
-                    overall_rating = table.Column<decimal>(type: "numeric(3,2)", precision: 3, scale: 2, nullable: false),
-                    comment = table.Column<string>(type: "text", nullable: true),
-                    rated_by = table.Column<Guid>(type: "uuid", nullable: true),
-                    rated_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true, defaultValueSql: "CURRENT_TIMESTAMP"),
-                    created_by = table.Column<Guid>(type: "uuid", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("supplier_ratings_pkey", x => x.rating_id);
-                    table.ForeignKey(
-                        name: "supplier_ratings_created_by_fkey",
+                        name: "products_created_by_fkey",
                         column: x => x.created_by,
                         principalTable: "users",
                         principalColumn: "user_id",
                         onDelete: ReferentialAction.SetNull);
                     table.ForeignKey(
-                        name: "supplier_ratings_po_id_fkey",
-                        column: x => x.purchase_order_id,
-                        principalTable: "purchase_orders",
-                        principalColumn: "purchase_order_id",
-                        onDelete: ReferentialAction.SetNull);
+                        name: "products_supplier_id_fkey",
+                        column: x => x.supplier_id,
+                        principalTable: "suppliers",
+                        principalColumn: "supplier_id");
                     table.ForeignKey(
-                        name: "supplier_ratings_rated_by_fkey",
-                        column: x => x.rated_by,
+                        name: "products_updated_by_fkey",
+                        column: x => x.updated_by,
                         principalTable: "users",
                         principalColumn: "user_id",
                         onDelete: ReferentialAction.SetNull);
-                    table.ForeignKey(
-                        name: "supplier_ratings_supplier_id_fkey",
-                        column: x => x.supplier_id,
-                        principalTable: "suppliers",
-                        principalColumn: "supplier_id",
-                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -1418,48 +896,38 @@ namespace MEP_Management_System.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "refund_records",
+                name: "invoices",
                 columns: table => new
                 {
-                    refund_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    refund_code = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    invoice_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
+                    invoice_code = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
                     order_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    invoice_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    customer_id = table.Column<Guid>(type: "uuid", nullable: false),
                     user_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    refund_amount = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false),
-                    refund_method = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
-                    status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false, defaultValue: "PENDING"),
-                    reason = table.Column<string>(type: "text", nullable: true),
-                    processed_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
-                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")
+                    sub_total_amount = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false, defaultValue: 0m),
+                    discount_percent = table.Column<decimal>(type: "numeric(5,2)", precision: 5, scale: 2, nullable: true),
+                    discount_amount = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false, defaultValue: 0m),
+                    total_amount = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false),
+                    payment_method = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    note = table.Column<string>(type: "text", nullable: true),
+                    hold_note = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
+                    held_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
+                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true, defaultValueSql: "CURRENT_TIMESTAMP")
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("refund_records_pkey", x => x.refund_id);
+                    table.PrimaryKey("invoices_pkey", x => x.invoice_id);
                     table.ForeignKey(
-                        name: "refund_records_customer_id_fkey",
-                        column: x => x.customer_id,
-                        principalTable: "customers",
-                        principalColumn: "customer_id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "refund_records_invoice_id_fkey",
-                        column: x => x.invoice_id,
-                        principalTable: "invoices",
-                        principalColumn: "invoice_id");
-                    table.ForeignKey(
-                        name: "refund_records_order_id_fkey",
+                        name: "invoices_order_id_fkey",
                         column: x => x.order_id,
                         principalTable: "orders",
                         principalColumn: "order_id",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
-                        name: "refund_records_user_id_fkey",
+                        name: "invoices_user_id_fkey",
                         column: x => x.user_id,
                         principalTable: "users",
-                        principalColumn: "user_id",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "user_id");
                 });
 
             migrationBuilder.CreateTable(
@@ -1493,83 +961,152 @@ namespace MEP_Management_System.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "invoice_items",
+                name: "branch_products",
                 columns: table => new
                 {
-                    invoice_item_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    invoice_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    branch_product_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    quantity = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false),
+                    branch_product_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
+                    branch_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    product_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    cost_price = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false),
                     sell_price = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false),
-                    SelectedUnit = table.Column<string>(type: "text", nullable: true),
-                    ConvertValue = table.Column<decimal>(type: "numeric", nullable: true)
+                    actual_stock = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false, defaultValue: 0m),
+                    reserved_stock = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false, defaultValue: 0m),
+                    available_stock = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false, defaultValue: 0m),
+                    minimum_stock = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: true, defaultValue: 10m),
+                    maximum_stock = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: true, defaultValue: 100m),
+                    shelf_location = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
+                    is_active = table.Column<short>(type: "smallint", nullable: true, defaultValue: (short)1),
+                    direct_sale = table.Column<short>(type: "smallint", nullable: true, defaultValue: (short)1),
+                    estimated_out_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("invoice_items_pkey", x => x.invoice_item_id);
+                    table.PrimaryKey("branch_products_pkey", x => x.branch_product_id);
                     table.ForeignKey(
-                        name: "invoice_items_branch_product_id_fkey",
-                        column: x => x.branch_product_id,
-                        principalTable: "branch_products",
-                        principalColumn: "branch_product_id");
+                        name: "branch_products_branch_id_fkey",
+                        column: x => x.branch_id,
+                        principalTable: "branches",
+                        principalColumn: "branch_id");
                     table.ForeignKey(
-                        name: "invoice_items_invoice_id_fkey",
-                        column: x => x.invoice_id,
-                        principalTable: "invoices",
-                        principalColumn: "invoice_id",
+                        name: "branch_products_product_id_fkey",
+                        column: x => x.product_id,
+                        principalTable: "products",
+                        principalColumn: "product_id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "inventory_transfer_details",
+                columns: table => new
+                {
+                    detail_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
+                    transfer_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    product_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    transfer_quantity = table.Column<int>(type: "integer", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("inventory_transfer_details_pkey", x => x.detail_id);
+                    table.ForeignKey(
+                        name: "FK_inventory_transfer_details_inventory_transfer_tickets_trans~",
+                        column: x => x.transfer_id,
+                        principalTable: "inventory_transfer_tickets",
+                        principalColumn: "transfer_id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_inventory_transfer_details_products_product_id",
+                        column: x => x.product_id,
+                        principalTable: "products",
+                        principalColumn: "product_id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "media_resources",
+                columns: table => new
+                {
+                    media_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
+                    product_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    post_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    media_url = table.Column<string>(type: "text", nullable: false),
+                    media_type = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    is_primary = table.Column<short>(type: "smallint", nullable: true, defaultValue: (short)0),
+                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true, defaultValueSql: "CURRENT_TIMESTAMP")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("media_resources_pkey", x => x.media_id);
+                    table.ForeignKey(
+                        name: "media_resources_product_id_fkey",
+                        column: x => x.product_id,
+                        principalTable: "products",
+                        principalColumn: "product_id",
                         onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
-                name: "order_items",
+                name: "product_attributes",
                 columns: table => new
                 {
-                    order_item_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    order_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    branch_product_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    attribute_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
+                    product_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    attribute_name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    attribute_value = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("product_attributes_pkey", x => x.attribute_id);
+                    table.ForeignKey(
+                        name: "product_attributes_product_id_fkey",
+                        column: x => x.product_id,
+                        principalTable: "products",
+                        principalColumn: "product_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "product_conversion_units",
+                columns: table => new
+                {
+                    conversion_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
+                    product_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    unit_name = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    convert_value = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false),
+                    price = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false),
+                    direct_sale = table.Column<short>(type: "smallint", nullable: true, defaultValue: (short)1)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("product_conversion_units_pkey", x => x.conversion_id);
+                    table.ForeignKey(
+                        name: "product_conversion_units_product_id_fkey",
+                        column: x => x.product_id,
+                        principalTable: "products",
+                        principalColumn: "product_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "purchase_order_items",
+                columns: table => new
+                {
+                    po_item_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
+                    purchase_order_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    product_id = table.Column<Guid>(type: "uuid", nullable: false),
                     quantity = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false),
-                    sell_price = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false)
+                    unit_price = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("order_items_pkey", x => x.order_item_id);
+                    table.PrimaryKey("purchase_order_items_pkey", x => x.po_item_id);
                     table.ForeignKey(
-                        name: "order_items_branch_product_id_fkey",
-                        column: x => x.branch_product_id,
-                        principalTable: "branch_products",
-                        principalColumn: "branch_product_id");
+                        name: "purchase_order_items_product_id_fkey",
+                        column: x => x.product_id,
+                        principalTable: "products",
+                        principalColumn: "product_id");
                     table.ForeignKey(
-                        name: "order_items_order_id_fkey",
-                        column: x => x.order_id,
-                        principalTable: "orders",
-                        principalColumn: "order_id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "stock_ticket_items",
-                columns: table => new
-                {
-                    ticket_item_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
-                    stock_ticket_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    branch_product_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    system_quantity = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false),
-                    actual_quantity = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false),
-                    discrepancy = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("stock_ticket_items_pkey", x => x.ticket_item_id);
-                    table.ForeignKey(
-                        name: "stock_ticket_items_branch_product_id_fkey",
-                        column: x => x.branch_product_id,
-                        principalTable: "branch_products",
-                        principalColumn: "branch_product_id");
-                    table.ForeignKey(
-                        name: "stock_ticket_items_stock_ticket_id_fkey",
-                        column: x => x.stock_ticket_id,
-                        principalTable: "stock_tickets",
-                        principalColumn: "stock_ticket_id",
+                        name: "purchase_order_items_purchase_order_id_fkey",
+                        column: x => x.purchase_order_id,
+                        principalTable: "purchase_orders",
+                        principalColumn: "purchase_order_id",
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -1652,6 +1189,154 @@ namespace MEP_Management_System.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "payments",
+                columns: table => new
+                {
+                    payment_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
+                    invoice_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    method = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    amount = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false),
+                    status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false, defaultValue: "Pending"),
+                    cash_received = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: true),
+                    change_amount = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: true),
+                    viet_qr_string = table.Column<string>(type: "text", nullable: true),
+                    qr_expired_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
+                    paid_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
+                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP"),
+                    branch_id = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("payments_pkey", x => x.payment_id);
+                    table.ForeignKey(
+                        name: "payments_invoice_id_fkey",
+                        column: x => x.invoice_id,
+                        principalTable: "invoices",
+                        principalColumn: "invoice_id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "receipts",
+                columns: table => new
+                {
+                    receipt_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
+                    receipt_code = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    invoice_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    html_content = table.Column<string>(type: "text", nullable: true),
+                    printed_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
+                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("receipts_pkey", x => x.receipt_id);
+                    table.ForeignKey(
+                        name: "receipts_invoice_id_fkey",
+                        column: x => x.invoice_id,
+                        principalTable: "invoices",
+                        principalColumn: "invoice_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "refund_records",
+                columns: table => new
+                {
+                    refund_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
+                    refund_code = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    order_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    invoice_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    customer_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    user_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    refund_amount = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false),
+                    refund_method = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false, defaultValue: "PENDING"),
+                    reason = table.Column<string>(type: "text", nullable: true),
+                    processed_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
+                    created_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("refund_records_pkey", x => x.refund_id);
+                    table.ForeignKey(
+                        name: "refund_records_customer_id_fkey",
+                        column: x => x.customer_id,
+                        principalTable: "customers",
+                        principalColumn: "customer_id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "refund_records_invoice_id_fkey",
+                        column: x => x.invoice_id,
+                        principalTable: "invoices",
+                        principalColumn: "invoice_id");
+                    table.ForeignKey(
+                        name: "refund_records_order_id_fkey",
+                        column: x => x.order_id,
+                        principalTable: "orders",
+                        principalColumn: "order_id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "refund_records_user_id_fkey",
+                        column: x => x.user_id,
+                        principalTable: "users",
+                        principalColumn: "user_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "invoice_items",
+                columns: table => new
+                {
+                    invoice_item_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
+                    invoice_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    branch_product_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    quantity = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false),
+                    sell_price = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false),
+                    SelectedUnit = table.Column<string>(type: "text", nullable: true),
+                    ConvertValue = table.Column<decimal>(type: "numeric", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("invoice_items_pkey", x => x.invoice_item_id);
+                    table.ForeignKey(
+                        name: "invoice_items_branch_product_id_fkey",
+                        column: x => x.branch_product_id,
+                        principalTable: "branch_products",
+                        principalColumn: "branch_product_id");
+                    table.ForeignKey(
+                        name: "invoice_items_invoice_id_fkey",
+                        column: x => x.invoice_id,
+                        principalTable: "invoices",
+                        principalColumn: "invoice_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "order_items",
+                columns: table => new
+                {
+                    order_item_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
+                    order_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    branch_product_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    quantity = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false),
+                    sell_price = table.Column<decimal>(type: "numeric(15,2)", precision: 15, scale: 2, nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("order_items_pkey", x => x.order_item_id);
+                    table.ForeignKey(
+                        name: "order_items_branch_product_id_fkey",
+                        column: x => x.branch_product_id,
+                        principalTable: "branch_products",
+                        principalColumn: "branch_product_id");
+                    table.ForeignKey(
+                        name: "order_items_order_id_fkey",
+                        column: x => x.order_id,
+                        principalTable: "orders",
+                        principalColumn: "order_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "return_items",
                 columns: table => new
                 {
@@ -1678,26 +1363,33 @@ namespace MEP_Management_System.Migrations
                         onDelete: ReferentialAction.Cascade);
                 });
 
-            migrationBuilder.CreateIndex(
-                name: "IX_order_discount_tiers_branch_id",
-                table: "order_discount_tiers",
-                column: "branch_id");
-
-            migrationBuilder.CreateIndex(
-                name: "invoices_invoice_code_key",
-                table: "invoices",
-                column: "invoice_code",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_invoices_order_id",
-                table: "invoices",
-                column: "order_id");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_invoices_user_id",
-                table: "invoices",
-                column: "user_id");
+            migrationBuilder.CreateTable(
+                name: "stock_ticket_items",
+                columns: table => new
+                {
+                    ticket_item_id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuid_generate_v4()"),
+                    stock_ticket_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    branch_product_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    system_quantity = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false),
+                    actual_quantity = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false),
+                    discrepancy = table.Column<decimal>(type: "numeric(10,2)", precision: 10, scale: 2, nullable: false),
+                    UnitPrice = table.Column<decimal>(type: "numeric", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("stock_ticket_items_pkey", x => x.ticket_item_id);
+                    table.ForeignKey(
+                        name: "stock_ticket_items_branch_product_id_fkey",
+                        column: x => x.branch_product_id,
+                        principalTable: "branch_products",
+                        principalColumn: "branch_product_id");
+                    table.ForeignKey(
+                        name: "stock_ticket_items_stock_ticket_id_fkey",
+                        column: x => x.stock_ticket_id,
+                        principalTable: "stock_tickets",
+                        principalColumn: "stock_ticket_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
 
             migrationBuilder.CreateIndex(
                 name: "IX_branch_products_product_id",
@@ -1716,37 +1408,6 @@ namespace MEP_Management_System.Migrations
                 column: "manager_user_id");
 
             migrationBuilder.CreateIndex(
-                name: "IX_comments_post_id",
-                table: "comments",
-                column: "post_id");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_comments_user_id",
-                table: "comments",
-                column: "user_id");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_community_categories_parent_id",
-                table: "community_categories",
-                column: "parent_id");
-
-            migrationBuilder.CreateIndex(
-                name: "ix_community_categories_slug",
-                table: "community_categories",
-                column: "slug",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_community_posts_category_id",
-                table: "community_posts",
-                column: "category_id");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_community_posts_user_id",
-                table: "community_posts",
-                column: "user_id");
-
-            migrationBuilder.CreateIndex(
                 name: "customers_phone_unique",
                 table: "customers",
                 column: "phone_number",
@@ -1761,11 +1422,6 @@ namespace MEP_Management_System.Migrations
                 name: "IX_customers_CreatedByUserUserId",
                 table: "customers",
                 column: "CreatedByUserUserId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_daily_summaries_branch_id",
-                table: "daily_summaries",
-                column: "branch_id");
 
             migrationBuilder.CreateIndex(
                 name: "expense_categories_category_name_key",
@@ -1907,14 +1563,21 @@ namespace MEP_Management_System.Migrations
                 column: "invoice_id");
 
             migrationBuilder.CreateIndex(
-                name: "IX_loyalty_transactions_customer_id",
-                table: "loyalty_transactions",
-                column: "customer_id");
+                name: "invoices_invoice_code_key",
+                table: "invoices",
+                column: "invoice_code",
+                unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_media_resources_post_id",
-                table: "media_resources",
-                column: "post_id");
+                name: "IX_invoices_order_id",
+                table: "invoices",
+                column: "order_id",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_invoices_user_id",
+                table: "invoices",
+                column: "user_id");
 
             migrationBuilder.CreateIndex(
                 name: "IX_media_resources_product_id",
@@ -1940,6 +1603,17 @@ namespace MEP_Management_System.Migrations
                 name: "IX_notifications_triggered_by_user_id",
                 table: "notifications",
                 column: "triggered_by_user_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_order_discount_tiers_branch_id",
+                table: "order_discount_tiers",
+                column: "branch_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_order_discount_tiers_min_order_value",
+                table: "order_discount_tiers",
+                column: "min_order_value",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_order_items_branch_product_id",
@@ -1984,6 +1658,12 @@ namespace MEP_Management_System.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "ix_product_attribute_types_type_name",
+                table: "product_attribute_types",
+                column: "type_name",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_product_attributes_product_id",
                 table: "product_attributes",
                 column: "product_id");
@@ -1992,6 +1672,27 @@ namespace MEP_Management_System.Migrations
                 name: "IX_product_conversion_units_product_id",
                 table: "product_conversion_units",
                 column: "product_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_product_locations_location_name",
+                table: "product_locations",
+                column: "location_name",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_product_taxonomies_branch_id",
+                table: "product_taxonomies",
+                column: "branch_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_products_BrandTaxonomyId",
+                table: "products",
+                column: "BrandTaxonomyId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_products_CategoryTaxonomyId",
+                table: "products",
+                column: "CategoryTaxonomyId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_products_created_by",
@@ -2012,32 +1713,6 @@ namespace MEP_Management_System.Migrations
                 name: "products_product_code_key",
                 table: "products",
                 column: "product_code",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_promotion_usages_customer_id",
-                table: "promotion_usages",
-                column: "customer_id");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_promotion_usages_invoice_id",
-                table: "promotion_usages",
-                column: "invoice_id");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_promotion_usages_promotion_id",
-                table: "promotion_usages",
-                column: "promotion_id");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_promotion_usages_user_id",
-                table: "promotion_usages",
-                column: "user_id");
-
-            migrationBuilder.CreateIndex(
-                name: "ix_promotions_code",
-                table: "promotions",
-                column: "promotion_code",
                 unique: true);
 
             migrationBuilder.CreateIndex(
@@ -2213,41 +1888,6 @@ namespace MEP_Management_System.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_store_approvals_reviewed_by",
-                table: "store_approvals",
-                column: "reviewed_by");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_store_approvals_user_id",
-                table: "store_approvals",
-                column: "user_id");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_supplier_ratings_created_by",
-                table: "supplier_ratings",
-                column: "created_by");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_supplier_ratings_purchase_order_id",
-                table: "supplier_ratings",
-                column: "purchase_order_id");
-
-            migrationBuilder.CreateIndex(
-                name: "ix_supplier_ratings_rated_at",
-                table: "supplier_ratings",
-                column: "rated_at");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_supplier_ratings_rated_by",
-                table: "supplier_ratings",
-                column: "rated_by");
-
-            migrationBuilder.CreateIndex(
-                name: "ix_supplier_ratings_supplier_id",
-                table: "supplier_ratings",
-                column: "supplier_id");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_SupplierPayments_created_by",
                 table: "SupplierPayments",
                 column: "created_by");
@@ -2329,67 +1969,11 @@ namespace MEP_Management_System.Migrations
                 table: "users",
                 column: "username",
                 unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_violation_reports_comment_id",
-                table: "violation_reports",
-                column: "comment_id");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_violation_reports_post_id",
-                table: "violation_reports",
-                column: "post_id");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_violation_reports_resolved_by",
-                table: "violation_reports",
-                column: "resolved_by");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_violation_reports_user_id",
-                table: "violation_reports",
-                column: "user_id");
-
-            migrationBuilder.AddForeignKey(
-                name: "invoices_order_id_fkey",
-                table: "invoices",
-                column: "order_id",
-                principalTable: "orders",
-                principalColumn: "order_id");
-
-            migrationBuilder.AddForeignKey(
-                name: "invoices_user_id_fkey",
-                table: "invoices",
-                column: "user_id",
-                principalTable: "users",
-                principalColumn: "user_id");
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_order_discount_tiers_branches_branch_id",
-                table: "order_discount_tiers",
-                column: "branch_id",
-                principalTable: "branches",
-                principalColumn: "branch_id");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropForeignKey(
-                name: "invoices_order_id_fkey",
-                table: "invoices");
-
-            migrationBuilder.DropForeignKey(
-                name: "invoices_user_id_fkey",
-                table: "invoices");
-
-            migrationBuilder.DropForeignKey(
-                name: "FK_order_discount_tiers_branches_branch_id",
-                table: "order_discount_tiers");
-
-            migrationBuilder.DropTable(
-                name: "daily_summaries");
-
             migrationBuilder.DropTable(
                 name: "expense_vouchers");
 
@@ -2403,13 +1987,13 @@ namespace MEP_Management_System.Migrations
                 name: "invoice_items");
 
             migrationBuilder.DropTable(
-                name: "loyalty_transactions");
-
-            migrationBuilder.DropTable(
                 name: "media_resources");
 
             migrationBuilder.DropTable(
                 name: "notifications");
+
+            migrationBuilder.DropTable(
+                name: "order_discount_tiers");
 
             migrationBuilder.DropTable(
                 name: "order_items");
@@ -2421,13 +2005,16 @@ namespace MEP_Management_System.Migrations
                 name: "payments");
 
             migrationBuilder.DropTable(
+                name: "product_attribute_types");
+
+            migrationBuilder.DropTable(
                 name: "product_attributes");
 
             migrationBuilder.DropTable(
                 name: "product_conversion_units");
 
             migrationBuilder.DropTable(
-                name: "promotion_usages");
+                name: "product_locations");
 
             migrationBuilder.DropTable(
                 name: "purchase_order_items");
@@ -2454,12 +2041,6 @@ namespace MEP_Management_System.Migrations
                 name: "stock_ticket_items");
 
             migrationBuilder.DropTable(
-                name: "store_approvals");
-
-            migrationBuilder.DropTable(
-                name: "supplier_ratings");
-
-            migrationBuilder.DropTable(
                 name: "SupplierPayments");
 
             migrationBuilder.DropTable(
@@ -2478,9 +2059,6 @@ namespace MEP_Management_System.Migrations
                 name: "user_roles");
 
             migrationBuilder.DropTable(
-                name: "violation_reports");
-
-            migrationBuilder.DropTable(
                 name: "expense_categories");
 
             migrationBuilder.DropTable(
@@ -2490,7 +2068,7 @@ namespace MEP_Management_System.Migrations
                 name: "inventory_check_tickets");
 
             migrationBuilder.DropTable(
-                name: "promotions");
+                name: "invoices");
 
             migrationBuilder.DropTable(
                 name: "return_orders");
@@ -2508,9 +2086,6 @@ namespace MEP_Management_System.Migrations
                 name: "roles");
 
             migrationBuilder.DropTable(
-                name: "comments");
-
-            migrationBuilder.DropTable(
                 name: "stock_tickets");
 
             migrationBuilder.DropTable(
@@ -2520,103 +2095,19 @@ namespace MEP_Management_System.Migrations
                 name: "products");
 
             migrationBuilder.DropTable(
-                name: "community_posts");
-
-            migrationBuilder.DropTable(
                 name: "customers");
 
             migrationBuilder.DropTable(
-                name: "suppliers");
+                name: "product_taxonomies");
 
             migrationBuilder.DropTable(
-                name: "community_categories");
+                name: "suppliers");
 
             migrationBuilder.DropTable(
                 name: "branches");
 
             migrationBuilder.DropTable(
                 name: "users");
-
-            migrationBuilder.DropIndex(
-                name: "IX_order_discount_tiers_branch_id",
-                table: "order_discount_tiers");
-
-            migrationBuilder.DropPrimaryKey(
-                name: "invoices_pkey",
-                table: "invoices");
-
-            migrationBuilder.DropIndex(
-                name: "invoices_invoice_code_key",
-                table: "invoices");
-
-            migrationBuilder.DropIndex(
-                name: "IX_invoices_order_id",
-                table: "invoices");
-
-            migrationBuilder.DropIndex(
-                name: "IX_invoices_user_id",
-                table: "invoices");
-
-            migrationBuilder.DropColumn(
-                name: "branch_id",
-                table: "order_discount_tiers");
-
-            migrationBuilder.DropColumn(
-                name: "invoice_id",
-                table: "invoices");
-
-            migrationBuilder.DropColumn(
-                name: "created_at",
-                table: "invoices");
-
-            migrationBuilder.DropColumn(
-                name: "held_at",
-                table: "invoices");
-
-            migrationBuilder.DropColumn(
-                name: "hold_note",
-                table: "invoices");
-
-            migrationBuilder.DropColumn(
-                name: "invoice_code",
-                table: "invoices");
-
-            migrationBuilder.DropColumn(
-                name: "note",
-                table: "invoices");
-
-            migrationBuilder.DropColumn(
-                name: "order_id",
-                table: "invoices");
-
-            migrationBuilder.DropColumn(
-                name: "payment_method",
-                table: "invoices");
-
-            migrationBuilder.DropColumn(
-                name: "status",
-                table: "invoices");
-
-            migrationBuilder.DropColumn(
-                name: "total_amount",
-                table: "invoices");
-
-            migrationBuilder.DropColumn(
-                name: "user_id",
-                table: "invoices");
-
-            migrationBuilder.RenameTable(
-                name: "invoices",
-                newName: "Invoice");
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "is_active",
-                table: "order_discount_tiers",
-                type: "boolean",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "boolean",
-                oldDefaultValue: true);
         }
     }
 }
