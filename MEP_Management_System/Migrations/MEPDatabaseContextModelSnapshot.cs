@@ -1029,7 +1029,8 @@ namespace MEP_Management_System.Migrations
                     b.HasKey("InvoiceId")
                         .HasName("invoices_pkey");
 
-                    b.HasIndex("OrderId");
+                    b.HasIndex("OrderId")
+                        .IsUnique();
 
                     b.HasIndex("UserId");
 
@@ -3661,8 +3662,9 @@ namespace MEP_Management_System.Migrations
             modelBuilder.Entity("MEP_Management_System.Models.Invoice", b =>
                 {
                     b.HasOne("MEP_Management_System.Models.Order", "Order")
-                        .WithMany("Invoices")
-                        .HasForeignKey("OrderId")
+                        .WithOne("Invoice")
+                        .HasForeignKey("MEP_Management_System.Models.Invoice", "OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("invoices_order_id_fkey");
 
@@ -4494,7 +4496,7 @@ namespace MEP_Management_System.Migrations
 
             modelBuilder.Entity("MEP_Management_System.Models.Order", b =>
                 {
-                    b.Navigation("Invoices");
+                    b.Navigation("Invoice");
 
                     b.Navigation("OrderItems");
 

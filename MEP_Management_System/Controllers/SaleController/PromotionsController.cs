@@ -85,7 +85,7 @@ public class PromotionsController : ControllerBase
     {
         var branchId = GetBranchId();
         var invoice = await _context.Invoices
-            .Include(i => i.Order).ThenInclude(o => o.Invoices)
+            .Include(i => i.Order).ThenInclude(o => o.Invoice)
             .FirstOrDefaultAsync(i => i.InvoiceId == invoiceId && i.Order.BranchId == branchId);
 
         if (invoice == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Invoice not found"));
