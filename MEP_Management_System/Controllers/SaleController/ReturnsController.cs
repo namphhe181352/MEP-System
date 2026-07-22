@@ -57,7 +57,7 @@ public class ReturnsController : ControllerBase
         var branchId = GetBranchId();
         var query = _context.ReturnOrders
             .Include(r => r.Order).ThenInclude(o => o!.Branch)
-            .Include(r => r.Order).ThenInclude(o => o!.Invoices) // để map InvoiceCode
+            .Include(r => r.Order).ThenInclude(o => o!.Invoice) // để map InvoiceCode
             .Include(r => r.Order).ThenInclude(o => o!.Customer) // để map CustomerName
             .Include(r => r.User)
             .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product)
@@ -102,7 +102,7 @@ public class ReturnsController : ControllerBase
         var branchId = GetBranchId();
         var r = await _context.ReturnOrders
             .Include(r => r.Order).ThenInclude(o => o!.Branch)
-            .Include(r => r.Order).ThenInclude(o => o!.Invoices)
+            .Include(r => r.Order).ThenInclude(o => o!.Invoice)
             .Include(r => r.User)
             .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product)
             .FirstOrDefaultAsync(r => r.ReturnOrderId == id && r.Order!.BranchId == branchId);
@@ -124,7 +124,7 @@ public class ReturnsController : ControllerBase
             // BR-81: tìm hóa đơn gốc
             var invoice = await _context.Invoices
                 .Include(i => i.Order).ThenInclude(o => o!.Branch)
-                .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct)
+                .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct).ThenInclude(bp => bp!.Product).ThenInclude(p => p!.CategoryTaxonomy)
                 .FirstOrDefaultAsync(i => i.InvoiceId == req.InvoiceId && i.Order!.BranchId == branchId);
 
             if (invoice == null) 
@@ -157,6 +157,94 @@ public class ReturnsController : ControllerBase
                 return BadRequest(ApiErrorResponse.Create("MSG-66", "Hóa đơn này đang có phiếu đổi trả đang xử lý."));
             }
 
+            // Kiểm tra có ít nhất một item trong hóa đơn được phép đổi/trả theo ReturnType
+            var config = await _context.SystemConfigs
+                .FirstOrDefaultAsync(c => c.BranchId == branchId && c.ConfigKey == "CATEGORY_RETURN_POLICIES");
+
+            List<CategoryPolicyDto>? categoryPolicies = null;
+            if (config != null && !string.IsNullOrWhiteSpace(config.ConfigValue))
+            {
+                try
+                {
+                    categoryPolicies = JsonSerializer.Deserialize<List<CategoryPolicyDto>>(config.ConfigValue,
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                }
+                catch { }
+            }
+
+            if (categoryPolicies == null || categoryPolicies.Count == 0)
+            {
+                Console.WriteLine("[Returns API 400]: Chưa có chính sách đổi/trả theo nhóm hàng.");
+                return BadRequest(ApiErrorResponse.Create("MSG-80",
+                    "Chưa có chính sách đổi/trả theo nhóm hàng. Vui lòng thiết lập trong phần Cài đặt trước khi thực hiện đổi/trả."));
+            }
+
+            var returnType = req.ReturnType?.ToUpper() ?? "REFUND";
+            var hasEligibleItem = false;
+            var ineligibleReasons = new List<string>();
+
+            foreach (var invoiceItem in invoice.InvoiceItems)
+            {
+                var product = invoiceItem.BranchProduct?.Product;
+                var categoryId = product?.CategoryTaxonomyId;
+
+                // Tìm policy — ưu tiên CategoryId, fallback CategoryName
+                CategoryPolicyDto? itemPolicy = null;
+                if (categoryId.HasValue)
+                {
+                    itemPolicy = categoryPolicies.FirstOrDefault(c =>
+                        c.CategoryId.HasValue && c.CategoryId.Value == categoryId.Value);
+                }
+                if (itemPolicy == null)
+                {
+                    var categoryName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName;
+                    if (!string.IsNullOrEmpty(categoryName))
+                    {
+                        itemPolicy = categoryPolicies.FirstOrDefault(c =>
+                            c.CategoryName != null && c.CategoryName.Equals(categoryName, StringComparison.OrdinalIgnoreCase));
+                    }
+                }
+
+                if (itemPolicy == null)
+                {
+                    var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(không xác định)";
+                    ineligibleReasons.Add($"\"{product?.ProductName}\" (nhóm \"{displayName}\"): chưa có chính sách");
+                    continue;
+                }
+
+                var policyAllowedDays = returnType == "EXCHANGE"
+                    ? itemPolicy.ExchangeDays
+                    : itemPolicy.ReturnDays;
+
+                if (!policyAllowedDays.HasValue || policyAllowedDays.Value <= 0)
+                {
+                    var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(không xác định)";
+                    ineligibleReasons.Add($"\"{product?.ProductName}\" (nhóm \"{displayName}\"): không được phép {(returnType == "EXCHANGE" ? "đổi" : "trả")}");
+                    continue;
+                }
+
+                var invoiceDate2 = invoice.CreatedAt ?? DateTime.UtcNow;
+                if (invoiceDate2.AddDays(policyAllowedDays.Value) >= DateTime.UtcNow)
+                {
+                    hasEligibleItem = true;
+                    break;
+                }
+                else
+                {
+                    var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(không xác định)";
+                    ineligibleReasons.Add($"\"{product?.ProductName}\" (nhóm \"{displayName}\"): đã quá hạn {policyAllowedDays} ngày");
+                }
+            }
+
+            if (!hasEligibleItem)
+            {
+                Console.WriteLine($"[Returns API 400]: Không có sản phẩm nào được phép {returnType}.");
+                return BadRequest(ApiErrorResponse.Create("MSG-80",
+                    $"Hóa đơn này không có sản phẩm nào được phép {(returnType == "EXCHANGE" ? "đổi" : "trả")}. " +
+                    string.Join("; ", ineligibleReasons.Take(3)) +
+                    (ineligibleReasons.Count > 3 ? $" (và {ineligibleReasons.Count - 3} sản phẩm khác)" : "")));
+            }
+
             var entity = new ReturnOrder
             {
                 ReturnOrderId = Guid.NewGuid(),
@@ -164,7 +252,7 @@ public class ReturnsController : ControllerBase
                 OrderId = invoice.OrderId,
                 UserId = userId,
                 RefundMethod = req.RefundMethod?.ToUpper() ?? "CASH",
-                ReturnType = req.ReturnType?.ToUpper() ?? "REFUND",
+                ReturnType = returnType,
                 Status = "Pending",
                 Note = req.Note,
                 CreatedAt = DateTime.UtcNow
@@ -217,61 +305,77 @@ public class ReturnsController : ControllerBase
         if (totalReturned + req.Quantity > totalBought)
             return BadRequest(ApiErrorResponse.Create("MSG-66", $"Số lượng trả vượt quá số lượng đã mua. Tối đa: {totalBought - totalReturned}"));
 
-        // Category-level policy check
+        // Category-level policy check — mỗi item được đánh giá độc lập theo categoryId
         var product = originalItems.First().BranchProduct?.Product;
         var config = await _context.SystemConfigs
             .FirstOrDefaultAsync(c => c.BranchId == branchId && c.ConfigKey == "CATEGORY_RETURN_POLICIES");
 
-        if (config != null && !string.IsNullOrWhiteSpace(config.ConfigValue))
-        {
-            // Có chính sách được cấu hình — enforce
-            List<CategoryPolicyDto>? categoryPolicies = null;
-            try
-            {
-                categoryPolicies = JsonSerializer.Deserialize<List<CategoryPolicyDto>>(config.ConfigValue,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            }
-            catch { }
-
-            var categoryName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName;
-
-            if (string.IsNullOrEmpty(categoryName))
-            {
-                return BadRequest(ApiErrorResponse.Create("MSG-80",
-                    "Sản phẩm không thuộc nhóm hàng nào, không được phép đổi/trả."));
-            }
-
-            var categoryPolicy = categoryPolicies?.FirstOrDefault(c =>
-                c.CategoryName != null && c.CategoryName.Equals(categoryName, StringComparison.OrdinalIgnoreCase));
-
-            if (categoryPolicy == null)
-            {
-                return BadRequest(ApiErrorResponse.Create("MSG-80",
-                    $"Sản phẩm thuộc nhóm \"{categoryName}\" không được phép {(ret.ReturnType == "EXCHANGE" ? "đổi" : "trả")}."));
-            }
-
-            var allowedDays = ret.ReturnType == "EXCHANGE"
-                ? categoryPolicy.ExchangeDays
-                : categoryPolicy.ReturnDays;
-
-            if (!allowedDays.HasValue || allowedDays.Value <= 0)
-            {
-                return BadRequest(ApiErrorResponse.Create("MSG-80",
-                    $"Sản phẩm thuộc nhóm \"{categoryName}\" không được phép {(ret.ReturnType == "EXCHANGE" ? "đổi" : "trả")}."));
-            }
-
-            var invoiceDate = originalItems.First().Invoice?.CreatedAt ?? DateTime.UtcNow;
-            if (invoiceDate.AddDays(allowedDays.Value) < DateTime.UtcNow)
-            {
-                return BadRequest(ApiErrorResponse.Create("MSG-79",
-                    $"Sản phẩm thuộc nhóm \"{categoryName}\" đã quá thời hạn {allowedDays} ngày. Không thể đổi trả."));
-            }
-        }
-        else
+        if (config == null || string.IsNullOrWhiteSpace(config.ConfigValue))
         {
             // Không có chính sách nào được cấu hình → không nhóm hàng nào được phép đổi/trả
             return BadRequest(ApiErrorResponse.Create("MSG-80",
                 "Chưa có chính sách đổi/trả theo nhóm hàng. Vui lòng thiết lập trong phần Cài đặt trước khi thực hiện đổi/trả."));
+        }
+
+        List<CategoryPolicyDto>? categoryPolicies = null;
+        try
+        {
+            categoryPolicies = JsonSerializer.Deserialize<List<CategoryPolicyDto>>(config.ConfigValue,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch { }
+
+        if (categoryPolicies == null || categoryPolicies.Count == 0)
+        {
+            return BadRequest(ApiErrorResponse.Create("MSG-80",
+                "Chưa có chính sách đổi/trả theo nhóm hàng. Vui lòng thiết lập trong phần Cài đặt trước khi thực hiện đổi/trả."));
+        }
+
+        // Bước 1: Match theo CategoryTaxonomyId (ưu tiên)
+        CategoryPolicyDto? categoryPolicy = null;
+        var categoryId = product?.CategoryTaxonomyId;
+
+        if (categoryId.HasValue)
+        {
+            categoryPolicy = categoryPolicies.FirstOrDefault(c =>
+                c.CategoryId.HasValue && c.CategoryId.Value == categoryId.Value);
+        }
+
+        // Bước 2: Fallback sang CategoryName nếu không match được bằng ID (dữ liệu legacy)
+        if (categoryPolicy == null)
+        {
+            var categoryName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName;
+            if (!string.IsNullOrEmpty(categoryName))
+            {
+                categoryPolicy = categoryPolicies.FirstOrDefault(c =>
+                    c.CategoryName != null && c.CategoryName.Equals(categoryName, StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
+        if (categoryPolicy == null)
+        {
+            var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(không xác định)";
+            return BadRequest(ApiErrorResponse.Create("MSG-80",
+                $"Sản phẩm \"{product?.ProductName}\" thuộc nhóm \"{displayName}\" không được phép {(ret.ReturnType == "EXCHANGE" ? "đổi" : "trả")}."));
+        }
+
+        var allowedDays = ret.ReturnType == "EXCHANGE"
+            ? categoryPolicy.ExchangeDays
+            : categoryPolicy.ReturnDays;
+
+        if (!allowedDays.HasValue || allowedDays.Value <= 0)
+        {
+            var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(không xác định)";
+            return BadRequest(ApiErrorResponse.Create("MSG-80",
+                $"Sản phẩm \"{product?.ProductName}\" thuộc nhóm \"{displayName}\" không được phép {(ret.ReturnType == "EXCHANGE" ? "đổi" : "trả")}."));
+        }
+
+        var invoiceDate = originalItems.First().Invoice?.CreatedAt ?? DateTime.UtcNow;
+        if (invoiceDate.AddDays(allowedDays.Value) < DateTime.UtcNow)
+        {
+            var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(không xác định)";
+            return BadRequest(ApiErrorResponse.Create("MSG-79",
+                $"Sản phẩm \"{product?.ProductName}\" thuộc nhóm \"{displayName}\" đã quá thời hạn {allowedDays} ngày. Không thể đổi trả."));
         }
 
         var avgPrice = originalItems.Sum(ii => ii.SellPrice * ii.Quantity) / totalBought;
@@ -384,5 +488,129 @@ public class ReturnsController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(new { message = "Đã hủy phiếu đổi trả." });
+    }
+
+    // GET /api/pos/returns/invoice/{invoiceId}/eligible-items
+    /// <summary>
+    /// Trả về danh sách sản phẩm trong hóa đơn kèm trạng thái được phép đổi/trả.
+    /// Mỗi item được đánh giá độc lập theo policy của category riêng.
+    /// </summary>
+    [HttpGet("invoice/{invoiceId:guid}/eligible-items")]
+    public async Task<ActionResult<InvoiceEligibilityResponse>> GetEligibleItems(Guid invoiceId)
+    {
+        var branchId = GetBranchId();
+
+        var invoice = await _context.Invoices
+            .Include(i => i.Order)
+            .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct).ThenInclude(bp => bp!.Product).ThenInclude(p => p!.CategoryTaxonomy)
+            .FirstOrDefaultAsync(i => i.InvoiceId == invoiceId && i.Order!.BranchId == branchId);
+
+        if (invoice == null)
+            return NotFound(ApiErrorResponse.Create("MSG-01", "Không tìm thấy hóa đơn."));
+
+        // Đọc category policies
+        List<CategoryPolicyDto>? categoryPolicies = null;
+        var config = await _context.SystemConfigs
+            .FirstOrDefaultAsync(c => c.BranchId == branchId && c.ConfigKey == "CATEGORY_RETURN_POLICIES");
+
+        if (config != null && !string.IsNullOrWhiteSpace(config.ConfigValue))
+        {
+            try
+            {
+                categoryPolicies = JsonSerializer.Deserialize<List<CategoryPolicyDto>>(config.ConfigValue,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch { }
+        }
+
+        var invoiceDate = invoice.CreatedAt ?? DateTime.UtcNow;
+        var items = new List<InvoiceItemEligibilityDto>();
+
+        foreach (var invoiceItem in invoice.InvoiceItems)
+        {
+            var product = invoiceItem.BranchProduct?.Product;
+            var categoryId = product?.CategoryTaxonomyId;
+            var categoryName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName;
+
+            // Tìm policy — ưu tiên CategoryId, fallback CategoryName
+            CategoryPolicyDto? itemPolicy = null;
+            if (categoryPolicies != null)
+            {
+                if (categoryId.HasValue)
+                {
+                    itemPolicy = categoryPolicies.FirstOrDefault(c =>
+                        c.CategoryId.HasValue && c.CategoryId.Value == categoryId.Value);
+                }
+                if (itemPolicy == null && !string.IsNullOrEmpty(categoryName))
+                {
+                    itemPolicy = categoryPolicies.FirstOrDefault(c =>
+                        c.CategoryName != null && c.CategoryName.Equals(categoryName, StringComparison.OrdinalIgnoreCase));
+                }
+            }
+
+            var eligibility = new InvoiceItemEligibilityDto
+            {
+                InvoiceItemId = invoiceItem.InvoiceItemId,
+                ProductId = product?.ProductId ?? Guid.Empty,
+                ProductName = product?.ProductName,
+                ProductCode = product?.ProductCode,
+                Barcode = product?.Barcode,
+                Unit = product?.BaseUnit,
+                Quantity = invoiceItem.Quantity,
+                UnitPrice = invoiceItem.SellPrice,
+                LineTotal = invoiceItem.Quantity * invoiceItem.SellPrice,
+                CategoryId = categoryId,
+                CategoryName = categoryName,
+            };
+
+            // Nếu không có policy → không được phép
+            if (itemPolicy == null)
+            {
+                eligibility.RefundAllowed = false;
+                eligibility.ExchangeAllowed = false;
+                eligibility.RestrictionReason = string.IsNullOrEmpty(categoryName)
+                    ? "Sản phẩm không thuộc nhóm hàng nào."
+                    : $"Nhóm hàng \"{categoryName}\" chưa được cấu hình chính sách đổi/trả.";
+            }
+            else
+            {
+                // Refund
+                if (itemPolicy.ReturnDays.HasValue && itemPolicy.ReturnDays.Value > 0)
+                {
+                    var refundDeadline = invoiceDate.AddDays(itemPolicy.ReturnDays.Value);
+                    if (refundDeadline >= DateTime.UtcNow)
+                    {
+                        eligibility.RefundAllowed = true;
+                        eligibility.RemainingRefundDays = (int)(refundDeadline - DateTime.UtcNow).TotalDays;
+                    }
+                }
+
+                // Exchange
+                if (itemPolicy.ExchangeDays.HasValue && itemPolicy.ExchangeDays.Value > 0)
+                {
+                    var exchangeDeadline = invoiceDate.AddDays(itemPolicy.ExchangeDays.Value);
+                    if (exchangeDeadline >= DateTime.UtcNow)
+                    {
+                        eligibility.ExchangeAllowed = true;
+                        eligibility.RemainingExchangeDays = (int)(exchangeDeadline - DateTime.UtcNow).TotalDays;
+                    }
+                }
+
+                if (!eligibility.RefundAllowed && !eligibility.ExchangeAllowed)
+                {
+                    eligibility.RestrictionReason = $"Nhóm hàng \"{categoryName}\" không được phép đổi/trả hoặc đã quá hạn.";
+                }
+            }
+
+            items.Add(eligibility);
+        }
+
+        return Ok(new InvoiceEligibilityResponse
+        {
+            InvoiceId = invoice.InvoiceId,
+            InvoiceCode = invoice.InvoiceCode,
+            InvoiceDate = invoice.CreatedAt,
+            Items = items
+        });
     }
 }
