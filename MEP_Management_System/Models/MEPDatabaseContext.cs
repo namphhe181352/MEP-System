@@ -23,14 +23,7 @@ public partial class MEPDatabaseContext : DbContext
     public virtual DbSet<InventoryCheckDetail> InventoryCheckDetails { get; set; }
     public virtual DbSet<InventoryTransferTicket> InventoryTransferTickets { get; set; }
     public virtual DbSet<InventoryTransferDetail> InventoryTransferDetails { get; set; }
-
-    public virtual DbSet<Comment> Comments { get; set; }
-
-    public virtual DbSet<CommunityCategory> CommunityCategories { get; set; }
-
-    public virtual DbSet<CommunityPost> CommunityPosts { get; set; }
-
-    public virtual DbSet<Customer> Customers { get; set; }
+public virtual DbSet<Customer> Customers { get; set; }
 
     public virtual DbSet<Invoice> Invoices { get; set; }
 
@@ -76,14 +69,8 @@ public partial class MEPDatabaseContext : DbContext
     public virtual DbSet<StockTicketItem> StockTicketItems { get; set; }
 
     public virtual DbSet<Supplier> Suppliers { get; set; }
-
-    public virtual DbSet<SupplierRating> SupplierRatings { get; set; }
-
-    public virtual DbSet<SystemConfig> SystemConfigs { get; set; }
-
-    public virtual DbSet<StoreApproval> StoreApprovals { get; set; }
-
-    public virtual DbSet<SystemLog> SystemLogs { get; set; }
+public virtual DbSet<SystemConfig> SystemConfigs { get; set; }
+public virtual DbSet<SystemLog> SystemLogs { get; set; }
 
     public virtual DbSet<SystemNotification> SystemNotifications { get; set; }
 
@@ -94,23 +81,11 @@ public partial class MEPDatabaseContext : DbContext
     public virtual DbSet<UserPermission> UserPermissions { get; set; }
 
     public virtual DbSet<Payment> Payments { get; set; }
-
-    public virtual DbSet<Promotion> Promotions { get; set; }
-
-    public virtual DbSet<PromotionUsage> PromotionUsages { get; set; }
-
-    public virtual DbSet<Shift> Shifts { get; set; }
-
-    public virtual DbSet<LoyaltyTransaction> LoyaltyTransactions { get; set; }
-
-    public virtual DbSet<RefundRecord> RefundRecords { get; set; }
+public virtual DbSet<Shift> Shifts { get; set; }
+public virtual DbSet<RefundRecord> RefundRecords { get; set; }
 
     public virtual DbSet<Receipt> Receipts { get; set; }
-
-    public virtual DbSet<DailySummary> DailySummaries { get; set; }
-
-    public virtual DbSet<ViolationReport> ViolationReports { get; set; }
-    public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
+public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
 
     // === EXPENSE MODULE ===
     public virtual DbSet<ExpenseCategory> ExpenseCategories { get; set; }
@@ -456,112 +431,8 @@ public partial class MEPDatabaseContext : DbContext
                 .HasConstraintName("inventory_check_details_counted_by_user_id_fkey");
         });
 
-        modelBuilder.Entity<Comment>(entity =>
-        {
-            entity.HasKey(e => e.CommentId).HasName("comments_pkey");
 
-            entity.ToTable("comments");
 
-            entity.Property(e => e.CommentId)
-                .HasDefaultValueSql("uuid_generate_v4()")
-                .HasColumnName("comment_id");
-            entity.Property(e => e.CommentText).HasColumnName("comment_text");
-            entity.Property(e => e.CreatedAt)
-                .HasDefaultValueSql("CURRENT_TIMESTAMP")
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("created_at");
-            entity.Property(e => e.PostId).HasColumnName("post_id");
-            entity.Property(e => e.UserId).HasColumnName("user_id");
-
-            entity.HasOne(d => d.Post).WithMany(p => p.Comments)
-                .HasForeignKey(d => d.PostId)
-                .HasConstraintName("comments_post_id_fkey");
-
-            entity.HasOne(d => d.User).WithMany(p => p.Comments)
-                .HasForeignKey(d => d.UserId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("comments_user_id_fkey");
-        });
-
-        modelBuilder.Entity<CommunityCategory>(entity =>
-        {
-            entity.HasKey(e => e.CategoryId).HasName("community_categories_pkey");
-
-            entity.ToTable("community_categories");
-
-            entity.Property(e => e.CategoryId)
-                .HasDefaultValueSql("uuid_generate_v4()")
-                .HasColumnName("category_id");
-            entity.Property(e => e.CategoryName)
-                .HasMaxLength(100)
-                .HasColumnName("category_name");
-            entity.Property(e => e.Description)
-                .HasMaxLength(255)
-                .HasColumnName("description");
-            entity.Property(e => e.IsArchived)
-                .HasDefaultValue(false)
-                .HasColumnName("is_archived");
-            entity.Property(e => e.SortOrder)
-                .HasDefaultValue(0)
-                .HasColumnName("sort_order");
-            entity.Property(e => e.Slug)
-                .HasMaxLength(255)
-                .HasColumnName("slug");
-            entity.HasIndex(e => e.Slug).IsUnique().HasDatabaseName("ix_community_categories_slug");
-            entity.Property(e => e.ParentId)
-                .HasColumnName("parent_id");
-
-            entity.HasOne(d => d.Parent).WithMany(p => p.Children)
-                .HasForeignKey(d => d.ParentId)
-                .OnDelete(DeleteBehavior.SetNull)
-                .HasConstraintName("community_categories_parent_id_fkey");
-        });
-
-        modelBuilder.Entity<CommunityPost>(entity =>
-        {
-            entity.HasKey(e => e.PostId).HasName("community_posts_pkey");
-
-            entity.ToTable("community_posts");
-
-            entity.Property(e => e.PostId)
-                .HasDefaultValueSql("uuid_generate_v4()")
-                .HasColumnName("post_id");
-            entity.Property(e => e.CategoryId).HasColumnName("category_id");
-            entity.Property(e => e.Content).HasColumnName("content");
-            entity.Property(e => e.CreatedAt)
-                .HasDefaultValueSql("CURRENT_TIMESTAMP")
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("created_at");
-            entity.Property(e => e.Title)
-                .HasMaxLength(255)
-                .HasColumnName("title");
-            entity.Property(e => e.UserId).HasColumnName("user_id");
-            entity.Property(e => e.Status)
-                .HasMaxLength(50)
-                .HasDefaultValue("ACTIVE")
-                .HasColumnName("status");
-            entity.Property(e => e.IsPinned)
-                .HasDefaultValue((short)0)
-                .HasColumnName("is_pinned");
-            entity.Property(e => e.ViewCount)
-                .HasDefaultValue(0)
-                .HasColumnName("view_count");
-            entity.Property(e => e.GroupBuyingTarget)
-                .HasColumnName("group_buying_target");
-            entity.Property(e => e.GroupBuyingPrice)
-                .HasPrecision(15, 2)
-                .HasColumnName("group_buying_price");
-
-            entity.HasOne(d => d.Category).WithMany(p => p.CommunityPosts)
-                .HasForeignKey(d => d.CategoryId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("community_posts_category_id_fkey");
-
-            entity.HasOne(d => d.User).WithMany(p => p.CommunityPosts)
-                .HasForeignKey(d => d.UserId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("community_posts_user_id_fkey");
-        });
 
         modelBuilder.Entity<Customer>(entity =>
         {
@@ -674,10 +545,13 @@ public partial class MEPDatabaseContext : DbContext
 
             entity.HasIndex(e => e.InvoiceCode, "invoices_invoice_code_key").IsUnique();
 
-            entity.HasOne(d => d.Order).WithMany(p => p.Invoices)
-                .HasForeignKey(d => d.OrderId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
+            entity.HasOne(d => d.Order).WithOne(p => p.Invoice)
+                .HasForeignKey<Invoice>(d => d.OrderId)
+                .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("invoices_order_id_fkey");
+
+            // Ensure 1-1 relationship: OrderId is unique in invoices table
+            entity.HasIndex(e => e.OrderId).IsUnique();
 
             entity.HasOne(d => d.User).WithMany(p => p.Invoices)
                 .HasForeignKey(d => d.UserId)
@@ -820,10 +694,6 @@ public partial class MEPDatabaseContext : DbContext
             entity.Property(e => e.PostId).HasColumnName("post_id");
             entity.Property(e => e.ProductId).HasColumnName("product_id");
 
-            entity.HasOne(d => d.Post).WithMany(p => p.MediaResources)
-                .HasForeignKey(d => d.PostId)
-                .OnDelete(DeleteBehavior.Cascade)
-                .HasConstraintName("media_resources_post_id_fkey");
 
             entity.HasOne(d => d.Product).WithMany(p => p.MediaResources)
                 .HasForeignKey(d => d.ProductId)
@@ -1464,56 +1334,6 @@ public partial class MEPDatabaseContext : DbContext
                 .HasConstraintName("suppliers_updated_by_fkey");
         });
 
-        modelBuilder.Entity<SupplierRating>(entity =>
-        {
-            entity.HasKey(e => e.RatingId).HasName("supplier_ratings_pkey");
-
-            entity.ToTable("supplier_ratings");
-
-            entity.Property(e => e.RatingId)
-                .HasDefaultValueSql("uuid_generate_v4()")
-                .HasColumnName("rating_id");
-            entity.Property(e => e.SupplierId).HasColumnName("supplier_id");
-            entity.Property(e => e.PurchaseOrderId).HasColumnName("purchase_order_id");
-            entity.Property(e => e.QualityScore).HasColumnName("quality_score");
-            entity.Property(e => e.DeliveryScore).HasColumnName("delivery_score");
-            entity.Property(e => e.PriceScore).HasColumnName("price_score");
-            entity.Property(e => e.ServiceScore).HasColumnName("service_score");
-            entity.Property(e => e.OverallRating)
-                .HasPrecision(3, 2)
-                .HasColumnName("overall_rating");
-            entity.Property(e => e.Comment).HasColumnName("comment");
-            entity.Property(e => e.RatedBy).HasColumnName("rated_by");
-            entity.Property(e => e.RatedAt)
-                .HasDefaultValueSql("CURRENT_TIMESTAMP")
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("rated_at");
-
-            entity.HasIndex(e => e.SupplierId, "ix_supplier_ratings_supplier_id");
-            entity.HasIndex(e => e.RatedAt, "ix_supplier_ratings_rated_at");
-
-            entity.HasOne(d => d.Supplier).WithMany(p => p.SupplierRatings)
-                .HasForeignKey(d => d.SupplierId)
-                .HasConstraintName("supplier_ratings_supplier_id_fkey");
-
-            entity.HasOne(d => d.PurchaseOrder).WithMany()
-                .HasForeignKey(d => d.PurchaseOrderId)
-                .OnDelete(DeleteBehavior.SetNull)
-                .HasConstraintName("supplier_ratings_po_id_fkey");
-
-            entity.HasOne(d => d.RatedByUser).WithMany()
-                .HasForeignKey(d => d.RatedBy)
-                .OnDelete(DeleteBehavior.SetNull)
-                .HasConstraintName("supplier_ratings_rated_by_fkey");
-
-            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
-
-            entity.HasOne(d => d.CreatedByUser)
-                .WithMany()
-                .HasForeignKey(d => d.CreatedBy)
-                .OnDelete(DeleteBehavior.SetNull)
-                .HasConstraintName("supplier_ratings_created_by_fkey");
-        });
 
         modelBuilder.Entity<SystemConfig>(entity =>
         {
@@ -1667,55 +1487,6 @@ public partial class MEPDatabaseContext : DbContext
                     });
         });
 
-        modelBuilder.Entity<ViolationReport>(entity =>
-        {
-            entity.HasKey(e => e.ReportId).HasName("violation_reports_pkey");
-
-            entity.ToTable("violation_reports");
-
-            entity.Property(e => e.ReportId)
-                .HasDefaultValueSql("uuid_generate_v4()")
-                .HasColumnName("report_id");
-            entity.Property(e => e.CommentId).HasColumnName("comment_id");
-            entity.Property(e => e.CreatedAt)
-                .HasDefaultValueSql("CURRENT_TIMESTAMP")
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("created_at");
-            entity.Property(e => e.PostId).HasColumnName("post_id");
-            entity.Property(e => e.Reason)
-                .HasMaxLength(255)
-                .HasColumnName("reason");
-            entity.Property(e => e.Status)
-                .HasMaxLength(50)
-                .HasDefaultValueSql("'PENDING'::character varying")
-                .HasColumnName("status");
-            entity.Property(e => e.UserId).HasColumnName("user_id");
-            entity.Property(e => e.ResolvedBy).HasColumnName("resolved_by");
-            entity.Property(e => e.ResolvedAt)
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("resolved_at");
-            entity.Property(e => e.AdminNote).HasColumnName("admin_note");
-
-            entity.HasOne(d => d.Comment).WithMany(p => p.ViolationReports)
-                .HasForeignKey(d => d.CommentId)
-                .OnDelete(DeleteBehavior.Cascade)
-                .HasConstraintName("violation_reports_comment_id_fkey");
-
-            entity.HasOne(d => d.Post).WithMany(p => p.ViolationReports)
-                .HasForeignKey(d => d.PostId)
-                .OnDelete(DeleteBehavior.Cascade)
-                .HasConstraintName("violation_reports_post_id_fkey");
-
-            entity.HasOne(d => d.User).WithMany(p => p.ViolationReports)
-                .HasForeignKey(d => d.UserId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("violation_reports_user_id_fkey");
-
-            entity.HasOne(d => d.ResolvedByUser).WithMany()
-                .HasForeignKey(d => d.ResolvedBy)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("violation_reports_resolved_by_fkey");
-        });
 
         // LƯU Ý: Seed data đã được InsertData trực tiếp trong migration file
         // 20260615000000_FullMEPInitialSchema.cs. Toàn bộ seed data đầy đủ
@@ -1821,55 +1592,6 @@ public partial class MEPDatabaseContext : DbContext
                 .HasConstraintName("notifications_branch_id_fkey");
         });
 
-        modelBuilder.Entity<StoreApproval>(entity =>
-        {
-            entity.HasKey(e => e.ApprovalId).HasName("store_approvals_pkey");
-
-            entity.ToTable("store_approvals");
-
-            entity.Property(e => e.ApprovalId)
-                .HasDefaultValueSql("uuid_generate_v4()")
-                .HasColumnName("approval_id");
-            entity.Property(e => e.UserId).HasColumnName("user_id");
-            entity.Property(e => e.StoreName)
-                .HasMaxLength(200)
-                .HasColumnName("store_name");
-            entity.Property(e => e.BusinessLicense)
-                .HasMaxLength(100)
-                .HasColumnName("business_license");
-            entity.Property(e => e.TaxCode)
-                .HasMaxLength(50)
-                .HasColumnName("tax_code");
-            entity.Property(e => e.StoreAddress)
-                .HasMaxLength(255)
-                .HasColumnName("store_address");
-            entity.Property(e => e.DocumentUrls).HasColumnName("document_urls");
-            entity.Property(e => e.Status)
-                .HasMaxLength(50)
-                .HasDefaultValue("PENDING")
-                .HasColumnName("status");
-            entity.Property(e => e.RejectReason)
-                .HasMaxLength(500)
-                .HasColumnName("reject_reason");
-            entity.Property(e => e.ReviewedBy).HasColumnName("reviewed_by");
-            entity.Property(e => e.ReviewedAt)
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("reviewed_at");
-            entity.Property(e => e.CreatedAt)
-                .HasDefaultValueSql("CURRENT_TIMESTAMP")
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("created_at");
-
-            entity.HasOne(d => d.User).WithMany(p => p.StoreApprovals)
-                .HasForeignKey(d => d.UserId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("store_approvals_user_id_fkey");
-
-            entity.HasOne(d => d.ReviewedByUser).WithMany()
-                .HasForeignKey(d => d.ReviewedBy)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("store_approvals_reviewed_by_fkey");
-        });
 
 
         // Payment fluent API
@@ -1915,84 +1637,8 @@ public partial class MEPDatabaseContext : DbContext
         });
 
         // Promotion fluent API
-        modelBuilder.Entity<Promotion>(entity =>
-        {
-            entity.HasKey(e => e.PromotionId).HasName("promotions_pkey");
-            entity.ToTable("promotions");
-            entity.Property(e => e.PromotionId)
-                .HasDefaultValueSql("uuid_generate_v4()")
-                .HasColumnName("promotion_id");
-            entity.Property(e => e.PromotionCode)
-                .HasMaxLength(50)
-                .HasColumnName("promotion_code");
-            entity.Property(e => e.Name)
-                .HasMaxLength(100)
-                .HasColumnName("name");
-            entity.Property(e => e.Description).HasColumnName("description");
-            entity.Property(e => e.DiscountType)
-                .HasMaxLength(50)
-                .HasColumnName("discount_type");
-            entity.Property(e => e.DiscountValue)
-                .HasPrecision(15, 2)
-                .HasColumnName("discount_value");
-            entity.Property(e => e.MinOrderAmount)
-                .HasPrecision(15, 2)
-                .HasColumnName("min_order_amount");
-            entity.Property(e => e.MaxDiscountAmount)
-                .HasPrecision(15, 2)
-                .HasColumnName("max_discount_amount");
-            entity.Property(e => e.StartDate)
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("start_date");
-            entity.Property(e => e.EndDate)
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("end_date");
-            entity.Property(e => e.UsageLimit).HasColumnName("usage_limit");
-            entity.Property(e => e.UsedCount)
-                .HasDefaultValue(0)
-                .HasColumnName("used_count");
-            entity.Property(e => e.IsActive)
-                .HasDefaultValue(true)
-                .HasColumnName("is_active");
-            entity.Property(e => e.CreatedAt)
-                .HasDefaultValueSql("CURRENT_TIMESTAMP")
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("created_at");
-            entity.HasIndex(e => e.PromotionCode).IsUnique().HasDatabaseName("ix_promotions_code");
-        });
 
         // PromotionUsage fluent API
-        modelBuilder.Entity<PromotionUsage>(entity =>
-        {
-            entity.HasKey(e => e.UsageId).HasName("promotion_usages_pkey");
-            entity.ToTable("promotion_usages");
-            entity.Property(e => e.UsageId)
-                .HasDefaultValueSql("uuid_generate_v4()")
-                .HasColumnName("usage_id");
-            entity.Property(e => e.PromotionId).HasColumnName("promotion_id");
-            entity.Property(e => e.InvoiceId).HasColumnName("invoice_id");
-            entity.Property(e => e.CustomerId).HasColumnName("customer_id");
-            entity.Property(e => e.UserId).HasColumnName("user_id");
-            entity.Property(e => e.DiscountAmount)
-                .HasPrecision(15, 2)
-                .HasColumnName("discount_amount");
-            entity.Property(e => e.UsedAt)
-                .HasDefaultValueSql("CURRENT_TIMESTAMP")
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("used_at");
-            entity.HasOne(d => d.Promotion).WithMany(p => p.PromotionUsages)
-                .HasForeignKey(d => d.PromotionId)
-                .HasConstraintName("promotion_usages_promotion_id_fkey");
-            entity.HasOne(d => d.Invoice).WithMany()
-                .HasForeignKey(d => d.InvoiceId)
-                .HasConstraintName("promotion_usages_invoice_id_fkey");
-            entity.HasOne(d => d.Customer).WithMany()
-                .HasForeignKey(d => d.CustomerId)
-                .HasConstraintName("promotion_usages_customer_id_fkey");
-            entity.HasOne(d => d.User).WithMany()
-                .HasForeignKey(d => d.UserId)
-                .HasConstraintName("promotion_usages_user_id_fkey");
-        });
 
         // Shift fluent API
         modelBuilder.Entity<Shift>(entity =>
@@ -2047,31 +1693,6 @@ public partial class MEPDatabaseContext : DbContext
         });
 
         // LoyaltyTransaction fluent API
-        modelBuilder.Entity<LoyaltyTransaction>(entity =>
-        {
-            entity.HasKey(e => e.TransactionId).HasName("loyalty_transactions_pkey");
-            entity.ToTable("loyalty_transactions");
-            entity.Property(e => e.TransactionId)
-                .HasDefaultValueSql("uuid_generate_v4()")
-                .HasColumnName("transaction_id");
-            entity.Property(e => e.CustomerId).HasColumnName("customer_id");
-            entity.Property(e => e.Points).HasColumnName("points");
-            entity.Property(e => e.TransactionType)
-                .HasMaxLength(50)
-                .HasColumnName("transaction_type");
-            entity.Property(e => e.ReferenceType)
-                .HasMaxLength(50)
-                .HasColumnName("reference_type");
-            entity.Property(e => e.ReferenceId).HasColumnName("reference_id");
-            entity.Property(e => e.Description).HasColumnName("description");
-            entity.Property(e => e.CreatedAt)
-                .HasDefaultValueSql("CURRENT_TIMESTAMP")
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("created_at");
-            entity.HasOne(d => d.Customer).WithMany(p => p.LoyaltyTransactions)
-                .HasForeignKey(d => d.CustomerId)
-                .HasConstraintName("loyalty_transactions_customer_id_fkey");
-        });
 
         // RefundRecord fluent API
         modelBuilder.Entity<RefundRecord>(entity =>
@@ -2148,56 +1769,6 @@ public partial class MEPDatabaseContext : DbContext
         });
 
         // DailySummary fluent API
-        modelBuilder.Entity<DailySummary>(entity =>
-        {
-            entity.HasKey(e => e.SummaryId).HasName("daily_summaries_pkey");
-            entity.ToTable("daily_summaries");
-            entity.Property(e => e.SummaryId)
-                .HasDefaultValueSql("uuid_generate_v4()")
-                .HasColumnName("summary_id");
-            entity.Property(e => e.BranchId).HasColumnName("branch_id");
-            entity.Property(e => e.SummaryDate)
-                .HasColumnType("date")
-                .HasColumnName("summary_date");
-            entity.Property(e => e.TotalRevenue)
-                .HasPrecision(15, 2)
-                .HasDefaultValue(0m)
-                .HasColumnName("total_revenue");
-            entity.Property(e => e.TotalOrders)
-                .HasDefaultValue(0)
-                .HasColumnName("total_orders");
-            entity.Property(e => e.TotalRefunds)
-                .HasPrecision(15, 2)
-                .HasDefaultValue(0m)
-                .HasColumnName("total_refunds");
-            entity.Property(e => e.TotalCash)
-                .HasPrecision(15, 2)
-                .HasDefaultValue(0m)
-                .HasColumnName("total_cash");
-            entity.Property(e => e.TotalTransfer)
-                .HasPrecision(15, 2)
-                .HasDefaultValue(0m)
-                .HasColumnName("total_transfer");
-            entity.Property(e => e.TotalDebt)
-                .HasPrecision(15, 2)
-                .HasDefaultValue(0m)
-                .HasColumnName("total_debt");
-            entity.Property(e => e.OpeningCash)
-                .HasPrecision(15, 2)
-                .HasDefaultValue(0m)
-                .HasColumnName("opening_cash");
-            entity.Property(e => e.ClosingCash)
-                .HasPrecision(15, 2)
-                .HasDefaultValue(0m)
-                .HasColumnName("closing_cash");
-            entity.Property(e => e.CreatedAt)
-                .HasDefaultValueSql("CURRENT_TIMESTAMP")
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("created_at");
-            entity.HasOne(d => d.Branch).WithMany(p => p.DailySummaries)
-                .HasForeignKey(d => d.BranchId)
-                .HasConstraintName("daily_summaries_branch_id_fkey");
-        });
 
 
         OnModelCreatingPartial(modelBuilder);
@@ -2452,3 +2023,5 @@ public partial class MEPDatabaseContext : DbContext
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder);
 }
+
+

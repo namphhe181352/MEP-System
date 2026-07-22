@@ -428,98 +428,9 @@ public static class DatabaseSeeder
         await context.SaveChangesAsync();
 
         // ============================================================
-        // 9. COMMUNITY CATEGORIES (5 chuyên mục diễn đàn)
-        // ============================================================
-        var communityCategories = new[]
-        {
-            new { Name = "Chia sẻ nguồn hàng Kim Khí", Desc = "Nơi các đại lý chia sẻ nguồn cung ứng kim khí, sắt thép" },
-            new { Name = "Thiết bị Điện & Chiếu sáng", Desc = "Trao đổi về thiết bị điện, đèn LED, dây cáp" },
-            new { Name = "Ống nước & Phụ kiện", Desc = "Chia sẻ thông tin về ống nước, phụ kiện PVC, vòi sen" },
-            new { Name = "Dụng cụ cầm tay", Desc = "Bàn luận về máy khoan, tua vít, thước kéo" },
-            new { Name = "Gom đơn (Group Buying)", Desc = "Tổ chức gom đơn hàng loạt để có giá tốt từ NCC" }
-        };
-        var categoryEntities = new List<CommunityCategory>();
-        foreach (var cat in communityCategories)
-        {
-            var entity = new CommunityCategory
-            {
-                CategoryId = Guid.NewGuid(),
-                CategoryName = cat.Name,
-                Description = cat.Desc
-            };
-            categoryEntities.Add(entity);
-            await context.CommunityCategories.AddAsync(entity);
-        }
-        await context.SaveChangesAsync();
+
 
         // ============================================================
-        // 10. COMMUNITY POSTS (8 bài viết mẫu)
-        // ============================================================
-        var posts = new (string Title, string Content, Guid AuthorId, int CategoryIndex, short IsPinned, string Status, int ViewCount, bool IsGroupBuying, int? GbTarget, decimal? GbPrice)[]
-        {
-            ("[Hà Nội] Cần tìm nguồn thép cuộn CB240 giá tốt", "Mình đang cần mua 50 tấn thép cuộn CB240, ai có nguồn giá tốt inbox nhé. Yêu cầu có CO/CQ đầy đủ.", Guid.Parse("20000000-0000-0000-0000-00000000000A"), 0, (short)1, "ACTIVE", 245, true, 50, 14500000m),
-            ("Chia sẻ: Kinh nghiệm chọn máy khoan cho thợ bán chuyên", "Sau 5 năm dùng máy khoan, mình thấy Bosch và Stanley là 2 dòng đáng tin nhất. Bài viết chia sẻ chi tiết...", Guid.Parse("20000000-0000-0000-0000-00000000000B"), 3, (short)0, "ACTIVE", 89, false, null, null),
-            ("[Group Buying] Gom đơn dây điện Cadivi 2x1.5 - 100 cuộn", "Tổ chức gom 100 cuộn dây Cadivi 2x1.5 giá 1.020.000đ/cuộn. Đóng tiền trước 30%. Đạt mục tiêu 100 cuộn sẽ chốt đơn.", Guid.Parse("20000000-0000-0000-0000-00000000000C"), 4, (short)1, "ACTIVE", 412, true, 100, 1020000m),
-            ("Cảnh báo: Ống PVC Bình Minh giả tràn lan trên thị trường", "Mình vừa mua phải ống PVC giả, bao bì in nhái logo Bình Minh. Mọi người chú ý chỉ mua ở đại lý chính hãng...", Guid.Parse("20000000-0000-0000-0000-00000000000A"), 2, (short)0, "ACTIVE", 678, false, null, null),
-            ("Review đèn LED Rạng Đông 9W - đáng đồng tiền?", "Mua về test thực tế 1 tháng, so sánh với Điện Quang và Panasonic. Kết quả khá bất ngờ...", Guid.Parse("20000000-0000-0000-0000-00000000000B"), 1, (short)0, "ACTIVE", 156, false, null, null),
-            ("[Đã chốt] Tìm được nguồn vòi nước inox 304 giá xưởng", "Update: đã chốt đơn 200 vòi với giá 195.000đ/cái từ nhà máy Bình Dương. Cảm ơn anh em đã hỗ trợ!", Guid.Parse("20000000-0000-0000-0000-00000000000C"), 2, (short)0, "LOCKED", 234, false, null, null),
-            ("Hỏi: Aptomat chống giật loại nào tốt cho gia đình?", "Mình đang phân vân giữa Panasonic và Schneider. Anh em tư vấn giúp với.", Guid.Parse("20000000-0000-0000-0000-00000000000A"), 1, (short)0, "ACTIVE", 92, false, null, null),
-            ("[HCM] Bán thanh lý 50 cuộn dây điện Cadivi tồn kho", "Cửa hàng mình chuyển mặt hàng, cần thanh lý 50 cuộn dây điện Cadivi còn mới 95%. Giá 880.000đ/cuộn.", Guid.Parse("20000000-0000-0000-0000-00000000000B"), 1, (short)0, "HIDDEN", 18, false, null, null)
-        };
-        foreach (var p in posts)
-        {
-            await context.CommunityPosts.AddAsync(new CommunityPost
-            {
-                PostId = Guid.NewGuid(),
-                CategoryId = categoryEntities[p.CategoryIndex].CategoryId,
-                UserId = p.AuthorId,
-                Title = p.Title,
-                Content = p.Content,
-                Status = p.Status,
-                IsPinned = p.IsPinned,
-                ViewCount = p.ViewCount,
-                GroupBuyingTarget = p.GbTarget,
-                GroupBuyingPrice = p.GbPrice,
-                CreatedAt = SeedTime.AddDays(-new Random(p.Title.GetHashCode()).Next(1, 30))
-            });
-        }
-        await context.SaveChangesAsync();
-
-        // ============================================================
-        // 11. COMMENTS (15 comments mẫu)
-        // ============================================================
-        var firstPost = await context.CommunityPosts.OrderBy(p => p.CreatedAt).FirstAsync();
-        var secondPost = await context.CommunityPosts.OrderBy(p => p.CreatedAt).Skip(1).FirstAsync();
-        var comments = new[]
-        {
-            new { PostId = firstPost.PostId, UserId = Guid.Parse("20000000-0000-0000-0000-00000000000B"), Text = "Mình có nguồn Hòa Phát, inbox mình nhé." },
-            new { PostId = firstPost.PostId, UserId = Guid.Parse("20000000-0000-0000-0000-00000000000C"), Text = "Đang có 30 tấn CB240 tại kho Bình Dương, giá 14.6tr/tấn." },
-            new { PostId = firstPost.PostId, UserId = Guid.Parse("20000000-0000-0000-0000-00000000000A"), Text = "Cảm ơn 2 bạn, mình inbox chi tiết." },
-            new { PostId = firstPost.PostId, UserId = Guid.Parse("20000000-0000-0000-0000-00000000000B"), Text = "Lưu ý: thép Hòa Phát phải có tem chính hãng nhé bạn." },
-            new { PostId = secondPost.PostId, UserId = Guid.Parse("20000000-0000-0000-0000-00000000000A"), Text = "Bài viết rất chi tiết, mình đang phân vân mua máy khoan." },
-            new { PostId = secondPost.PostId, UserId = Guid.Parse("20000000-0000-0000-0000-00000000000C"), Text = "Mình dùng Bosch 5 năm rồi, rất bền." },
-            new { PostId = secondPost.PostId, UserId = Guid.Parse("20000000-0000-0000-0000-00000000000B"), Text = "Stanley giá mềm hơn mà vẫn ok." },
-            new { PostId = secondPost.PostId, UserId = Guid.Parse("20000000-0000-0000-0000-00000000000A"), Text = "Cảm ơn bạn, mình quyết định mua Bosch GBM 13RE." },
-            new { PostId = firstPost.PostId, UserId = Guid.Parse("20000000-0000-0000-0000-00000000000C"), Text = "Update: đã chốt được nguồn 14.4tr/tấn từ Formosa." },
-            new { PostId = secondPost.PostId, UserId = Guid.Parse("20000000-0000-0000-0000-00000000000B"), Text = "Pin lithium hay pin đây bạn?" },
-            new { PostId = firstPost.PostId, UserId = Guid.Parse("20000000-0000-0000-0000-00000000000A"), Text = "Rep bạn: thép cuộn, có CO/CQ nhé." },
-            new { PostId = secondPost.PostId, UserId = Guid.Parse("20000000-0000-0000-0000-00000000000C"), Text = "Pin đây 12V, 2 cục pin + sạc." },
-            new { PostId = firstPost.PostId, UserId = Guid.Parse("20000000-0000-0000-0000-00000000000B"), Text = "Bạn mua xong nhớ review cho anh em nhé." },
-            new { PostId = secondPost.PostId, UserId = Guid.Parse("20000000-0000-0000-0000-00000000000A"), Text = "Pin 2 cụp thì xài thoải mái rồi." },
-            new { PostId = firstPost.PostId, UserId = Guid.Parse("20000000-0000-0000-0000-00000000000C"), Text = "Đóng deal thành công rồi anh em ơi, cảm ơn forum!" }
-        };
-        foreach (var c in comments)
-        {
-            await context.Comments.AddAsync(new Comment
-            {
-                CommentId = Guid.NewGuid(),
-                PostId = c.PostId,
-                UserId = c.UserId,
-                CommentText = c.Text,
-                CreatedAt = SeedTime.AddDays(-new Random(c.Text.GetHashCode()).Next(1, 25))
-            });
-        }
-        await context.SaveChangesAsync();
 
         // ============================================================
         // 12. ORDERS + INVOICES (5 đơn hàng mẫu - test POS flow)
@@ -663,40 +574,6 @@ public static class DatabaseSeeder
         }
         await context.SaveChangesAsync();
 
-        // ============================================================
-        // 15. VIOLATION REPORTS (2 report mẫu)
-        // ============================================================
-        var hiddenPost = await context.CommunityPosts.Where(p => p.Status == "HIDDEN").FirstOrDefaultAsync();
-        if (hiddenPost != null)
-        {
-            await context.ViolationReports.AddAsync(new ViolationReport
-            {
-                ReportId = Guid.NewGuid(),
-                PostId = hiddenPost.PostId,
-                UserId = Guid.Parse("20000000-0000-0000-0000-00000000000A"),
-                Reason = "Spam quảng cáo sản phẩm không liên quan",
-                Status = "RESOLVED",
-                ResolvedBy = Guid.Parse("20000000-0000-0000-0000-000000000001"),
-                ResolvedAt = SeedTime.AddDays(-2),
-                AdminNote = "Đã ẩn bài viết và cảnh cáo tác giả",
-                CreatedAt = SeedTime.AddDays(-3)
-            });
-        }
-        // 1 report PENDING
-        var firstActivePost = await context.CommunityPosts.Where(p => p.Status == "ACTIVE").OrderBy(p => p.CreatedAt).FirstAsync();
-        await context.ViolationReports.AddAsync(new ViolationReport
-        {
-            ReportId = Guid.NewGuid(),
-            PostId = firstActivePost.PostId,
-            UserId = Guid.Parse("20000000-0000-0000-0000-00000000000B"),
-            Reason = "Giá ảo, có dấu hiệu phá giá thị trường",
-            Status = "PENDING",
-            ResolvedBy = null,
-            ResolvedAt = null,
-            AdminNote = null,
-            CreatedAt = SeedTime.AddDays(-1)
-        });
-        await context.SaveChangesAsync();
 
         // ============================================================
         // 16. SYSTEM LOGS (5 log mẫu)
@@ -777,143 +654,7 @@ public static class DatabaseSeeder
         );
         await context.SaveChangesAsync();
 
-        // ============================================================
-        // 18. STORE APPROVALS (5 store approval mẫu)
-        // ============================================================
-        // Create some pending owner registrations
-        var communityUsers = await context.Users
-            .Include(u => u.Roles)
-            .Where(u => u.Roles.Any(r => r.RoleName == "CommunityUser"))
-            .Take(3)
-            .ToListAsync();
 
-        await context.StoreApprovals.AddRangeAsync(
-            new StoreApproval
-            {
-                ApprovalId = Guid.NewGuid(),
-                UserId = communityUsers.ElementAtOrDefault(0)?.UserId ?? Guid.NewGuid(),
-                StoreName = "Vật Tư Điện Bắc Ninh",
-                BusinessLicense = "BN-00123456",
-                TaxCode = "2400123456",
-                StoreAddress = "123 Đường Trần Hưng Đạo, TP Bắc Ninh, Bắc Ninh",
-                DocumentUrls = "[]",
-                Status = "PENDING",
-                CreatedAt = SeedTime.AddDays(-3)
-            },
-            new StoreApproval
-            {
-                ApprovalId = Guid.NewGuid(),
-                UserId = communityUsers.ElementAtOrDefault(1)?.UserId ?? Guid.NewGuid(),
-                StoreName = "Thiết Bị Điện Miền Trung",
-                BusinessLicense = "HN-00876543",
-                TaxCode = "0108123456",
-                StoreAddress = "45 Lê Lợi, TP Đà Nẵng",
-                DocumentUrls = "[]",
-                Status = "PENDING",
-                CreatedAt = SeedTime.AddDays(-2)
-            },
-            new StoreApproval
-            {
-                ApprovalId = Guid.NewGuid(),
-                UserId = communityUsers.ElementAtOrDefault(2)?.UserId ?? Guid.NewGuid(),
-                StoreName = "Cấp Nước Sạch Sài Gòn",
-                BusinessLicense = "HCM-00112233",
-                TaxCode = "0312456789",
-                StoreAddress = "78 Nguyễn Trãi, Quận 5, TP.HCM",
-                DocumentUrls = "[]",
-                Status = "PENDING",
-                CreatedAt = SeedTime.AddDays(-1)
-            },
-            new StoreApproval
-            {
-                ApprovalId = Guid.NewGuid(),
-                UserId = ownerBac,
-                StoreName = "Vật Tư Xây Dựng Trần Bắc",
-                BusinessLicense = "HN-00123457",
-                TaxCode = "0101122334",
-                StoreAddress = "12 Hoàng Quốc Việt, Cầu Giấy, Hà Nội",
-                DocumentUrls = "[]",
-                Status = "APPROVED",
-                ReviewedBy = adminId,
-                ReviewedAt = SeedTime.AddDays(-5),
-                CreatedAt = SeedTime.AddDays(-7)
-            },
-            new StoreApproval
-            {
-                ApprovalId = Guid.NewGuid(),
-                UserId = Guid.NewGuid(),
-                StoreName = "Điện Lạnh Gia Lai",
-                BusinessLicense = "GL-00000001",
-                TaxCode = "5901234567",
-                StoreAddress = "90 Lê Duẩn, TP Pleiku, Gia Lai",
-                DocumentUrls = "[]",
-                Status = "REJECTED",
-                RejectReason = "Giấy phép kinh doanh không hợp lệ. Vui lòng tải lên giấy phép mới.",
-                ReviewedBy = adminId,
-                ReviewedAt = SeedTime.AddDays(-4),
-                CreatedAt = SeedTime.AddDays(-6)
-            }
-        );
-        await context.SaveChangesAsync();
-
-        // ============================================================
-        // 19. PROMOTIONS (Sprint 1 - Sale API)
-        // ============================================================
-        var promotions = new List<Promotion>
-        {
-            new Promotion
-            {
-                PromotionId = Guid.Parse("d0000000-0000-0000-0000-000000000001"),
-                PromotionCode = "SUMMER2026",
-                Name = "Summer Sale 2026",
-                Description = "Giảm 10% cho đơn hàng từ 500.000đ trở lên",
-                DiscountType = "Percentage",
-                DiscountValue = 10m,
-                MinOrderAmount = 500000m,
-                MaxDiscountAmount = 100000m,
-                StartDate = new DateTime(2026, 1, 1),
-                EndDate = new DateTime(2026, 12, 31),
-                UsageLimit = 1000,
-                UsedCount = 0,
-                IsActive = true,
-                CreatedAt = new DateTime(2026, 1, 1)
-            },
-            new Promotion
-            {
-                PromotionId = Guid.Parse("d0000000-0000-0000-0000-000000000002"),
-                PromotionCode = "NEWUSER",
-                Name = "Khuyến mãi khách hàng mới",
-                Description = "Giảm 50.000đ cho khách hàng lần đầu mua hàng",
-                DiscountType = "FixedAmount",
-                DiscountValue = 50000m,
-                MinOrderAmount = 200000m,
-                MaxDiscountAmount = 50000m,
-                StartDate = new DateTime(2026, 1, 1),
-                EndDate = new DateTime(2026, 12, 31),
-                UsageLimit = 500,
-                UsedCount = 0,
-                IsActive = true,
-                CreatedAt = new DateTime(2026, 1, 1)
-            },
-            new Promotion
-            {
-                PromotionId = Guid.Parse("d0000000-0000-0000-0000-000000000003"),
-                PromotionCode = "VIP10",
-                Name = "VIP 10% Off",
-                Description = "Giảm 10% không giới hạn cho khách VIP",
-                DiscountType = "Percentage",
-                DiscountValue = 10m,
-                MinOrderAmount = 0m,
-                MaxDiscountAmount = null,
-                StartDate = new DateTime(2026, 1, 1),
-                EndDate = new DateTime(2026, 12, 31),
-                UsageLimit = null,
-                UsedCount = 0,
-                IsActive = true,
-                CreatedAt = new DateTime(2026, 1, 1)
-            }
-        };
-        context.Promotions.AddRange(promotions);
 
         // Update existing customers with Group, Notes, TotalSpent, OrderCount, LastVisit, MembershipTier, UpdatedAt
         var existingCustomers = context.Customers.ToList();
@@ -975,29 +716,16 @@ public static class DatabaseSeeder
         context.Shifts.AddRange(shifts);
 
         // ============================================================
-        // 21. LOYALTY TRANSACTIONS (Sprint 1 - Sale API)
-        // ============================================================
         if (existingCustomers.Count > 0)
         {
-            var loyaltyTxns = new List<LoyaltyTransaction>();
-            for (int i = 0; i < Math.Min(5, existingCustomers.Count); i++)
-            {
-                var c = existingCustomers[i];
-                loyaltyTxns.Add(new LoyaltyTransaction
-                {
-                    TransactionId = Guid.Parse("f0000000-0000-0000-0000-00000000000" + (i + 1)),
-                    CustomerId = c.CustomerId,
-                    Points = (i + 1) * 100,
-                    TransactionType = "EARN",
-                    ReferenceType = "Order",
-                    ReferenceId = Guid.NewGuid(),
-                    Description = "Tích điểm từ mua hàng",
-                    CreatedAt = DateTime.UtcNow.AddDays(-i * 3)
-                });
-            }
-            context.LoyaltyTransactions.AddRange(loyaltyTxns);
         }
 
         await context.SaveChangesAsync();
     }
 }
+
+
+
+
+
+
