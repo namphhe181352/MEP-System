@@ -153,6 +153,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     TotalClosingDebt = debtList.Sum(d => d.ClosingDebt),
                     TotalOverdueDebt = debtList.Where(d => d.Status == "overdue").Sum(d => d.ClosingDebt),
                     TotalPaidInPeriod = debtList.Sum(d => d.PaidInPeriod),
+                    TotalPurchasedInPeriod = debtList.Sum(d => d.PurchasedInPeriod),
                     TotalSuppliers = debtList.Count,
                     OverdueCount = debtList.Count(d => d.Status == "overdue")
                 };
