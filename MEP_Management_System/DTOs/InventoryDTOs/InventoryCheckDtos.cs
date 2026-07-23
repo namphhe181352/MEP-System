@@ -119,16 +119,21 @@ public class InventoryCheckResponseDto
 public class InventoryCheckListItemDto
 {
     public Guid TicketId { get; set; }
-    public string TicketCode { get; set; } = null!;
+    public string TicketCode { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
-    public string Status { get; set; } = null!;
-    public int DetailCount { get; set; }
+    public string Status { get; set; } = string.Empty; // Draft, WaitingForApproval, Completed, Cancelled
     public Guid BranchId { get; set; }
+
     public Guid CreatedByUserId { get; set; }
-    public string? CreatedByUserName { get; set; }
+    public string CreatedByUserName { get; set; } = string.Empty;
+
     public Guid? AssigneeUserId { get; set; }
     public string? AssigneeUserName { get; set; }
+
+    public int TotalProducts { get; set; }
+
     public int RecountNumber { get; set; }
+    public string? RecountReason { get; set; }
 }
 
 // Cancel DTO
