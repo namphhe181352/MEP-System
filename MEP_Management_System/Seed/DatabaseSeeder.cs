@@ -97,6 +97,12 @@ public static class DatabaseSeeder
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000040"), PermissionCode = "STAFF_UPDATE", PermissionName = "Cập nhật nhân viên" },
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000041"), PermissionCode = "STAFF_DELETE", PermissionName = "Xóa nhân viên" },
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000042"), PermissionCode = "STAFF_ASSIGN_BRANCH", PermissionName = "Gán chi nhánh" },
+            // EXPENSE / CHI PHÍ
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000043"), PermissionCode = "EXPENSE_VIEW", PermissionName = "Xem phiếu chi" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000044"), PermissionCode = "EXPENSE_CREATE", PermissionName = "Tạo phiếu chi" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000045"), PermissionCode = "EXPENSE_CONFIRM", PermissionName = "Xác nhận phiếu chi" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000046"), PermissionCode = "EXPENSE_CANCEL", PermissionName = "Hủy phiếu chi" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000047"), PermissionCode = "EXPENSE_CATEGORY_MANAGE", PermissionName = "Quản lý danh mục chi phí" },
         };
         await context.Permissions.AddRangeAsync(permissions);
         await context.SaveChangesAsync();
@@ -714,6 +720,20 @@ public static class DatabaseSeeder
             }
         };
         context.Shifts.AddRange(shifts);
+
+        // ============================================================
+        // 9. EXPENSE CATEGORIES (Danh mục chi phí mẫu)
+        // ============================================================
+        var expenseCategories = new List<ExpenseCategory>
+        {
+            new() { CategoryId = Guid.Parse("50000000-0000-0000-0000-000000000001"), CategoryName = "Điện nước", IsActive = 1, CreatedAt = SeedTime },
+            new() { CategoryId = Guid.Parse("50000000-0000-0000-0000-000000000002"), CategoryName = "Văn phòng phẩm", IsActive = 1, CreatedAt = SeedTime },
+            new() { CategoryId = Guid.Parse("50000000-0000-0000-0000-000000000003"), CategoryName = "Vệ sinh", IsActive = 1, CreatedAt = SeedTime },
+            new() { CategoryId = Guid.Parse("50000000-0000-0000-0000-000000000004"), CategoryName = "Bảo trì sửa chữa", IsActive = 1, CreatedAt = SeedTime },
+            new() { CategoryId = Guid.Parse("50000000-0000-0000-0000-000000000005"), CategoryName = "Marketing", IsActive = 1, CreatedAt = SeedTime },
+            new() { CategoryId = Guid.Parse("50000000-0000-0000-0000-000000000006"), CategoryName = "Chi phí khác", IsActive = 1, CreatedAt = SeedTime },
+        };
+        context.ExpenseCategories.AddRange(expenseCategories);
 
         // ============================================================
         if (existingCustomers.Count > 0)
