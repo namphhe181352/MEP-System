@@ -455,6 +455,14 @@ public class InvoicesController : ControllerBase
         using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
+            // Idempotency check: Re-verify invoice status within transaction to prevent race condition
+            var invoiceInTx = await _context.Invoices.FindAsync(invoiceId);
+            if (invoiceInTx == null || invoiceInTx.Status != "Draft")
+            {
+                await transaction.RollbackAsync();
+                return BadRequest(ApiErrorResponse.Create("MSG-78", "Invoice already finalized or not found"));
+            }
+
             // Deduct stock - POS bán lẻ: trừ cả ActualStock và AvailableStock
             // (AvailableStock là stored field, không phải computed property)
             // Fix concurrent checkout with atomic update
