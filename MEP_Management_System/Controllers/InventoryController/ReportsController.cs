@@ -139,6 +139,15 @@ public class ReportsController : ControllerBase
                 Errors = new() { ex.Message }
             });
         }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new ApiResponse<object>
+            {
+                Success = false,
+                Message = ex.Message,
+                Errors = new() { ex.Message }
+            });
+        }
         catch (Exception ex)
         {
             return StatusCode(500, new ApiResponse<object>
