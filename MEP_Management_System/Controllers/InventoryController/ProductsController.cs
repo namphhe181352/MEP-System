@@ -419,6 +419,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (string.IsNullOrWhiteSpace(dto.ProductCode)) errors.Add("productCode is required");
                 if (string.IsNullOrWhiteSpace(dto.ProductName)) errors.Add("productName is required");
                 if (string.IsNullOrWhiteSpace(dto.Unit)) errors.Add("unit is required");
+                if (dto.CostPrice < 0) errors.Add("costPrice không được âm");
+                if (dto.SalePrice < 0) errors.Add("salePrice không được âm");
 
                 if (errors.Any())
                 {
@@ -482,6 +484,18 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                     if (dto.ConversionUnits != null && dto.ConversionUnits.Any())
                     {
+                        // Validate ConversionUnits prices
+                        var invalidUnits = dto.ConversionUnits.Where(u => u.Price < 0).ToList();
+                        if (invalidUnits.Any())
+                        {
+                            return BadRequest(new ApiResponse<object>
+                            {
+                                Success = false,
+                                Message = "ConversionUnits price validation failed",
+                                Errors = new() { "Giá đơn vị quy đổi không được âm" }
+                            });
+                        }
+
                         foreach (var unit in dto.ConversionUnits)
                         {
                             _context.ProductConversionUnits.Add(new ProductConversionUnit
@@ -572,6 +586,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (string.IsNullOrWhiteSpace(dto.ProductCode)) errors.Add("productCode is required");
                 if (string.IsNullOrWhiteSpace(dto.ProductName)) errors.Add("productName is required");
                 if (string.IsNullOrWhiteSpace(dto.Unit)) errors.Add("unit is required");
+                if (dto.CostPrice < 0) errors.Add("costPrice không được âm");
+                if (dto.SalePrice < 0) errors.Add("salePrice không được âm");
 
                 if (errors.Any())
                 {

@@ -83,7 +83,68 @@ namespace MEP_Management_System.Services
 
             if (bp == null) return null;
 
-            var dto = mapper.Map<ProductUpsertDto>(bp);
+            // Manual mapping instead of AutoMapper (BranchProduct -> ProductUpsertDto has no map)
+            var dto = new ProductUpsertDto
+            {
+                ProductId = bp.Product.ProductId,
+                BranchProductId = bp.BranchProductId,
+                Id = bp.Product.ProductId.ToString(),
+                ProductCode = bp.Product.ProductCode,
+                ProductName = bp.Product.ProductName,
+                Barcode = bp.Product.Barcode,
+                Unit = bp.Product.BaseUnit ?? "",
+                BrandName = bp.Product.BrandName,
+                CategoryName = bp.Product.CategoryName,
+                SupplierId = bp.Product.SupplierId,
+                SupplierName = bp.Product.Supplier?.SupplierName,
+                ItemType = bp.Product.ItemType,
+                CostPrice = bp.CostPrice,
+                SalePrice = bp.SellPrice,
+                ActualStock = bp.ActualStock,
+                AvailableStock = bp.AvailableStock,
+                ReservedStock = bp.ReservedStock,
+                MinimumStock = bp.MinimumStock ?? 0,
+                MaximumStock = bp.MaximumStock ?? 0,
+                ShelfLocation = bp.ShelfLocation,
+                ShelfLocations = string.IsNullOrEmpty(bp.ShelfLocation) ? new() : new() { bp.ShelfLocation },
+                Weight = bp.Product.Weight,
+                WeightUnit = bp.Product.WeightUnit,
+                Width = bp.Product.Width,
+                Length = bp.Product.Length,
+                Height = bp.Product.Height,
+                SizeUnit = bp.Product.SizeUnit,
+                Specification = bp.Product.Specification,
+                SpecificationDetail = $"{bp.Product.Width ?? 0}x{bp.Product.Length ?? 0}x{bp.Product.Height ?? 0}",
+                ImageUrl = bp.Product.MediaResources.FirstOrDefault(m => m.IsPrimary == 1)?.MediaUrl
+                    ?? bp.Product.MediaResources.FirstOrDefault()?.MediaUrl,
+                Images = bp.Product.MediaResources.Select(m => m.MediaUrl).ToList(),
+                DirectSale = bp.DirectSale == 1 || bp.DirectSale == null,
+                SalesChannelLinked = bp.Product.SalesChannelLinked == 1,
+                IsActive = bp.IsActive == 1,
+                Attributes = bp.Product.ProductAttributes.Select(a => new ProductAttributeDto
+                {
+                    Id = a.AttributeId,
+                    Name = a.AttributeName ?? "",
+                    Value = a.AttributeValue ?? ""
+                }).ToList(),
+                ConversionUnits = bp.Product.ProductConversionUnits.Select(c => new ProductConversionUnitDto
+                {
+                    Id = c.ConversionId,
+                    Name = c.UnitName,
+                    Rate = c.ConvertValue,
+                    ConvertValue = c.ConvertValue,
+                    ConvertFrom = bp.Product.BaseUnit,
+                    Price = c.Price,
+                    DirectSale = c.DirectSale == 1
+                }).ToList(),
+                EstimatedOutAt = bp.Product.CreatedAt?.AddDays(30),
+                CreatedAt = bp.Product.CreatedAt,
+                UpdatedAt = bp.Product.UpdatedAt,
+                CreatedBy = bp.Product.CreatedBy,
+                CreatedByName = bp.Product.CreatedByUser?.FullName ?? "Hệ thống",
+                UpdatedBy = bp.Product.UpdatedBy,
+                UpdatedByName = bp.Product.UpdatedByUser?.FullName ?? "Chưa cập nhật"
+            };
             return dto;
         }
 
