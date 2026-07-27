@@ -104,7 +104,10 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         .Sum(p => p.Amount);
 
                     // 4. Dư nợ cuối kỳ = Nợ đầu kỳ + Phát sinh mua - Thực trả trong kỳ
-                    decimal closingDebt = openingDebt + purchasedInPeriod - paidInPeriod;
+                    // Clamp về 0 — công nợ không thể âm. Trả thừa → closingDebt = 0, status = "Trả thừa"
+                    decimal rawClosing = openingDebt + purchasedInPeriod - paidInPeriod;
+                    decimal closingDebt = rawClosing < 0 ? 0 : rawClosing;
+                    decimal overpaidAmount = rawClosing < 0 ? -rawClosing : 0;
 
                     // Tính hạn thanh toán dựa trên đơn hàng APPROVED có lịch giao gần nhất
                     var latestApprovedPo = s.PurchaseOrders
@@ -119,9 +122,10 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         overdueDays = (today - dueDate.Value.Date).Days;
                     }
 
-                    // Phân định Trạng thái công nợ (tiếng Việt: "Còn nợ" | "Hết nợ", kèm "Quá hạn" nếu có due date trễ)
+                    // Phân định Trạng thái công nợ (tiếng Việt: "Còn nợ" | "Hết nợ" | "Trả thừa" | "Quá hạn")
                     string calcStatus;
-                    if (closingDebt <= 0) calcStatus = "Hết nợ";
+                    if (overpaidAmount > 0) calcStatus = "Trả thừa";
+                    else if (closingDebt <= 0) calcStatus = "Hết nợ";
                     else if (overdueDays > 0) calcStatus = "Quá hạn";
                     else calcStatus = "Còn nợ";
 
@@ -138,6 +142,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         PurchasedInPeriod = purchasedInPeriod,
                         PaidInPeriod = paidInPeriod,
                         ClosingDebt = closingDebt,
+                        OverpaidAmount = overpaidAmount,
                         DueDate = dueDate?.ToString("yyyy-MM-dd") ?? "",
                         OverdueDays = overdueDays,
                         Status = calcStatus

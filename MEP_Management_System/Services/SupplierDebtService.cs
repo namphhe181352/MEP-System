@@ -91,14 +91,18 @@ namespace MEP_Management_System.Services
                 .SumAsync(p => (decimal?)(p.Amount)) ?? 0m;
 
             var totalPurchased = poPurchased + stockTicketPurchased;
-            var currentDebt = totalPurchased - totalPaid;
+            // Clamp về 0 — công nợ không thể âm. Khi trả thừa, hiển thị "Hết nợ" + OverpaidAmount
+            var raw = totalPurchased - totalPaid;
+            var currentDebt = raw < 0 ? 0m : raw;
+            var overpaid = raw < 0 ? -raw : 0m;
 
             return new SupplierDebtSummary
             {
                 CurrentDebt = currentDebt,
                 TotalPurchased = totalPurchased,
                 TotalPaid = totalPaid,
-                Status = currentDebt > 0 ? "Còn nợ" : "Hết nợ"
+                OverpaidAmount = overpaid,
+                Status = raw < 0 ? "Trả thừa" : (currentDebt > 0 ? "Còn nợ" : "Hết nợ")
             };
         }
 
@@ -155,14 +159,18 @@ namespace MEP_Management_System.Services
                 var paidSum = paidMap.GetValueOrDefault(id, 0m);
 
                 var totalPurchased = poSum + stSum;
-                var currentDebt = totalPurchased - paidSum;
+                // Clamp về 0 — khi trả thừa, rawDebt < 0 → trả về 0 + OverpaidAmount
+                var raw = totalPurchased - paidSum;
+                var currentDebt = raw < 0 ? 0m : raw;
+                var overpaid = raw < 0 ? -raw : 0m;
 
                 result[id] = new SupplierDebtSummary
                 {
                     CurrentDebt = currentDebt,
                     TotalPurchased = totalPurchased,
                     TotalPaid = paidSum,
-                    Status = currentDebt > 0 ? "Còn nợ" : "Hết nợ"
+                    OverpaidAmount = overpaid,
+                    Status = raw < 0 ? "Trả thừa" : (currentDebt > 0 ? "Còn nợ" : "Hết nợ")
                 };
             }
 
