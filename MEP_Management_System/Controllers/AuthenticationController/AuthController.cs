@@ -4,6 +4,7 @@ using MEP_Management_System.Models;
 using MEP_Management_System.Services;
 using MEP_Management_System.Services.Email;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -83,78 +84,31 @@ namespace MEP_Management_System.Controllers
         }
 
         // ==========================================
-        // 2. REGISTER VERIFY: XÁC THỰC OTP + TẠO CỬA HÀNG MẶC ĐỊNH & OWNER
+        // 2. REGISTER VERIFY: VÔ HIỆU HÓA TẠO OWNER TỰ ĐĂNG KÝ
         // ==========================================
+        // Từ 2026-07-27: Tài khoản Owner CHỈ được tạo bởi Admin.
+        // Endpoint này giữ để tương thích ngược nhưng không tạo Owner/Branch nữa.
+        // Owner cần liên hệ Admin qua api /api/admin/accounts/owners.
         [HttpPost("register/verify")]
         public async Task<IActionResult> RegisterVerify([FromBody] RegisterVerifyDto dto)
         {
+            // Đánh dấu OTP đã dùng (nếu có) để tránh reuse
             var otp = await _context.OtpVerifications
                 .FirstOrDefaultAsync(x => x.Email == dto.Email
                                        && x.OtpCode == dto.OtpCode
                                        && x.IsUsed == 0
                                        && x.ExpiredAt > DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified));
 
-            if (otp == null)
-                return BadRequest(new { message = "Mã OTP không chính xác hoặc đã hết hạn." });
-
-            var ownerRole = await _context.Roles.FirstOrDefaultAsync(r => r.RoleName == "Owner");
-            if (ownerRole == null)
+            if (otp != null)
             {
-                ownerRole = new Role
-                {
-                    RoleId = Guid.NewGuid(),
-                    RoleName = "Owner",
-                    Description = "Toàn quyền quản trị hệ thống chuỗi cửa hàng",
-                    IsSystem = 1
-                };
-                _context.Roles.Add(ownerRole);
+                otp.IsUsed = 1;
+                await _context.SaveChangesAsync();
             }
 
-            var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
-
-            // Tạo Owner
-            var newUser = new User
+            return StatusCode(StatusCodes.Status410Gone, new
             {
-                UserId = Guid.NewGuid(),
-                Username = dto.Email,
-                Email = dto.Email,
-                FullName = dto.FullName,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
-                IsActive = 1,
-                IsVerified = true,
-                CreatedAt = now
-            };
-            newUser.Roles.Add(ownerRole);
-            _context.Users.Add(newUser);
-
-            // Tạo đúng 1 Branch duy nhất (Hệ thống chạy Single-Branch ngầm)
-            var branch = new Branch
-            {
-                BranchId = Guid.NewGuid(),
-                BranchName = dto.BranchName,
-                ManagerUserId = newUser.UserId,
-                IsActive = 1,
-                CreatedAt = now,
-                UpdatedAt = now
-            };
-            _context.Branches.Add(branch);
-
-            // Gán DefaultBranchId ngầm để phục vụ kiến trúc tương lai
-            newUser.DefaultBranchId = branch.BranchId;
-
-            // Vẫn lưu vào StaffAssignments để phục vụ phân quyền dữ liệu sau này
-            _context.StaffAssignments.Add(new StaffAssignment
-            {
-                AssignmentId = Guid.NewGuid(),
-                UserId = newUser.UserId,
-                BranchId = branch.BranchId,
-                AssignedAt = now
+                message = "Tính năng tự đăng ký tài khoản Owner đã ngừng hoạt động. Vui lòng liên hệ Admin để được tạo tài khoản."
             });
-
-            otp.IsUsed = 1;
-            await _context.SaveChangesAsync();
-
-            return Ok(new { message = "Đăng ký thành công! Bạn có thể đăng nhập ngay." });
         }
 
         // ==========================================
@@ -179,11 +133,18 @@ namespace MEP_Management_System.Controllers
                 .ToListAsync();
 
             var isOwner = userRoles.Contains("Owner");
+            var isAdmin = userRoles.Contains("Admin");
 
             string? branchIdForToken = null;
             object? branchesForResponse = null;
 
-            if (isOwner)
+            // Admin: không gán branchId - toàn hệ thống
+            if (isAdmin)
+            {
+                branchIdForToken = null;
+                branchesForResponse = null;
+            }
+            else if (isOwner)
             {
                 var branches = await _context.StaffAssignments
                     .Where(sa => sa.UserId == user.UserId)
@@ -220,14 +181,13 @@ namespace MEP_Management_System.Controllers
             }
             else
             {
-                // Ưu tiên dùng DefaultBranchId nếu đã có
+                // Sale, Warehouse, etc.: lấy branch từ StaffAssignments
                 if (user.DefaultBranchId.HasValue)
                 {
                     branchIdForToken = user.DefaultBranchId.Value.ToString();
                 }
                 else
                 {
-                    // Fallback: tìm trong StaffAssignments
                     var assignment = await _context.StaffAssignments
                         .Where(sa => sa.UserId == user.UserId)
                         .OrderBy(sa => sa.AssignedAt)
@@ -235,12 +195,10 @@ namespace MEP_Management_System.Controllers
 
                     if (assignment == null)
                     {
-                        // Fallback cuối cùng: lấy chi nhánh đầu tiên trong hệ thống (single-branch)
                         var firstBranch = await _context.Branches.FirstOrDefaultAsync(b => b.IsActive == 1);
                         if (firstBranch != null)
                         {
                             user.DefaultBranchId = firstBranch.BranchId;
-                            // Tạo StaffAssignment nếu chưa có
                             _context.StaffAssignments.Add(new StaffAssignment
                             {
                                 AssignmentId = Guid.NewGuid(),
@@ -258,7 +216,6 @@ namespace MEP_Management_System.Controllers
                     }
                     else
                     {
-                        // Đồng bộ DefaultBranchId để lần sau không cần query nữa
                         user.DefaultBranchId = assignment.BranchId;
                         await _context.SaveChangesAsync();
                         branchIdForToken = assignment.BranchId.ToString();
@@ -274,11 +231,23 @@ namespace MEP_Management_System.Controllers
 
             var userPermissions = await _context.UserPermissions
                 .Where(up => up.UserId == user.UserId)
-                .Select(up => up.Permission.PermissionCode)
+                .Select(up => new { up.Permission.PermissionCode, up.IsGranted })
                 .ToListAsync();
 
+            // Deny list: permissions explicitly denied (IsGranted = false)
+            var deniedPermissions = userPermissions
+                .Where(up => up.IsGranted == false)
+                .Select(up => up.PermissionCode)
+                .ToHashSet();
+
+            // Allowed list: role permissions, minus denied, plus explicitly allowed user permissions
+            var allowedUserPermissions = userPermissions
+                .Where(up => up.IsGranted != false)
+                .Select(up => up.PermissionCode);
+
             var allPermissions = rolePermissions
-                .Union(userPermissions)
+                .Union(allowedUserPermissions)
+                .Except(deniedPermissions)
                 .Distinct()
                 .ToList();
 
@@ -294,6 +263,7 @@ namespace MEP_Management_System.Controllers
             var responseDto = _mapper.Map<UserResponseDto>(user);
             responseDto.Token = jwtToken;
             responseDto.Roles = userRoles;
+            responseDto.Permissions = allPermissions;
 
             return Ok(new
             {

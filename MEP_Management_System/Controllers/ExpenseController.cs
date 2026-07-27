@@ -405,11 +405,12 @@ namespace MEP_Management_System.Controllers
             }
             catch (Exception ex)
             {
+                var inner = ex.InnerException?.Message ?? ex.Message;
                 return StatusCode(500, new ApiResponse<object>
                 {
                     Success = false,
                     Message = "Lỗi khi tạo phiếu chi tiền.",
-                    Errors = new() { ex.Message }
+                    Errors = new() { inner, ex.Message }
                 });
             }
         }
@@ -960,15 +961,23 @@ namespace MEP_Management_System.Controllers
             var prefix = "PXT";
             var today = currentTime.ToString("yyyyMMdd");
 
-            // Đếm số phiếu hôm nay trong branch này
-            var todayCount = await _context.ExpenseVouchers
-                .Where(ev => ev.BranchId == branchId &&
-                    ev.CreatedAt != null &&
-                    ev.CreatedAt.Value.Date == currentTime.Date)
-                .CountAsync();
+            for (int attempt = 1; attempt <= 5; attempt++)
+            {
+                var todayCount = await _context.ExpenseVouchers
+                    .Where(ev => ev.BranchId == branchId &&
+                        ev.CreatedAt != null &&
+                        ev.CreatedAt.Value.Date == currentTime.Date)
+                    .CountAsync();
 
-            var nextNumber = todayCount + 1;
-            return $"{prefix}-{nextNumber:000000}";
+                var nextNumber = todayCount + attempt;
+                var code = $"{prefix}-{nextNumber:000000}";
+
+                var exists = await _context.ExpenseVouchers
+                    .AnyAsync(ev => ev.VoucherCode == code);
+                if (!exists) return code;
+            }
+
+            return $"{prefix}-{Guid.NewGuid().ToString("N")[..8].ToUpper()}";
         }
 
         private IQueryable<ExpenseVoucher> ApplyVoucherSorting(

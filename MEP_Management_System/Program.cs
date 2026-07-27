@@ -44,6 +44,9 @@ builder.Services.AddScoped<InwardInventoryQueryService>();
 builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.SqlExecutor>();
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
 builder.Services.AddTransient<IEmailService, EmailService>();
+
+// Background Services
+builder.Services.AddHostedService<UserCleanupService>();
 // OData
 var odataBuilder = new ODataConventionModelBuilder();
 odataBuilder.EntitySet<User>("Users");
@@ -52,14 +55,10 @@ odataBuilder.EntitySet<Role>("Roles");
 //postsCfg.EntityType.HasKey(p => p.PostId);
 //var catsCfg = odataBuilder.EntitySet<CommunityCategory>("CommunityCategories");
 //catsCfg.EntityType.HasKey(c => c.CategoryId);
-var reportsCfg = odataBuilder.EntitySet<ViolationReport>("ViolationReports");
-reportsCfg.EntityType.HasKey(r => r.ReportId);
 var logsCfg = odataBuilder.EntitySet<SystemLog>("SystemLogs");
 logsCfg.EntityType.HasKey(l => l.LogId);
 var notifCfg = odataBuilder.EntitySet<SystemNotification>("SystemNotifications");
 notifCfg.EntityType.HasKey(n => n.NotificationId);
-var approvalsCfg = odataBuilder.EntitySet<StoreApproval>("StoreApprovals");
-approvalsCfg.EntityType.HasKey(a => a.ApprovalId);
 
 // Register VietQR Service
 builder.Services.Configure<VietQrOptions>(builder.Configuration.GetSection("VietQr"));

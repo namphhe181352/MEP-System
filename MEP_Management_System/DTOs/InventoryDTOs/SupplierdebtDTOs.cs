@@ -51,6 +51,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public decimal TotalClosingDebt { get; set; }
         public decimal TotalOverdueDebt { get; set; }
         public decimal TotalPaidInPeriod { get; set; }
+        public decimal TotalPurchasedInPeriod { get; set; }
         public int TotalSuppliers { get; set; }
         public int OverdueCount { get; set; }
     }

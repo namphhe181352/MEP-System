@@ -74,6 +74,6 @@ public partial class Supplier
     public DateTime? LastRatedAt { get; set; }
 
     // Uncomment navigation property
-    public virtual ICollection<SupplierRating> SupplierRatings { get; set; } = new List<SupplierRating>();
 
 }
+

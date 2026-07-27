@@ -40,7 +40,8 @@ public partial class Order
 
     public virtual Customer? Customer { get; set; }
 
-    public virtual ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
+    /// <summary>Invoice associated with this order (1-1 relationship)</summary>
+    public virtual Invoice? Invoice { get; set; }
 
     public virtual ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
 
