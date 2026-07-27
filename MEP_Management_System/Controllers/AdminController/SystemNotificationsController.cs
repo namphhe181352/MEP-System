@@ -18,9 +18,9 @@ public class SystemNotificationsController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
     private readonly IMapper _mapper;
-    private readonly LogNotificationSender _sender;
+    private readonly INotificationSender _sender;
 
-    public SystemNotificationsController(MEPDatabaseContext context, IMapper mapper, LogNotificationSender sender)
+    public SystemNotificationsController(MEPDatabaseContext context, IMapper mapper, INotificationSender sender)
     {
         _context = context;
         _mapper = mapper;
