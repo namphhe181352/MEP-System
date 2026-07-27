@@ -1034,7 +1034,8 @@ public class OwnerStaffController : ControllerBase
         var deletedUsers = await _context.Users
             .Where(u => (staffUserIds.Contains(u.UserId) || u.CreatedBy == ownerId.Value)
                 && u.Status == "DELETED"
-                && u.DeletedAt != null)
+                && u.DeletedAt != null
+                && u.DeletedAt > DateTime.UtcNow.AddDays(-retentionDays)) // còn trong thời hạn retention
             .ToListAsync();
 
         var result = deletedUsers.Select(u => new DeletedStaffDto
@@ -1138,6 +1139,7 @@ public class OwnerStaffController : ControllerBase
         staff.PasswordHash = "PERMANENTLY_DELETED";
         staff.Status = "PERMANENT_DELETED";
         staff.IsActive = 0;
+        staff.DeletedAt = null; // Đã xóa vĩnh viễn → không còn nằm trong retention list
         // UserId, CreatedBy, CreatedAt giữ nguyên → audit trail vẫn đầy đủ
 
         await _context.SaveChangesAsync();
