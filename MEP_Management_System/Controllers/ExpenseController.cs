@@ -343,21 +343,8 @@ namespace MEP_Management_System.Controllers
                     });
                 }
 
-                // Kiểm tra Supplier nếu có
-                if (dto.SupplierId.HasValue)
-                {
-                    var supplier = await _context.Suppliers
-                        .FirstOrDefaultAsync(s => s.SupplierId == dto.SupplierId.Value && s.Status == 1);
-
-                    if (supplier == null)
-                    {
-                        return BadRequest(new ApiResponse<object>
-                        {
-                            Success = false,
-                            Message = "Nhà cung cấp không hợp lệ hoặc đã bị vô hiệu hóa."
-                        });
-                    }
-                }
+                // NOTE: Phiếu chi tiền CHỈ dùng cho chi phí nội bộ (điện, nước, lương,...)
+                // KHÔNG dùng để thanh toán NCC - dùng /api/supplierpayments cho việc đó.
 
                 var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
                 var voucherCode = await GenerateVoucherCode(resolvedBranchId.Value, currentTime);
@@ -368,7 +355,7 @@ namespace MEP_Management_System.Controllers
                     VoucherCode = voucherCode,
                     BranchId = resolvedBranchId.Value,
                     CategoryId = dto.CategoryId,
-                    SupplierId = dto.SupplierId,
+                    SupplierId = null, // Không gán NCC - dùng SupplierPayments riêng
                     Amount = dto.Amount,
                     Reason = dto.Reason.Trim(),
                     Note = dto.Note?.Trim(),
@@ -864,7 +851,8 @@ namespace MEP_Management_System.Controllers
         }
 
         /// <summary>
-        /// DELETE /api/expense/categories/{id} - Xóa nhóm chi phí (chỉ khi không còn phiếu PENDING).
+        /// DELETE /api/expense/categories/{id} - Xóa CỨNG nhóm chi phí (chỉ khi không còn phiếu PENDING).
+        /// Các phiếu đã confirmed/cancelled giữ nguyên, FK sẽ tự set null category_id.
         /// </summary>
         [HttpDelete("categories/{id:guid}")]
         [HasPermission(PermissionConstants.EXPENSE_CATEGORY_MANAGE)]
@@ -895,7 +883,7 @@ namespace MEP_Management_System.Controllers
                     });
                 }
 
-                // Kiểm tra có phiếu PENDING nào đang dùng không
+                // Chặn xóa nếu còn phiếu PENDING đang dùng (tránh mất tham chiếu của người đang thao tác)
                 var pendingVouchers = category.ExpenseVouchers
                     .Where(ev => ev.Status == "PENDING")
                     .ToList();
@@ -917,23 +905,23 @@ namespace MEP_Management_System.Controllers
                 var categoryName = category.CategoryName;
                 var totalVouchers = category.ExpenseVouchers.Count;
 
-                // Xóa mềm: set IsActive = 0
-                category.IsActive = 0;
-
+                // XÓA CỨNG - DB ON DELETE SET NULL ở expense_vouchers.category_id sẽ tự động
+                // set CategoryId = NULL cho các phiếu đã confirmed/cancelled giữ lại.
+                _context.ExpenseCategories.Remove(category);
                 await _context.SaveChangesAsync();
 
                 // Ghi log
                 await TryWriteSystemLog(
                     "DELETE_EXPENSE_CATEGORY",
                     "ExpenseCategory",
-                    category.CategoryId,
-                    $"Xóa nhóm chi phí: {categoryName} (có {totalVouchers} phiếu)"
+                    id,
+                    $"Xóa cứng nhóm chi phí: {categoryName} (đã giải phóng tham chiếu của {totalVouchers} phiếu)"
                 );
 
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = $"Xóa nhóm chi phí '{categoryName}' thành công. (Có {totalVouchers} phiếu chi tiền được giữ lại)"
+                    Message = $"Đã xóa cứng nhóm chi phí '{categoryName}'. (Có {totalVouchers} phiếu chi tiền cũ được giữ lại với nhóm rỗng)"
                 });
             }
             catch (Exception ex)
@@ -1040,7 +1028,7 @@ namespace MEP_Management_System.Controllers
                 BranchId = ev.BranchId,
                 BranchName = ev.Branch?.BranchName,
                 CategoryId = ev.CategoryId,
-                CategoryName = ev.Category?.CategoryName ?? "N/A",
+                CategoryName = ev.Category?.CategoryName,
                 SupplierId = ev.SupplierId,
                 SupplierName = ev.Supplier?.SupplierName,
                 Amount = ev.Amount,
