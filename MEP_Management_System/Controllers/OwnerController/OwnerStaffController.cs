@@ -1087,7 +1087,7 @@ public class OwnerStaffController : ControllerBase
         if (staff == null)
             return NotFound(new ApiResponse<object> { Success = false, Message = "Nhân viên không tồn tại hoặc chưa bị xóa." });
 
-        // Khôi phục
+        // Khôi phục: đưa về trạng thái ACTIVE (kèm IsActive=1)
         staff.Status = "ACTIVE";
         staff.IsActive = 1;
         staff.DeletedAt = null;
@@ -1125,7 +1125,8 @@ public class OwnerStaffController : ControllerBase
             return NotFound(new ApiResponse<object> { Success = false, Message = "Nhân viên không tồn tại hoặc không thuộc chi nhánh này." });
 
         var staff = await _context.Users
-            .FirstOrDefaultAsync(u => u.UserId == id && u.Status == "DELETED");
+            .FirstOrDefaultAsync(u => u.UserId == id
+                && (u.Status == "DELETED" || u.Status == "INACTIVE" || u.Status == "PERMANENT_DELETED"));
 
         if (staff == null)
             return NotFound(new ApiResponse<object> { Success = false, Message = "Nhân viên không tồn tại hoặc chưa bị xóa." });
