@@ -284,7 +284,8 @@ public class ProductProfitReportRequestDto
 {
     public DateTime FromDate { get; set; }
     public DateTime ToDate { get; set; }
-    public string? CategoryName { get; set; } // Tên nhóm sản phẩm từ UI
+    public Guid? CategoryId { get; set; } // Ưu tiên filter theo categoryId (Guid)
+    public string? CategoryName { get; set; } // Fallback filter theo tên nhóm sản phẩm từ UI
     public string SortBy { get; set; } = "revenue"; // revenue, profit, quantity
     public int PageNumber { get; set; } = 1;
     public int PageSize { get; set; } = 50;
@@ -295,6 +296,11 @@ public class SupplierDetailRequestDto
     public Guid SupplierId { get; set; }
     public int? Year { get; set; } // Năm để lọc (null = tất cả)
     public int? Month { get; set; } // Tháng để lọc (1-12, null = tất cả)
+    // Date range filters (thêm theo plan)
+    public DateTime? PurchaseFromDate { get; set; }
+    public DateTime? PurchaseToDate { get; set; }
+    public DateTime? PaymentFromDate { get; set; }
+    public DateTime? PaymentToDate { get; set; }
 }
 
 #endregion

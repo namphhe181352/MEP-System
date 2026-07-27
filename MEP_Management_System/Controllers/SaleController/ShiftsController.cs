@@ -39,11 +39,22 @@ public class ShiftsController : ControllerBase
 
     // POST /api/pos/shifts/start
     [HttpPost("start")]
+    [HasPermission(PermissionConstants.SHIFT_CREATE)]
     public async Task<ActionResult<ShiftDto>> StartShift([FromBody] CreateShiftRequest request)
     {
         var userId = GetUserId();
         var branchId = GetBranchId();
         if (branchId == null) return BadRequest(ApiErrorResponse.Create("MSG-76", "Tài khoản chưa được phân công chi nhánh. Vui lòng liên hệ chủ cửa hàng."));
+
+        // ===== SAFETY CHECK =====
+        // Đảm bảo user đã được active (không tự động mở ca khi vừa tạo)
+        var user = await _context.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.UserId == userId);
+        if (user == null)
+            return BadRequest(ApiErrorResponse.Create("MSG-100", "Tài khoản không tồn tại."));
+        if (user.IsActive == 0 || (user.Status != null && user.Status.ToUpper() != "ACTIVE"))
+            return BadRequest(ApiErrorResponse.Create("MSG-101", "Tài khoản đang bị khoá/ẩn, không thể mở ca."));
+        // ===== END SAFETY CHECK =====
 
         var openShift = await _context.Shifts
             .FirstOrDefaultAsync(s => s.UserId == userId && s.BranchId == branchId.Value && s.Status == "OPEN");
@@ -96,6 +107,7 @@ public class ShiftsController : ControllerBase
 
     // POST /api/pos/shifts/{shiftId}/end
     [HttpPost("{shiftId:guid}/end")]
+    [HasPermission(PermissionConstants.SHIFT_UPDATE)]
     public async Task<ActionResult<ShiftDto>> EndShift(Guid shiftId, [FromBody] EndShiftRequest request)
     {
         var userId = GetUserId();

@@ -88,6 +88,10 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         // Công nợ & tổng mua (computed từ PO)
         public decimal CurrentDebt { get; set; }
         public decimal TotalPurchased { get; set; }
+        /// <summary>Số tiền trả thừa (>0 khi TotalPaid > TotalPurchased). FE hiển thị "Trả thừa".</summary>
+        public decimal OverpaidAmount { get; set; }
+        /// <summary>"Còn nợ" | "Hết nợ" | "Trả thừa"</summary>
+        public string DebtStatus { get; set; } = "Còn nợ";
 
         // Đánh giá
         //public decimal? AverageRating { get; set; }

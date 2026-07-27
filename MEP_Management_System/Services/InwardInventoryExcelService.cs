@@ -314,7 +314,8 @@ namespace MEP_Management_System.Services
                     Notes = preview.Note,
                     CreatedAt = currentTime,
                     CompletedAt = currentTime,
-                    ConfirmedBy = userId
+                    ConfirmedBy = userId,
+                    TotalAmount = 0 // sẽ set sau khi tính tổng
                 };
 
                 _context.StockTickets.Add(stockTicket);
@@ -388,6 +389,9 @@ namespace MEP_Management_System.Services
                 {
                     _context.StockTicketItems.AddRange(ticketItems);
                 }
+
+                // Gán TotalAmount cho StockTicket trước khi SaveChanges (để công nợ NCC tính đúng)
+                stockTicket.TotalAmount = totalValue;
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
