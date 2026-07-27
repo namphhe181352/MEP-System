@@ -23,9 +23,12 @@ namespace MEP_Management_System.Services
 
     public class SupplierDebtSummary
     {
+        /// <summary>Dư nợ hiện tại, luôn >= 0. Khi trả thừa → = 0 (xem OverpaidAmount).</summary>
         public decimal CurrentDebt { get; set; }
         public decimal TotalPurchased { get; set; }
         public decimal TotalPaid { get; set; }
-        public string Status { get; set; } = "Còn nợ"; // "Còn nợ" | "Hết nợ"
+        /// <summary>Số tiền trả thừa (>0 khi TotalPaid &gt; TotalPurchased). FE dùng để hiển thị "Trả thừa X".</summary>
+        public decimal OverpaidAmount { get; set; }
+        public string Status { get; set; } = "Còn nợ"; // "Còn nợ" | "Hết nợ" | "Trả thừa"
     }
 }

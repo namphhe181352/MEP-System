@@ -33,13 +33,15 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public decimal PurchasedInPeriod { get; set; }
         public decimal PaidInPeriod { get; set; }
         public decimal ClosingDebt { get; set; }
+        /// <summary>Số tiền trả thừa (>= 0). Khi > 0 → ClosingDebt = 0.</summary>
+        public decimal OverpaidAmount { get; set; }
 
         /// <summary>Định dạng yyyy-MM-dd hoặc rỗng.</summary>
         public string DueDate { get; set; } = "";
 
         public int OverdueDays { get; set; }
 
-        /// <summary>"Còn nợ" | "Hết nợ" | "Quá hạn"</summary>
+        /// <summary>"Còn nợ" | "Hết nợ" | "Trả thừa" | "Quá hạn"</summary>
         public string Status { get; set; } = "Còn nợ";
     }
 

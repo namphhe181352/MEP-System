@@ -90,7 +90,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                 var supplierIds = suppliers.Select(s => s.SupplierId).ToList();
                 var debtMap = await _supplierDebtService.CalculateCurrentDebtBatchAsync(supplierIds);
 
-                // Map dữ liệu của trang hiện tại sang DTO (kèm computed: currentDebt, totalPurchased)
+                // Map dữ liệu của trang hiện tại sang DTO (kèm computed: currentDebt, totalPurchased, overpaid)
                 var items = suppliers.Select(s =>
                 {
                     var debt = debtMap.TryGetValue(s.SupplierId, out var d) ? d : new SupplierDebtSummary();
@@ -108,7 +108,9 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         Status = StatusLabel(s.Status),
                         CreatedAt = s.CreatedAt,
                         CurrentDebt = debt.CurrentDebt,
-                        TotalPurchased = debt.TotalPurchased
+                        TotalPurchased = debt.TotalPurchased,
+                        OverpaidAmount = debt.OverpaidAmount,
+                        DebtStatus = debt.Status
                     };
                 }).ToList();
 
@@ -448,5 +450,75 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                 });
             }
         }
+
+        // ============================================================
+        // PATCH /api/suppliers/{id}/status
+        // Toggle trạng thái hợp tác: "active" ↔ "inactive" (Ngừng hợp tác / Kích hoạt lại)
+        // Body: { "status": "active" | "inactive" }
+        // Quyền truy cập: SUPPLIER_UPDATE
+        // ============================================================
+        [HttpPatch("{id:guid}/status")]
+        [HasPermission(PermissionConstants.SUPPLIER_UPDATE)]
+        public async Task<IActionResult> ToggleSupplierStatus(Guid id, [FromBody] StatusToggleRequest req)
+        {
+            try
+            {
+                if (req == null || string.IsNullOrWhiteSpace(req.Status))
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Status is required",
+                        Errors = new() { "Body must be: { \"status\": \"active\" | \"inactive\" }" }
+                    });
+                }
+
+                var s = await _context.Suppliers.FirstOrDefaultAsync(x => x.SupplierId == id);
+                if (s == null)
+                    return NotFound(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Supplier not found",
+                        Errors = new() { $"No supplier with ID: {id}" }
+                    });
+
+                var newStatus = ParseStatus(req.Status);
+                s.Status = newStatus;
+
+                // Audit: người cập nhật
+                Guid? currentUserId = null;
+                var nameIdentifier = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (Guid.TryParse(nameIdentifier, out var parsedGuid))
+                {
+                    currentUserId = parsedGuid;
+                }
+                s.UpdatedBy = currentUserId;
+                s.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = newStatus == 1 ? "Đã kích hoạt lại nhà cung cấp." : "Đã ngừng hợp tác với nhà cung cấp.",
+                    Data = new { Id = s.SupplierId, Status = StatusLabel(s.Status) }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Internal server error",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+    }
+
+    /// <summary>Request body cho PATCH /api/suppliers/{id}/status. Hỗ trợ "active" | "inactive".</summary>
+    public class StatusToggleRequest
+    {
+        public string? Status { get; set; }
     }
 }
