@@ -984,6 +984,7 @@ public class OwnerStaffController : ControllerBase
         // Thực hiện soft delete
         staff.Status = "DELETED";
         staff.IsActive = 0;
+        staff.IsVerified = false; // Không thể login nữa
         staff.DeletedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
         await _context.SaveChangesAsync();
 
@@ -1090,6 +1091,7 @@ public class OwnerStaffController : ControllerBase
         // Khôi phục: đưa về trạng thái ACTIVE (kèm IsActive=1)
         staff.Status = "ACTIVE";
         staff.IsActive = 1;
+        staff.IsVerified = true; // Cho phép login lại
         staff.DeletedAt = null;
         await _context.SaveChangesAsync();
 
