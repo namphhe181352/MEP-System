@@ -34,8 +34,8 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public Guid BranchId { get; set; }
         public string? BranchName { get; set; }
 
-        public Guid CategoryId { get; set; }
-        public string CategoryName { get; set; } = null!;
+        public Guid? CategoryId { get; set; }
+        public string? CategoryName { get; set; }
 
         public Guid? SupplierId { get; set; }
         public string? SupplierName { get; set; }

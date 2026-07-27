@@ -10,7 +10,7 @@ public partial class ExpenseVoucher
 
     public Guid BranchId { get; set; }
 
-    public Guid CategoryId { get; set; }
+    public Guid? CategoryId { get; set; }
 
     public Guid? SupplierId { get; set; }
 
@@ -38,7 +38,7 @@ public partial class ExpenseVoucher
 
     public virtual Branch Branch { get; set; } = null!;
 
-    public virtual ExpenseCategory Category { get; set; } = null!;
+    public virtual ExpenseCategory? Category { get; set; }
 
     public virtual Supplier? Supplier { get; set; }
 
