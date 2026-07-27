@@ -181,6 +181,7 @@ public class OwnerStaffController : ControllerBase
         [FromQuery] string? search,
         [FromQuery] bool? isActive,
         [FromQuery] bool? isDeleted = false,
+        [FromQuery] string? view = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
@@ -209,15 +210,46 @@ public class OwnerStaffController : ControllerBase
             .Select(sa => sa.UserId)
             .ToListAsync();
 
+        // view=active (default) | hidden | deleted
+        // - active: Status = ACTIVE
+        // - hidden: Status = INACTIVE (suspended)
+        // - deleted: Status = DELETED
+        string? statusFilter = null;
+        if (string.Equals(view, "hidden", StringComparison.OrdinalIgnoreCase))
+        {
+            statusFilter = "INACTIVE";
+        }
+        else if (string.Equals(view, "deleted", StringComparison.OrdinalIgnoreCase))
+        {
+            statusFilter = "DELETED";
+        }
+        else
+        {
+            statusFilter = "ACTIVE";
+        }
+
         var query = _context.Users
             .Include(u => u.UserPermissions).ThenInclude(up => up.Permission)
             .Include(u => u.Roles)
             .Where(u => staffUserIds.Contains(u.UserId)
-                && (isDeleted == true ? u.Status == "DELETED" : (u.Status != "DELETED" || u.Status == null))
+                && u.Status == statusFilter
                 && u.UserId != ownerId.Value
                 // Loại trừ Admin/Owner - chỉ hiển thị staff (Sale, Kho, etc.)
                 && !u.Roles.Any(r => r.RoleName == "Admin" || r.RoleName == "Owner"))
             .AsQueryable();
+
+        // isDeleted override chỉ áp dụng nếu muốn xem tất cả (backward compatible)
+        if (isDeleted == true)
+        {
+            query = _context.Users
+                .Include(u => u.UserPermissions).ThenInclude(up => up.Permission)
+                .Include(u => u.Roles)
+                .Where(u => staffUserIds.Contains(u.UserId)
+                    && u.Status == "DELETED"
+                    && u.UserId != ownerId.Value
+                    && !u.Roles.Any(r => r.RoleName == "Admin" || r.RoleName == "Owner"))
+                .AsQueryable();
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -230,12 +262,6 @@ public class OwnerStaffController : ControllerBase
 
         if (isActive.HasValue)
         {
-            // Nếu User có IsActive là short hoặc bool? 
-            // Giả sử có properties IsActive. Ta sẽ check theo type của db.
-            // Thông thường isActive hoạt động (1/true), ẩn (0/false)
-            // Trong source hiện tại tuỳ model, nhưng để an toàn cứ map
-            // Thấy bên kia u.Status != "DELETED", có thể Status là isActive? 
-            // Let's first make sure the property exists.
             query = query.Where(u => u.IsActive == (isActive.Value ? (short)1 : (short)0));
         }
 

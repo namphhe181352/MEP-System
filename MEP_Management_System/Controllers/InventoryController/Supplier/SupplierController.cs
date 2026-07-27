@@ -2,6 +2,7 @@ using MEP_Management_System.Authorization;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,10 +17,12 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
     public class SupplierController : ControllerBase
     {
         private readonly MEPDatabaseContext _context;
+        private readonly ISupplierDebtService _supplierDebtService;
 
-        public SupplierController(MEPDatabaseContext context)
+        public SupplierController(MEPDatabaseContext context, ISupplierDebtService supplierDebtService)
         {
             _context = context;
+            _supplierDebtService = supplierDebtService;
         }
 
         // Helper: chuyển mã hiển thị từ GUID (8 ký tự đầu)
@@ -70,7 +73,6 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
 
                 // Thực hiện Phân trang (Skip/Take) ngay tại SQL và chỉ lấy trang hiện tại lên RAM
                 var suppliers = await query
-                    .Include(s => s.PurchaseOrders)
                     .OrderByDescending(s => s.CreatedAt)
                     .Skip((p.PageNumber - 1) * p.PageSize)
                     .Take(p.PageSize)
@@ -84,26 +86,30 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     .OrderBy(g => g)
                     .ToListAsync();
 
+                // Tính công nợ chính xác qua ISupplierDebtService (batch) - đảm bảo đồng bộ với /api/supplierdebt
+                var supplierIds = suppliers.Select(s => s.SupplierId).ToList();
+                var debtMap = await _supplierDebtService.CalculateCurrentDebtBatchAsync(supplierIds);
+
                 // Map dữ liệu của trang hiện tại sang DTO (kèm computed: currentDebt, totalPurchased)
-                var items = suppliers.Select(s => new SupplierListItemDto
+                var items = suppliers.Select(s =>
                 {
-                    Id = s.SupplierId,
-                    Code = ToCode(s.SupplierId),
-                    Name = s.SupplierName,
-                    ContactPerson = s.ContactPerson,
-                    ContactPhone = s.ContactPhone,
-                    ContactEmail = s.ContactEmail,
-                    Address = s.Address,
-                    GroupName = s.GroupName,
-                    TaxCode = s.TaxCode,
-                    Status = StatusLabel(s.Status),
-                    CreatedAt = s.CreatedAt,
-                    CurrentDebt = s.PurchaseOrders
-                        .Where(po => po.Status == "APPROVED")
-                        .Sum(po => po.TotalAmount ?? 0),
-                    TotalPurchased = s.PurchaseOrders
-                        .Where(po => po.Status == "COMPLETED" || po.Status == "APPROVED")
-                        .Sum(po => po.TotalAmount ?? 0)
+                    var debt = debtMap.TryGetValue(s.SupplierId, out var d) ? d : new SupplierDebtSummary();
+                    return new SupplierListItemDto
+                    {
+                        Id = s.SupplierId,
+                        Code = ToCode(s.SupplierId),
+                        Name = s.SupplierName,
+                        ContactPerson = s.ContactPerson,
+                        ContactPhone = s.ContactPhone,
+                        ContactEmail = s.ContactEmail,
+                        Address = s.Address,
+                        GroupName = s.GroupName,
+                        TaxCode = s.TaxCode,
+                        Status = StatusLabel(s.Status),
+                        CreatedAt = s.CreatedAt,
+                        CurrentDebt = debt.CurrentDebt,
+                        TotalPurchased = debt.TotalPurchased
+                    };
                 }).ToList();
 
                 var totalPages = (int)Math.Ceiling(totalCount / (double)p.PageSize);

@@ -103,6 +103,10 @@ public static class DatabaseSeeder
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000045"), PermissionCode = "EXPENSE_CONFIRM", PermissionName = "Xác nhận phiếu chi" },
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000046"), PermissionCode = "EXPENSE_CANCEL", PermissionName = "Hủy phiếu chi" },
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000047"), PermissionCode = "EXPENSE_CATEGORY_MANAGE", PermissionName = "Quản lý danh mục chi phí" },
+            // SHIFT (CRUD)
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000060"), PermissionCode = "SHIFT_CREATE", PermissionName = "Mở ca làm việc" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000061"), PermissionCode = "SHIFT_UPDATE", PermissionName = "Chốt ca làm việc" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000062"), PermissionCode = "SHIFT_DELETE", PermissionName = "Hủy ca làm việc" },
         };
         await context.Permissions.AddRangeAsync(permissions);
         await context.SaveChangesAsync();
@@ -195,6 +199,10 @@ public static class DatabaseSeeder
             (Guid.Parse("10000000-0000-0000-0000-000000000001"), Guid.Parse("00000000-0000-0000-0000-000000000010")),
             (Guid.Parse("10000000-0000-0000-0000-000000000001"), Guid.Parse("00000000-0000-0000-0000-000000000011")),
             (Guid.Parse("10000000-0000-0000-0000-000000000001"), Guid.Parse("00000000-0000-0000-0000-000000000012")),
+            (Guid.Parse("10000000-0000-0000-0000-000000000001"), Guid.Parse("00000000-0000-0000-0000-000000000034")), // SHIFT_VIEW
+            (Guid.Parse("10000000-0000-0000-0000-000000000001"), Guid.Parse("00000000-0000-0000-0000-000000000060")), // SHIFT_CREATE
+            (Guid.Parse("10000000-0000-0000-0000-000000000001"), Guid.Parse("00000000-0000-0000-0000-000000000061")), // SHIFT_UPDATE
+            (Guid.Parse("10000000-0000-0000-0000-000000000001"), Guid.Parse("00000000-0000-0000-0000-000000000062")), // SHIFT_DELETE
             // Owner (không có USER_MANAGE - do Admin quản)
             (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000001")),
             (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000002")),
@@ -207,6 +215,9 @@ public static class DatabaseSeeder
             (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000010")),
             (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000011")),
             (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000012")),
+            (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000034")), // SHIFT_VIEW
+            (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000060")), // SHIFT_CREATE
+            (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000061")), // SHIFT_UPDATE
             // SalesStaff - Sale permissions
             (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000001")), // STOCK_VIEW
             (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000007")), // PRODUCT_VIEW
@@ -219,6 +230,8 @@ public static class DatabaseSeeder
             (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000032")), // PRINT_VIEW
             (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000033")), // PROMOTION_VIEW
             (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000034")), // SHIFT_VIEW
+            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000060")), // SHIFT_CREATE
+            (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000061")), // SHIFT_UPDATE
             (Guid.Parse("10000000-0000-0000-0000-000000000003"), Guid.Parse("00000000-0000-0000-0000-000000000037")), // REPORT_VIEW
             // InventoryStaff
             (Guid.Parse("10000000-0000-0000-0000-000000000004"), Guid.Parse("00000000-0000-0000-0000-000000000001")),

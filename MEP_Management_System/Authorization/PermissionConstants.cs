@@ -65,6 +65,9 @@ public static class PermissionConstants
     public const string PRINT_VIEW = "PRINT_VIEW";
     public const string PROMOTION_VIEW = "PROMOTION_VIEW";
     public const string SHIFT_VIEW = "SHIFT_VIEW";
+    public const string SHIFT_CREATE = "SHIFT_CREATE";
+    public const string SHIFT_UPDATE = "SHIFT_UPDATE";
+    public const string SHIFT_DELETE = "SHIFT_DELETE";
 
     // === SYSTEM / OWNER ===
     public const string OWNER_MANAGE = "OWNER_MANAGE";

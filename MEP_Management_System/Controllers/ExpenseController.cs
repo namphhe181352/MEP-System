@@ -343,21 +343,8 @@ namespace MEP_Management_System.Controllers
                     });
                 }
 
-                // Kiểm tra Supplier nếu có
-                if (dto.SupplierId.HasValue)
-                {
-                    var supplier = await _context.Suppliers
-                        .FirstOrDefaultAsync(s => s.SupplierId == dto.SupplierId.Value && s.Status == 1);
-
-                    if (supplier == null)
-                    {
-                        return BadRequest(new ApiResponse<object>
-                        {
-                            Success = false,
-                            Message = "Nhà cung cấp không hợp lệ hoặc đã bị vô hiệu hóa."
-                        });
-                    }
-                }
+                // NOTE: Phiếu chi tiền CHỈ dùng cho chi phí nội bộ (điện, nước, lương,...)
+                // KHÔNG dùng để thanh toán NCC - dùng /api/supplierpayments cho việc đó.
 
                 var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
                 var voucherCode = await GenerateVoucherCode(resolvedBranchId.Value, currentTime);
@@ -368,7 +355,7 @@ namespace MEP_Management_System.Controllers
                     VoucherCode = voucherCode,
                     BranchId = resolvedBranchId.Value,
                     CategoryId = dto.CategoryId,
-                    SupplierId = dto.SupplierId,
+                    SupplierId = null, // Không gán NCC - dùng SupplierPayments riêng
                     Amount = dto.Amount,
                     Reason = dto.Reason.Trim(),
                     Note = dto.Note?.Trim(),
