@@ -16,10 +16,12 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
     public class SupplierDebtController : ControllerBase
     {
         private readonly MEPDatabaseContext _context;
+        private readonly ISupplierDebtService _supplierDebtService;
 
-        public SupplierDebtController(MEPDatabaseContext context)
+        public SupplierDebtController(MEPDatabaseContext context, ISupplierDebtService supplierDebtService)
         {
             _context = context;
+            _supplierDebtService = supplierDebtService;
         }
 
         // 🌟 TỐI ƯU 3: Helper escape dấu phẩy và nháy kép trong CSV, tránh lỗi lệch cột dữ liệu
@@ -117,10 +119,11 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         overdueDays = (today - dueDate.Value.Date).Days;
                     }
 
-                    // Phân định Trạng thái công nợ (normal | overdue | paid)
-                    string calcStatus = "normal";
-                    if (closingDebt <= 0) calcStatus = "paid";
-                    else if (overdueDays > 0) calcStatus = "overdue";
+                    // Phân định Trạng thái công nợ (tiếng Việt: "Còn nợ" | "Hết nợ", kèm "Quá hạn" nếu có due date trễ)
+                    string calcStatus;
+                    if (closingDebt <= 0) calcStatus = "Hết nợ";
+                    else if (overdueDays > 0) calcStatus = "Quá hạn";
+                    else calcStatus = "Còn nợ";
 
                     debtList.Add(new SupplierDebtDto
                     {
@@ -141,7 +144,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     });
                 }
 
-                // Lọc theo bộ lọc trạng thái công nợ (normal | overdue | paid) nếu Client truyền vào
+                // Lọc theo bộ lọc trạng thái công nợ (tiếng Việt) nếu Client truyền vào
                 if (!string.IsNullOrWhiteSpace(@params.Status) && @params.Status != "all")
                 {
                     debtList = debtList.Where(d => d.Status == @params.Status).ToList();
@@ -151,11 +154,11 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                 var summary = new SupplierDebtSummaryDto
                 {
                     TotalClosingDebt = debtList.Sum(d => d.ClosingDebt),
-                    TotalOverdueDebt = debtList.Where(d => d.Status == "overdue").Sum(d => d.ClosingDebt),
+                    TotalOverdueDebt = debtList.Where(d => d.Status == "Quá hạn").Sum(d => d.ClosingDebt),
                     TotalPaidInPeriod = debtList.Sum(d => d.PaidInPeriod),
                     TotalPurchasedInPeriod = debtList.Sum(d => d.PurchasedInPeriod),
                     TotalSuppliers = debtList.Count,
-                    OverdueCount = debtList.Count(d => d.Status == "overdue")
+                    OverdueCount = debtList.Count(d => d.Status == "Quá hạn")
                 };
 
                 // Phân trang danh sách đã xử lý
@@ -205,7 +208,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         {
             try
             {
-                var result = await new SupplierDebtService(_context).GetSupplierDebtDetailAsync(supplierId, User);
+                var result = await _supplierDebtService.GetSupplierDebtDetailAsync(supplierId, User);
                 if (result == null)
                 {
                     return NotFound(new ApiResponse<object>

@@ -13,7 +13,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         /// <summary>Tìm theo mã hoặc tên NCC.</summary>
         public string? SearchTerm { get; set; }
 
-        /// <summary>normal | overdue | paid | all (mặc định all)</summary>
+        /// <summary>"Còn nợ" | "Hết nợ" | "Quá hạn" | "all" (mặc định all)</summary>
         public string? Status { get; set; } = "all";
     }
 
@@ -39,8 +39,8 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
 
         public int OverdueDays { get; set; }
 
-        /// <summary>normal | overdue | paid</summary>
-        public string Status { get; set; } = "normal";
+        /// <summary>"Còn nợ" | "Hết nợ" | "Quá hạn"</summary>
+        public string Status { get; set; } = "Còn nợ";
     }
 
     // ============================================================
