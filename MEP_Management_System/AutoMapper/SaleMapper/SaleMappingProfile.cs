@@ -30,14 +30,19 @@ public class SaleMappingProfile : Profile
             .ForMember(d => d.Barcode, o => o.MapFrom(s => s.BranchProduct != null && s.BranchProduct.Product != null ? s.BranchProduct.Product.Barcode : null))
             .ForMember(d => d.Unit, o => o.MapFrom(s => s.BranchProduct != null && s.BranchProduct.Product != null ? s.BranchProduct.Product.BaseUnit : null))
             .ForMember(d => d.SelectedUnit, o => o.MapFrom(s => s.SelectedUnit))
-            .ForMember(d => d.ConvertValue, o => o.MapFrom(s => s.ConvertValue));
+            .ForMember(d => d.ConvertValue, o => o.MapFrom(s => s.ConvertValue))
+            .ForMember(d => d.CategoryId, o => o.MapFrom(s =>
+                s.BranchProduct != null && s.BranchProduct.Product != null
+                    ? s.BranchProduct.Product.CategoryTaxonomyId : (Guid?)null))
+            .ForMember(d => d.CategoryName, o => o.MapFrom(s =>
+                s.BranchProduct != null && s.BranchProduct.Product != null && s.BranchProduct.Product.CategoryTaxonomy != null
+                    ? s.BranchProduct.Product.CategoryTaxonomy.Name : (s.BranchProduct != null && s.BranchProduct.Product != null
+                        ? s.BranchProduct.Product.CategoryName : null)));
 
         // Payment
         CreateMap<Payment, DTOs.SaleDTOs.PaymentDto>();
 
-        // Promotion
-        CreateMap<Promotion, DTOs.SaleDTOs.PromotionDto>()
-            .ForMember(d => d.DiscountAmount, o => o.Ignore());
+
 
         // Shift
         CreateMap<Shift, DTOs.SaleDTOs.ShiftDto>()
@@ -73,11 +78,9 @@ public class SaleMappingProfile : Profile
 
         // ReturnOrder
         CreateMap<ReturnOrder, DTOs.SaleDTOs.ReturnOrderDto>()
-            // InvoiceCode = mã hóa đơn gốc (lấy từ invoice đầu tiên của order, không phải orderCode)
+            // InvoiceCode = mã hóa đơn gốc (lấy từ invoice của order)
             .ForMember(d => d.InvoiceCode, o => o.MapFrom(s =>
-                s.Order != null && s.Order.Invoices != null && s.Order.Invoices.Any()
-                    ? s.Order.Invoices.First().InvoiceCode
-                    : null))
+                s.Order != null && s.Order.Invoice != null ? s.Order.Invoice.InvoiceCode : null))
             .ForMember(d => d.CustomerId, o => o.MapFrom(s => s.Order != null ? s.Order.CustomerId : (Guid?)null))
             .ForMember(d => d.CustomerName, o => o.MapFrom(s =>
                 s.Order != null && s.Order.Customer != null ? s.Order.Customer.CustomerName : null))
@@ -91,7 +94,14 @@ public class SaleMappingProfile : Profile
                     ? s.BranchProduct.Product.ProductName : null))
             .ForMember(d => d.ProductCode, o => o.MapFrom(s =>
                 s.BranchProduct != null && s.BranchProduct.Product != null
-                    ? s.BranchProduct.Product.ProductCode : null));
+                    ? s.BranchProduct.Product.ProductCode : null))
+            .ForMember(d => d.CategoryId, o => o.MapFrom(s =>
+                s.BranchProduct != null && s.BranchProduct.Product != null
+                    ? s.BranchProduct.Product.CategoryTaxonomyId : (Guid?)null))
+            .ForMember(d => d.CategoryName, o => o.MapFrom(s =>
+                s.BranchProduct != null && s.BranchProduct.Product != null && s.BranchProduct.Product.CategoryTaxonomy != null
+                    ? s.BranchProduct.Product.CategoryTaxonomy.Name : (s.BranchProduct != null && s.BranchProduct.Product != null
+                        ? s.BranchProduct.Product.CategoryName : null)));
     }
 
     private static string? CalculateTier(decimal? totalSpent)

@@ -56,38 +56,36 @@ public class InvoicesController : ControllerBase
     {
         var branchId = GetBranchId();
 
-        // Count query first (lightweight)
-        var countQuery = _context.Orders.Where(o => o.BranchId == branchId);
-        if (!string.IsNullOrEmpty(status))
-            countQuery = countQuery.Where(o => o.Invoices.Any(i => i.Status == status));
-        if (dateFrom.HasValue)
-            countQuery = countQuery.Where(o => o.CreatedAt >= dateFrom.Value);
-        if (dateTo.HasValue)
-            countQuery = countQuery.Where(o => o.CreatedAt <= dateTo.Value);
-        if (customerId.HasValue)
-            countQuery = countQuery.Where(o => o.CustomerId == customerId.Value);
-        if (staffId.HasValue)
-            countQuery = countQuery.Where(o => o.UserId == staffId.Value);
-        var total = await countQuery.CountAsync();
-
-        // Projection query - only fetch needed fields (no entity tracking, no over-fetching)
-        var orderIds = await _context.Orders
+        // Build base query directly from Invoices (fix: don't depend on Orders table)
+        var baseQuery = _context.Invoices
             .AsNoTracking()
-            .Where(o => o.BranchId == branchId)
-            .Where(o => !string.IsNullOrEmpty(status) ? o.Invoices.Any(i => i.Status == status) : true)
-            .Where(o => dateFrom.HasValue ? o.CreatedAt >= dateFrom.Value : true)
-            .Where(o => dateTo.HasValue ? o.CreatedAt <= dateTo.Value : true)
-            .Where(o => customerId.HasValue ? o.CustomerId == customerId.Value : true)
-            .Where(o => staffId.HasValue ? o.UserId == staffId.Value : true)
-            .OrderByDescending(o => o.CreatedAt)
-            .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(o => o.OrderId)
-            .ToListAsync();
+            .Where(i => i.Order.BranchId == branchId);
+
+        // Count query
+        var countQuery = _context.Invoices.Where(i => i.Order.BranchId == branchId);
+        if (!string.IsNullOrEmpty(status))
+            countQuery = countQuery.Where(i => i.Status == status);
+        if (dateFrom.HasValue)
+            countQuery = countQuery.Where(i => i.CreatedAt >= dateFrom.Value);
+        if (dateTo.HasValue)
+            countQuery = countQuery.Where(i => i.CreatedAt <= dateTo.Value);
+        if (customerId.HasValue)
+            countQuery = countQuery.Where(i => i.Order.CustomerId == customerId.Value);
+        if (staffId.HasValue)
+            countQuery = countQuery.Where(i => i.Order.UserId == staffId.Value);
+        var total = await countQuery.CountAsync();
 
         // Fetch invoices + related data in single optimized query
         var invoiceData = await _context.Invoices
             .AsNoTracking()
-            .Where(i => orderIds.Contains(i.OrderId))
+            .Where(i => i.Order.BranchId == branchId)
+            .Where(i => !string.IsNullOrEmpty(status) ? i.Status == status : true)
+            .Where(i => dateFrom.HasValue ? i.CreatedAt >= dateFrom.Value : true)
+            .Where(i => dateTo.HasValue ? i.CreatedAt <= dateTo.Value : true)
+            .Where(i => customerId.HasValue ? i.Order.CustomerId == customerId.Value : true)
+            .Where(i => staffId.HasValue ? i.Order.UserId == staffId.Value : true)
+            .OrderByDescending(i => i.CreatedAt)
+            .Skip((page - 1) * pageSize).Take(pageSize)
             .Select(i => new
             {
                 Invoice = i,
@@ -137,6 +135,7 @@ public class InvoicesController : ControllerBase
 
     // POST /api/pos/invoices
     [HttpPost]
+    [HasPermission(PermissionConstants.SALE_CREATE)]
     public async Task<ActionResult<InvoiceDto>> CreateInvoice([FromBody] CreateInvoiceRequest request)
     {
         var branchId = GetBranchId();
@@ -157,6 +156,7 @@ public class InvoicesController : ControllerBase
             }
         }
 
+        // Remove draft limit as it breaks checkout flow when Draft invoices leak.
         var now = DateTime.UtcNow;
         var todayPrefixInv = $"INV-{now.Year}-";
         var todayPrefixOrder = $"POS-{now:yyyyMMdd}-";
@@ -240,6 +240,7 @@ public class InvoicesController : ControllerBase
 
     // POST /api/pos/invoices/{invoiceId}/items
     [HttpPost("{invoiceId:guid}/items")]
+    [HasPermission(PermissionConstants.SALE_CREATE)]
     public async Task<ActionResult<InvoiceItemDto>> AddItem(Guid invoiceId, [FromBody] AddItemRequest request)
     {
         var branchId = GetBranchId();
@@ -339,6 +340,7 @@ public class InvoicesController : ControllerBase
 
     // POST /api/pos/invoices/{invoiceId}/items/scan
     [HttpPost("{invoiceId:guid}/items/scan")]
+    [HasPermission(PermissionConstants.SALE_CREATE)]
     public async Task<ActionResult<InvoiceItemDto>> ScanItem(Guid invoiceId, [FromBody] ScanItemRequest request)
     {
         var branchId = GetBranchId();
@@ -450,35 +452,67 @@ public class InvoicesController : ControllerBase
                 return BadRequest(ApiErrorResponse.Create("MSG-59", $"Insufficient stock for product. Available: {item.BranchProduct.AvailableStock}"));
         }
 
-        // Deduct stock - POS bán lẻ: trừ cả ActualStock và AvailableStock
-        // (AvailableStock là stored field, không phải computed property)
-        foreach (var item in invoice.InvoiceItems)
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
         {
-            var actualQty = item.Quantity * (item.ConvertValue ?? 1m);
-            item.BranchProduct.ActualStock -= actualQty;
-            item.BranchProduct.AvailableStock -= actualQty;
+            // Idempotency check: Re-verify invoice status within transaction to prevent race condition
+            var invoiceInTx = await _context.Invoices.FindAsync(invoiceId);
+            if (invoiceInTx == null || invoiceInTx.Status != "Draft")
+            {
+                await transaction.RollbackAsync();
+                return BadRequest(ApiErrorResponse.Create("MSG-78", "Invoice already finalized or not found"));
+            }
+
+            // Deduct stock - POS bán lẻ: trừ cả ActualStock và AvailableStock
+            // (AvailableStock là stored field, không phải computed property)
+            // Fix concurrent checkout with atomic update
+            foreach (var item in invoice.InvoiceItems)
+            {
+                var actualQty = item.Quantity * (item.ConvertValue ?? 1m);
+                var rowsAffected = await _context.BranchProducts
+                    .Where(bp => bp.BranchProductId == item.BranchProductId && bp.AvailableStock >= actualQty && bp.ActualStock >= actualQty)
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(b => b.ActualStock, b => b.ActualStock - actualQty)
+                        .SetProperty(b => b.AvailableStock, b => b.AvailableStock - actualQty));
+
+                if (rowsAffected == 0)
+                {
+                    await transaction.RollbackAsync();
+                    return BadRequest(ApiErrorResponse.Create("MSG-59", $"Thanh toán thất bại. Sản phẩm trong giỏ hàng đã hết hàng hoặc không đủ số lượng. Available: {item.BranchProduct.AvailableStock}"));
+                }
+            }
+
+            invoice.Status = "Completed";
+            invoice.Order.Status = "Completed";
+
+            // Lưu các giá trị đã tính ở trên vào invoice
+            invoice.SubTotalAmount = subTotal;
+            invoice.DiscountPercent = discountPercent;
+            invoice.DiscountAmount = discountAmount;
+            invoice.TotalAmount = totalAmount;
+
+            // Also update Order with the same values
+            invoice.Order.TotalAmount = totalAmount;
+            invoice.Order.DiscountAmount = discountAmount;
+            invoice.Order.TaxAmount = 0; // VAT handled in invoice, not order
+
+            // Update customer stats
+            if (invoice.Order.Customer != null)
+            {
+                invoice.Order.Customer.TotalSpent = (invoice.Order.Customer.TotalSpent ?? 0) + invoice.TotalAmount;
+                invoice.Order.Customer.OrderCount = (invoice.Order.Customer.OrderCount ?? 0) + 1;
+                invoice.Order.Customer.LastVisit = DateTime.UtcNow;
+                invoice.Order.Customer.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
         }
-
-        invoice.Status = "Completed";
-        invoice.Order.Status = "Completed";
-
-        // Lưu các giá trị đã tính ở trên vào invoice
-        invoice.SubTotalAmount = subTotal;
-        invoice.DiscountPercent = discountPercent;
-        invoice.DiscountAmount = discountAmount;
-        invoice.TotalAmount = totalAmount;
-
-
-        // Update customer stats
-        if (invoice.Order.Customer != null)
+        catch
         {
-            invoice.Order.Customer.TotalSpent = (invoice.Order.Customer.TotalSpent ?? 0) + invoice.TotalAmount;
-            invoice.Order.Customer.OrderCount = (invoice.Order.Customer.OrderCount ?? 0) + 1;
-            invoice.Order.Customer.LastVisit = DateTime.UtcNow;
-            invoice.Order.Customer.UpdatedAt = DateTime.UtcNow;
+            await transaction.RollbackAsync();
+            throw;
         }
-
-        await _context.SaveChangesAsync();
 
         var dto = _mapper.Map<InvoiceDto>(invoice);
         dto.OrderId = invoice.OrderId;
@@ -487,8 +521,8 @@ public class InvoicesController : ControllerBase
 
         if (invoice.Payments != null && invoice.Payments.Any())
         {
-            dto.PaymentMethod = invoice.Payments.Count > 1 
-                ? "Combined" 
+            dto.PaymentMethod = invoice.Payments.Count > 1
+                ? "Combined"
                 : invoice.Payments.First().Method.ToString();
         }
 
@@ -542,14 +576,13 @@ public class InvoicesController : ControllerBase
         if (invoice == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Invoice not found"));
         if (invoice.Status != "Draft") return BadRequest(ApiErrorResponse.Create("MSG-78", "Only draft invoices can be held"));
 
-        // BR-87: Max 10 held invoices per branch
+        // BR-87: Max 20 held invoices per branch
         var heldCount = await _context.Invoices
             .Where(i => i.Order.BranchId == branchId && i.Status == "OnHold")
             .CountAsync();
 
-        if (heldCount >= 10)
-            return BadRequest(ApiErrorResponse.Create("MSG-71", "Đã đạt tối đa 10 đơn treo. Không thể treo thêm."));
-
+        if (heldCount >= 20)
+            return BadRequest(ApiErrorResponse.Create("MSG-71", "Đã đạt tối đa 20 đơn treo. Không thể treo thêm."));
         // BR-86: Save current cart state, change status to "OnHold"
         var now = DateTime.UtcNow;
         invoice.Status = "OnHold";

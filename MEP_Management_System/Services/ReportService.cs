@@ -172,6 +172,12 @@ public class ReportService
             throw new UnauthorizedAccessException("Không xác định được chi nhánh từ user hiện tại.");
         }
 
+        // Validate date range: fromDate must be <= toDate
+        if (request.FromDate > request.ToDate)
+        {
+            throw new ArgumentException("Ngày bắt đầu không thể lớn hơn ngày kết thúc.");
+        }
+
         var branch = await _context.Branches.FirstOrDefaultAsync(b => b.BranchId == branchId);
 
         var fromDate = request.FromDate.Date;

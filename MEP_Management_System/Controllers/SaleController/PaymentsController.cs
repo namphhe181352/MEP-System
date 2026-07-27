@@ -228,6 +228,11 @@ public class PaymentsController : ControllerBase
         if (payment == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Payment not found"));
         if (payment.Method != PaymentMethod.Transfer) return BadRequest(ApiErrorResponse.Create("MSG-76", "Only transfer payments need confirmation"));
         if (payment.Status == "Confirmed") return BadRequest(ApiErrorResponse.Create("MSG-76", "Payment already confirmed"));
+        
+        if (payment.QRExpiredAt.HasValue && payment.QRExpiredAt.Value < DateTime.UtcNow)
+        {
+            return BadRequest(ApiErrorResponse.Create("MSG-76", "Mã QR đã hết hạn. Vui lòng hủy và tạo mã mới."));
+        }
 
         payment.Status = "Confirmed";
         payment.PaidAt = DateTime.UtcNow;
@@ -246,5 +251,18 @@ public class PaymentsController : ControllerBase
         var payment = await _context.Payments.FindAsync(paymentId);
         if (payment == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Payment not found"));
         return Ok(new { status = payment.Status });
+    }
+
+    // POST /api/pos/payments/{paymentId}/cancel
+    [HttpPost("payments/{paymentId:guid}/cancel")]
+    public async Task<ActionResult> CancelPayment(Guid paymentId)
+    {
+        var payment = await _context.Payments.FindAsync(paymentId);
+        if (payment == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Payment not found"));
+        if (payment.Status != "Pending") return BadRequest(ApiErrorResponse.Create("MSG-76", "Only pending payments can be cancelled"));
+        
+        payment.Status = "Cancelled";
+        await _context.SaveChangesAsync();
+        return Ok(new { success = true, message = "Payment cancelled" });
     }
 }

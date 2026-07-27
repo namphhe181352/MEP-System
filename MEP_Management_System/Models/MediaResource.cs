@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace MEP_Management_System.Models;
@@ -19,7 +19,6 @@ public partial class MediaResource
 
     public DateTime? CreatedAt { get; set; }
 
-    public virtual CommunityPost? Post { get; set; }
-
     public virtual Product? Product { get; set; }
 }
+

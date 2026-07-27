@@ -42,9 +42,25 @@ public class PermissionAuthorizationHandler : AuthorizationHandler<PermissionReq
             return;
         }
 
+        // Check for explicit deny (IsGranted = false)
+        var hasExplicitDeny = await _dbContext.UserPermissions
+            .AsNoTracking()
+            .AnyAsync(up => up.UserId == userId
+                && up.Permission.PermissionCode == requirement.PermissionCode
+                && up.IsGranted == false);
+
+        if (hasExplicitDeny)
+        {
+            context.Fail();
+            return;
+        }
+
+        // Check for direct permission (explicit allow or null)
         var hasDirectPermission = await _dbContext.UserPermissions
             .AsNoTracking()
-            .AnyAsync(up => up.UserId == userId && up.Permission.PermissionCode == requirement.PermissionCode);
+            .AnyAsync(up => up.UserId == userId
+                && up.Permission.PermissionCode == requirement.PermissionCode
+                && up.IsGranted != false);
 
         if (hasDirectPermission)
         {
@@ -52,6 +68,7 @@ public class PermissionAuthorizationHandler : AuthorizationHandler<PermissionReq
             return;
         }
 
+        // Check for role permission
         var hasRolePermission = await _dbContext.Users
             .AsNoTracking()
             .Where(u => u.UserId == userId)
@@ -60,10 +77,9 @@ public class PermissionAuthorizationHandler : AuthorizationHandler<PermissionReq
         if (hasRolePermission)
         {
             context.Succeed(requirement);
+            return;
         }
-        else
-        {
-            context.Fail();
-        }
+
+        context.Fail();
     }
 }

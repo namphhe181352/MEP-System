@@ -201,13 +201,14 @@ public class InventoryCheckController : ControllerBase
                     TicketCode = ticket.TicketCode,
                     CreatedAt = ticket.CreatedAt,
                     Status = ticket.Status.ToString(),
-                    DetailCount = ticket.Details.Count,
+                    TotalProducts = ticket.Details.Count,
                     BranchId = ticket.BranchId,
                     CreatedByUserId = ticket.CreatedByUserId,
-                    CreatedByUserName = ticket.CreatedByUser != null ? ticket.CreatedByUser.Username : null,
+                    CreatedByUserName = ticket.CreatedByUser != null ? ticket.CreatedByUser.Username : string.Empty,
                     AssigneeUserId = ticket.AssigneeUserId,
                     AssigneeUserName = ticket.AssigneeUser != null ? ticket.AssigneeUser.Username : null,
-                    RecountNumber = 0
+                    RecountNumber = ticket.RecountNumber,
+                    RecountReason = ticket.RecountReason
                 })
                 .ToListAsync();
 
@@ -589,24 +590,29 @@ public class InventoryCheckController : ControllerBase
                     foreach (var bp in branchProducts)
                     {
                         var systemQuantity = Convert.ToInt32(Math.Floor(bp.ActualStock));
-                        ticket.Details.Add(new InventoryCheckDetail
+                        var newDetail = new InventoryCheckDetail
                         {
                             DetailId = Guid.NewGuid(),
+                            TicketId = ticket.TicketId,
                             ProductId = bp.ProductId,
                             SystemQuantity = systemQuantity,
                             ActualQuantity = 0,
                             IsCounted = false,
                             Discrepancy = 0 - systemQuantity
-                        });
+                        };
+                        _context.InventoryCheckDetails.Add(newDetail);
                     }
                 }
             }
 
-            // Remove products
+            // Remove products - use DbSet to ensure EF Core deletes entities from DB
             if (dto.RemoveProductIds != null && dto.RemoveProductIds.Count > 0)
             {
                 var detailsToRemove = ticket.Details.Where(d => dto.RemoveProductIds.Contains(d.ProductId)).ToList();
-                _context.InventoryCheckDetails.RemoveRange(detailsToRemove);
+                foreach (var detail in detailsToRemove)
+                {
+                    _context.InventoryCheckDetails.Remove(detail);
+                }
             }
 
             await _context.SaveChangesAsync();

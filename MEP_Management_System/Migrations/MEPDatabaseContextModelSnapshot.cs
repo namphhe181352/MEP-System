@@ -56,6 +56,9 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<int?>("ExchangeDaysAllowed")
+                        .HasColumnType("integer");
+
                     b.Property<short>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("smallint")
@@ -70,6 +73,9 @@ namespace MEP_Management_System.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
                         .HasColumnName("phone");
+
+                    b.Property<int?>("ReturnDaysAllowed")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Type")
                         .HasMaxLength(50)
@@ -179,166 +185,6 @@ namespace MEP_Management_System.Migrations
                         .IsUnique();
 
                     b.ToTable("branch_products", (string)null);
-                });
-
-            modelBuilder.Entity("MEP_Management_System.Models.Comment", b =>
-                {
-                    b.Property<Guid>("CommentId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("comment_id")
-                        .HasDefaultValueSql("uuid_generate_v4()");
-
-                    b.Property<string>("CommentText")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("comment_text");
-
-                    b.Property<DateTime?>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.Property<Guid>("PostId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("post_id");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("CommentId")
-                        .HasName("comments_pkey");
-
-                    b.HasIndex("PostId");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("comments", (string)null);
-                });
-
-            modelBuilder.Entity("MEP_Management_System.Models.CommunityCategory", b =>
-                {
-                    b.Property<Guid>("CategoryId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("category_id")
-                        .HasDefaultValueSql("uuid_generate_v4()");
-
-                    b.Property<string>("CategoryName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("category_name");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("description");
-
-                    b.Property<bool>("IsArchived")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false)
-                        .HasColumnName("is_archived");
-
-                    b.Property<Guid?>("ParentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("parent_id");
-
-                    b.Property<string>("Slug")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("slug");
-
-                    b.Property<int>("SortOrder")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("sort_order");
-
-                    b.HasKey("CategoryId")
-                        .HasName("community_categories_pkey");
-
-                    b.HasIndex("ParentId");
-
-                    b.HasIndex("Slug")
-                        .IsUnique()
-                        .HasDatabaseName("ix_community_categories_slug");
-
-                    b.ToTable("community_categories", (string)null);
-                });
-
-            modelBuilder.Entity("MEP_Management_System.Models.CommunityPost", b =>
-                {
-                    b.Property<Guid>("PostId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("post_id")
-                        .HasDefaultValueSql("uuid_generate_v4()");
-
-                    b.Property<Guid>("CategoryId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("category_id");
-
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("content");
-
-                    b.Property<DateTime?>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.Property<decimal?>("GroupBuyingPrice")
-                        .HasPrecision(15, 2)
-                        .HasColumnType("numeric(15,2)")
-                        .HasColumnName("group_buying_price");
-
-                    b.Property<int?>("GroupBuyingTarget")
-                        .HasColumnType("integer")
-                        .HasColumnName("group_buying_target");
-
-                    b.Property<short?>("IsPinned")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("smallint")
-                        .HasDefaultValue((short)0)
-                        .HasColumnName("is_pinned");
-
-                    b.Property<string>("Status")
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasDefaultValue("ACTIVE")
-                        .HasColumnName("status");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("title");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.Property<int?>("ViewCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("view_count");
-
-                    b.HasKey("PostId")
-                        .HasName("community_posts_pkey");
-
-                    b.HasIndex("CategoryId");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("community_posts", (string)null);
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.Customer", b =>
@@ -457,91 +303,6 @@ namespace MEP_Management_System.Migrations
                         .IsUnique();
 
                     b.ToTable("customers", (string)null);
-                });
-
-            modelBuilder.Entity("MEP_Management_System.Models.DailySummary", b =>
-                {
-                    b.Property<Guid>("SummaryId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("summary_id")
-                        .HasDefaultValueSql("uuid_generate_v4()");
-
-                    b.Property<Guid>("BranchId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("branch_id");
-
-                    b.Property<decimal>("ClosingCash")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(15, 2)
-                        .HasColumnType("numeric(15,2)")
-                        .HasDefaultValue(0m)
-                        .HasColumnName("closing_cash");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.Property<decimal>("OpeningCash")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(15, 2)
-                        .HasColumnType("numeric(15,2)")
-                        .HasDefaultValue(0m)
-                        .HasColumnName("opening_cash");
-
-                    b.Property<DateTime>("SummaryDate")
-                        .HasColumnType("date")
-                        .HasColumnName("summary_date");
-
-                    b.Property<decimal>("TotalCash")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(15, 2)
-                        .HasColumnType("numeric(15,2)")
-                        .HasDefaultValue(0m)
-                        .HasColumnName("total_cash");
-
-                    b.Property<decimal>("TotalDebt")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(15, 2)
-                        .HasColumnType("numeric(15,2)")
-                        .HasDefaultValue(0m)
-                        .HasColumnName("total_debt");
-
-                    b.Property<int>("TotalOrders")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("total_orders");
-
-                    b.Property<decimal>("TotalRefunds")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(15, 2)
-                        .HasColumnType("numeric(15,2)")
-                        .HasDefaultValue(0m)
-                        .HasColumnName("total_refunds");
-
-                    b.Property<decimal>("TotalRevenue")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(15, 2)
-                        .HasColumnType("numeric(15,2)")
-                        .HasDefaultValue(0m)
-                        .HasColumnName("total_revenue");
-
-                    b.Property<decimal>("TotalTransfer")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(15, 2)
-                        .HasColumnType("numeric(15,2)")
-                        .HasDefaultValue(0m)
-                        .HasColumnName("total_transfer");
-
-                    b.HasKey("SummaryId")
-                        .HasName("daily_summaries_pkey");
-
-                    b.HasIndex("BranchId");
-
-                    b.ToTable("daily_summaries", (string)null);
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.ExpenseCategory", b =>
@@ -1023,7 +784,8 @@ namespace MEP_Management_System.Migrations
                     b.HasKey("InvoiceId")
                         .HasName("invoices_pkey");
 
-                    b.HasIndex("OrderId");
+                    b.HasIndex("OrderId")
+                        .IsUnique();
 
                     b.HasIndex("UserId");
 
@@ -1075,55 +837,6 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("invoice_items", (string)null);
                 });
 
-            modelBuilder.Entity("MEP_Management_System.Models.LoyaltyTransaction", b =>
-                {
-                    b.Property<Guid>("TransactionId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("transaction_id")
-                        .HasDefaultValueSql("uuid_generate_v4()");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.Property<Guid>("CustomerId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("customer_id");
-
-                    b.Property<string>("Description")
-                        .HasColumnType("text")
-                        .HasColumnName("description");
-
-                    b.Property<int>("Points")
-                        .HasColumnType("integer")
-                        .HasColumnName("points");
-
-                    b.Property<Guid?>("ReferenceId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("reference_id");
-
-                    b.Property<string>("ReferenceType")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("reference_type");
-
-                    b.Property<string>("TransactionType")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("transaction_type");
-
-                    b.HasKey("TransactionId")
-                        .HasName("loyalty_transactions_pkey");
-
-                    b.HasIndex("CustomerId");
-
-                    b.ToTable("loyalty_transactions", (string)null);
-                });
-
             modelBuilder.Entity("MEP_Management_System.Models.MediaResource", b =>
                 {
                     b.Property<Guid>("MediaId")
@@ -1165,8 +878,6 @@ namespace MEP_Management_System.Migrations
 
                     b.HasKey("MediaId")
                         .HasName("media_resources_pkey");
-
-                    b.HasIndex("PostId");
 
                     b.HasIndex("ProductId");
 
@@ -1813,6 +1524,62 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("product_conversion_units", (string)null);
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.ProductLocation", b =>
+                {
+                    b.Property<Guid>("LocationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("location_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<short>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)1)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("LocationCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("location_code");
+
+                    b.Property<string>("LocationName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("location_name");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("LocationId")
+                        .HasName("product_locations_pkey");
+
+                    b.HasIndex("LocationName")
+                        .IsUnique()
+                        .HasDatabaseName("ix_product_locations_location_name");
+
+                    b.ToTable("product_locations", (string)null);
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.ProductTaxonomy", b =>
                 {
                     b.Property<Guid>("TaxonomyId")
@@ -1845,140 +1612,6 @@ namespace MEP_Management_System.Migrations
                     b.HasIndex("BranchId");
 
                     b.ToTable("product_taxonomies");
-                });
-
-            modelBuilder.Entity("MEP_Management_System.Models.Promotion", b =>
-                {
-                    b.Property<Guid>("PromotionId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("promotion_id")
-                        .HasDefaultValueSql("uuid_generate_v4()");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.Property<string>("Description")
-                        .HasColumnType("text")
-                        .HasColumnName("description");
-
-                    b.Property<string>("DiscountType")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("discount_type");
-
-                    b.Property<decimal>("DiscountValue")
-                        .HasPrecision(15, 2)
-                        .HasColumnType("numeric(15,2)")
-                        .HasColumnName("discount_value");
-
-                    b.Property<DateTime>("EndDate")
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("end_date");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true)
-                        .HasColumnName("is_active");
-
-                    b.Property<decimal?>("MaxDiscountAmount")
-                        .HasPrecision(15, 2)
-                        .HasColumnType("numeric(15,2)")
-                        .HasColumnName("max_discount_amount");
-
-                    b.Property<decimal?>("MinOrderAmount")
-                        .HasPrecision(15, 2)
-                        .HasColumnType("numeric(15,2)")
-                        .HasColumnName("min_order_amount");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("name");
-
-                    b.Property<string>("PromotionCode")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("promotion_code");
-
-                    b.Property<DateTime>("StartDate")
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("start_date");
-
-                    b.Property<int?>("UsageLimit")
-                        .HasColumnType("integer")
-                        .HasColumnName("usage_limit");
-
-                    b.Property<int>("UsedCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("used_count");
-
-                    b.HasKey("PromotionId")
-                        .HasName("promotions_pkey");
-
-                    b.HasIndex("PromotionCode")
-                        .IsUnique()
-                        .HasDatabaseName("ix_promotions_code");
-
-                    b.ToTable("promotions", (string)null);
-                });
-
-            modelBuilder.Entity("MEP_Management_System.Models.PromotionUsage", b =>
-                {
-                    b.Property<Guid>("UsageId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("usage_id")
-                        .HasDefaultValueSql("uuid_generate_v4()");
-
-                    b.Property<Guid?>("CustomerId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("customer_id");
-
-                    b.Property<decimal>("DiscountAmount")
-                        .HasPrecision(15, 2)
-                        .HasColumnType("numeric(15,2)")
-                        .HasColumnName("discount_amount");
-
-                    b.Property<Guid?>("InvoiceId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("invoice_id");
-
-                    b.Property<Guid>("PromotionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("promotion_id");
-
-                    b.Property<DateTime>("UsedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("used_at")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.Property<Guid?>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("UsageId")
-                        .HasName("promotion_usages_pkey");
-
-                    b.HasIndex("CustomerId");
-
-                    b.HasIndex("InvoiceId");
-
-                    b.HasIndex("PromotionId");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("promotion_usages", (string)null);
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.PurchaseOrder", b =>
@@ -2606,80 +2239,6 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("stock_ticket_items", (string)null);
                 });
 
-            modelBuilder.Entity("MEP_Management_System.Models.StoreApproval", b =>
-                {
-                    b.Property<Guid>("ApprovalId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("approval_id")
-                        .HasDefaultValueSql("uuid_generate_v4()");
-
-                    b.Property<string>("BusinessLicense")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("business_license");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.Property<string>("DocumentUrls")
-                        .HasColumnType("text")
-                        .HasColumnName("document_urls");
-
-                    b.Property<string>("RejectReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("reject_reason");
-
-                    b.Property<DateTime?>("ReviewedAt")
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("reviewed_at");
-
-                    b.Property<Guid?>("ReviewedBy")
-                        .HasColumnType("uuid")
-                        .HasColumnName("reviewed_by");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasDefaultValue("PENDING")
-                        .HasColumnName("status");
-
-                    b.Property<string>("StoreAddress")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("store_address");
-
-                    b.Property<string>("StoreName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("store_name");
-
-                    b.Property<string>("TaxCode")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("tax_code");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("ApprovalId")
-                        .HasName("store_approvals_pkey");
-
-                    b.HasIndex("ReviewedBy");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("store_approvals", (string)null);
-                });
-
             modelBuilder.Entity("MEP_Management_System.Models.Supplier", b =>
                 {
                     b.Property<Guid>("SupplierId")
@@ -2849,77 +2408,6 @@ namespace MEP_Management_System.Migrations
                     b.HasIndex("SupplierId");
 
                     b.ToTable("SupplierPayments", (string)null);
-                });
-
-            modelBuilder.Entity("MEP_Management_System.Models.SupplierRating", b =>
-                {
-                    b.Property<Guid>("RatingId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("rating_id")
-                        .HasDefaultValueSql("uuid_generate_v4()");
-
-                    b.Property<string>("Comment")
-                        .HasColumnType("text")
-                        .HasColumnName("comment");
-
-                    b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uuid")
-                        .HasColumnName("created_by");
-
-                    b.Property<short>("DeliveryScore")
-                        .HasColumnType("smallint")
-                        .HasColumnName("delivery_score");
-
-                    b.Property<decimal>("OverallRating")
-                        .HasPrecision(3, 2)
-                        .HasColumnType("numeric(3,2)")
-                        .HasColumnName("overall_rating");
-
-                    b.Property<short>("PriceScore")
-                        .HasColumnType("smallint")
-                        .HasColumnName("price_score");
-
-                    b.Property<Guid?>("PurchaseOrderId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("purchase_order_id");
-
-                    b.Property<short>("QualityScore")
-                        .HasColumnType("smallint")
-                        .HasColumnName("quality_score");
-
-                    b.Property<DateTime?>("RatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("rated_at")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.Property<Guid?>("RatedBy")
-                        .HasColumnType("uuid")
-                        .HasColumnName("rated_by");
-
-                    b.Property<short>("ServiceScore")
-                        .HasColumnType("smallint")
-                        .HasColumnName("service_score");
-
-                    b.Property<Guid>("SupplierId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("supplier_id");
-
-                    b.HasKey("RatingId")
-                        .HasName("supplier_ratings_pkey");
-
-                    b.HasIndex("CreatedBy");
-
-                    b.HasIndex("PurchaseOrderId");
-
-                    b.HasIndex("RatedBy");
-
-                    b.HasIndex(new[] { "RatedAt" }, "ix_supplier_ratings_rated_at");
-
-                    b.HasIndex(new[] { "SupplierId" }, "ix_supplier_ratings_supplier_id");
-
-                    b.ToTable("supplier_ratings", (string)null);
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.SystemConfig", b =>
@@ -3110,6 +2598,9 @@ namespace MEP_Management_System.Migrations
                     b.Property<Guid?>("DefaultBranchId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(150)
@@ -3190,6 +2681,10 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("user_permission_id")
                         .HasDefaultValueSql("uuid_generate_v4()");
 
+                    b.Property<bool?>("IsGranted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_granted");
+
                     b.Property<Guid>("PermissionId")
                         .HasColumnType("uuid")
                         .HasColumnName("permission_id");
@@ -3206,71 +2701,6 @@ namespace MEP_Management_System.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("user_permissions", (string)null);
-                });
-
-            modelBuilder.Entity("MEP_Management_System.Models.ViolationReport", b =>
-                {
-                    b.Property<Guid>("ReportId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("report_id")
-                        .HasDefaultValueSql("uuid_generate_v4()");
-
-                    b.Property<string>("AdminNote")
-                        .HasColumnType("text")
-                        .HasColumnName("admin_note");
-
-                    b.Property<Guid?>("CommentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("comment_id");
-
-                    b.Property<DateTime?>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.Property<Guid?>("PostId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("post_id");
-
-                    b.Property<string>("Reason")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("reason");
-
-                    b.Property<DateTime?>("ResolvedAt")
-                        .HasColumnType("timestamp without time zone")
-                        .HasColumnName("resolved_at");
-
-                    b.Property<Guid?>("ResolvedBy")
-                        .HasColumnType("uuid")
-                        .HasColumnName("resolved_by");
-
-                    b.Property<string>("Status")
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("status")
-                        .HasDefaultValueSql("'PENDING'::character varying");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("ReportId")
-                        .HasName("violation_reports_pkey");
-
-                    b.HasIndex("CommentId");
-
-                    b.HasIndex("PostId");
-
-                    b.HasIndex("ResolvedBy");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("violation_reports", (string)null);
                 });
 
             modelBuilder.Entity("RolePermission", b =>
@@ -3338,56 +2768,6 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Product");
                 });
 
-            modelBuilder.Entity("MEP_Management_System.Models.Comment", b =>
-                {
-                    b.HasOne("MEP_Management_System.Models.CommunityPost", "Post")
-                        .WithMany("Comments")
-                        .HasForeignKey("PostId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("comments_post_id_fkey");
-
-                    b.HasOne("MEP_Management_System.Models.User", "User")
-                        .WithMany("Comments")
-                        .HasForeignKey("UserId")
-                        .IsRequired()
-                        .HasConstraintName("comments_user_id_fkey");
-
-                    b.Navigation("Post");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("MEP_Management_System.Models.CommunityCategory", b =>
-                {
-                    b.HasOne("MEP_Management_System.Models.CommunityCategory", "Parent")
-                        .WithMany("Children")
-                        .HasForeignKey("ParentId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("community_categories_parent_id_fkey");
-
-                    b.Navigation("Parent");
-                });
-
-            modelBuilder.Entity("MEP_Management_System.Models.CommunityPost", b =>
-                {
-                    b.HasOne("MEP_Management_System.Models.CommunityCategory", "Category")
-                        .WithMany("CommunityPosts")
-                        .HasForeignKey("CategoryId")
-                        .IsRequired()
-                        .HasConstraintName("community_posts_category_id_fkey");
-
-                    b.HasOne("MEP_Management_System.Models.User", "User")
-                        .WithMany("CommunityPosts")
-                        .HasForeignKey("UserId")
-                        .IsRequired()
-                        .HasConstraintName("community_posts_user_id_fkey");
-
-                    b.Navigation("Category");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("MEP_Management_System.Models.Customer", b =>
                 {
                     b.HasOne("MEP_Management_System.Models.Branch", "Branch")
@@ -3401,18 +2781,6 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Branch");
 
                     b.Navigation("CreatedByUser");
-                });
-
-            modelBuilder.Entity("MEP_Management_System.Models.DailySummary", b =>
-                {
-                    b.HasOne("MEP_Management_System.Models.Branch", "Branch")
-                        .WithMany("DailySummaries")
-                        .HasForeignKey("BranchId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("daily_summaries_branch_id_fkey");
-
-                    b.Navigation("Branch");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.ExpenseCategory", b =>
@@ -3592,8 +2960,9 @@ namespace MEP_Management_System.Migrations
             modelBuilder.Entity("MEP_Management_System.Models.Invoice", b =>
                 {
                     b.HasOne("MEP_Management_System.Models.Order", "Order")
-                        .WithMany("Invoices")
-                        .HasForeignKey("OrderId")
+                        .WithOne("Invoice")
+                        .HasForeignKey("MEP_Management_System.Models.Invoice", "OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("invoices_order_id_fkey");
 
@@ -3628,33 +2997,13 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Invoice");
                 });
 
-            modelBuilder.Entity("MEP_Management_System.Models.LoyaltyTransaction", b =>
-                {
-                    b.HasOne("MEP_Management_System.Models.Customer", "Customer")
-                        .WithMany("LoyaltyTransactions")
-                        .HasForeignKey("CustomerId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("loyalty_transactions_customer_id_fkey");
-
-                    b.Navigation("Customer");
-                });
-
             modelBuilder.Entity("MEP_Management_System.Models.MediaResource", b =>
                 {
-                    b.HasOne("MEP_Management_System.Models.CommunityPost", "Post")
-                        .WithMany("MediaResources")
-                        .HasForeignKey("PostId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("media_resources_post_id_fkey");
-
                     b.HasOne("MEP_Management_System.Models.Product", "Product")
                         .WithMany("MediaResources")
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .HasConstraintName("media_resources_product_id_fkey");
-
-                    b.Navigation("Post");
 
                     b.Navigation("Product");
                 });
@@ -3828,39 +3177,6 @@ namespace MEP_Management_System.Migrations
                         .HasForeignKey("BranchId");
 
                     b.Navigation("Branch");
-                });
-
-            modelBuilder.Entity("MEP_Management_System.Models.PromotionUsage", b =>
-                {
-                    b.HasOne("MEP_Management_System.Models.Customer", "Customer")
-                        .WithMany()
-                        .HasForeignKey("CustomerId")
-                        .HasConstraintName("promotion_usages_customer_id_fkey");
-
-                    b.HasOne("MEP_Management_System.Models.Invoice", "Invoice")
-                        .WithMany()
-                        .HasForeignKey("InvoiceId")
-                        .HasConstraintName("promotion_usages_invoice_id_fkey");
-
-                    b.HasOne("MEP_Management_System.Models.Promotion", "Promotion")
-                        .WithMany("PromotionUsages")
-                        .HasForeignKey("PromotionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("promotion_usages_promotion_id_fkey");
-
-                    b.HasOne("MEP_Management_System.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .HasConstraintName("promotion_usages_user_id_fkey");
-
-                    b.Navigation("Customer");
-
-                    b.Navigation("Invoice");
-
-                    b.Navigation("Promotion");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.PurchaseOrder", b =>
@@ -4102,24 +3418,6 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("StockTicket");
                 });
 
-            modelBuilder.Entity("MEP_Management_System.Models.StoreApproval", b =>
-                {
-                    b.HasOne("MEP_Management_System.Models.User", "ReviewedByUser")
-                        .WithMany()
-                        .HasForeignKey("ReviewedBy")
-                        .HasConstraintName("store_approvals_reviewed_by_fkey");
-
-                    b.HasOne("MEP_Management_System.Models.User", "User")
-                        .WithMany("StoreApprovals")
-                        .HasForeignKey("UserId")
-                        .IsRequired()
-                        .HasConstraintName("store_approvals_user_id_fkey");
-
-                    b.Navigation("ReviewedByUser");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("MEP_Management_System.Models.Supplier", b =>
                 {
                     b.HasOne("MEP_Management_System.Models.User", "CreatedByUser")
@@ -4168,42 +3466,6 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("PurchaseOrder");
 
                     b.Navigation("RecordedByUser");
-
-                    b.Navigation("Supplier");
-                });
-
-            modelBuilder.Entity("MEP_Management_System.Models.SupplierRating", b =>
-                {
-                    b.HasOne("MEP_Management_System.Models.User", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedBy")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("supplier_ratings_created_by_fkey");
-
-                    b.HasOne("MEP_Management_System.Models.PurchaseOrder", "PurchaseOrder")
-                        .WithMany()
-                        .HasForeignKey("PurchaseOrderId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("supplier_ratings_po_id_fkey");
-
-                    b.HasOne("MEP_Management_System.Models.User", "RatedByUser")
-                        .WithMany()
-                        .HasForeignKey("RatedBy")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("supplier_ratings_rated_by_fkey");
-
-                    b.HasOne("MEP_Management_System.Models.Supplier", "Supplier")
-                        .WithMany("SupplierRatings")
-                        .HasForeignKey("SupplierId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("supplier_ratings_supplier_id_fkey");
-
-                    b.Navigation("CreatedByUser");
-
-                    b.Navigation("PurchaseOrder");
-
-                    b.Navigation("RatedByUser");
 
                     b.Navigation("Supplier");
                 });
@@ -4273,40 +3535,6 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MEP_Management_System.Models.ViolationReport", b =>
-                {
-                    b.HasOne("MEP_Management_System.Models.Comment", "Comment")
-                        .WithMany("ViolationReports")
-                        .HasForeignKey("CommentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("violation_reports_comment_id_fkey");
-
-                    b.HasOne("MEP_Management_System.Models.CommunityPost", "Post")
-                        .WithMany("ViolationReports")
-                        .HasForeignKey("PostId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("violation_reports_post_id_fkey");
-
-                    b.HasOne("MEP_Management_System.Models.User", "ResolvedByUser")
-                        .WithMany()
-                        .HasForeignKey("ResolvedBy")
-                        .HasConstraintName("violation_reports_resolved_by_fkey");
-
-                    b.HasOne("MEP_Management_System.Models.User", "User")
-                        .WithMany("ViolationReports")
-                        .HasForeignKey("UserId")
-                        .IsRequired()
-                        .HasConstraintName("violation_reports_user_id_fkey");
-
-                    b.Navigation("Comment");
-
-                    b.Navigation("Post");
-
-                    b.Navigation("ResolvedByUser");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("RolePermission", b =>
                 {
                     b.HasOne("MEP_Management_System.Models.Permission", null)
@@ -4345,8 +3573,6 @@ namespace MEP_Management_System.Migrations
                 {
                     b.Navigation("BranchProducts");
 
-                    b.Navigation("DailySummaries");
-
                     b.Navigation("Notifications");
 
                     b.Navigation("Orders");
@@ -4369,31 +3595,8 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("StockTicketItems");
                 });
 
-            modelBuilder.Entity("MEP_Management_System.Models.Comment", b =>
-                {
-                    b.Navigation("ViolationReports");
-                });
-
-            modelBuilder.Entity("MEP_Management_System.Models.CommunityCategory", b =>
-                {
-                    b.Navigation("Children");
-
-                    b.Navigation("CommunityPosts");
-                });
-
-            modelBuilder.Entity("MEP_Management_System.Models.CommunityPost", b =>
-                {
-                    b.Navigation("Comments");
-
-                    b.Navigation("MediaResources");
-
-                    b.Navigation("ViolationReports");
-                });
-
             modelBuilder.Entity("MEP_Management_System.Models.Customer", b =>
                 {
-                    b.Navigation("LoyaltyTransactions");
-
                     b.Navigation("Orders");
                 });
 
@@ -4425,7 +3628,7 @@ namespace MEP_Management_System.Migrations
 
             modelBuilder.Entity("MEP_Management_System.Models.Order", b =>
                 {
-                    b.Navigation("Invoices");
+                    b.Navigation("Invoice");
 
                     b.Navigation("OrderItems");
 
@@ -4448,11 +3651,6 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("ProductConversionUnits");
 
                     b.Navigation("PurchaseOrderItems");
-                });
-
-            modelBuilder.Entity("MEP_Management_System.Models.Promotion", b =>
-                {
-                    b.Navigation("PromotionUsages");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.PurchaseOrder", b =>
@@ -4479,16 +3677,10 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("StockTickets");
 
                     b.Navigation("SupplierPayments");
-
-                    b.Navigation("SupplierRatings");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.User", b =>
                 {
-                    b.Navigation("Comments");
-
-                    b.Navigation("CommunityPosts");
-
                     b.Navigation("Invoices");
 
                     b.Navigation("Orders");
@@ -4505,8 +3697,6 @@ namespace MEP_Management_System.Migrations
 
                     b.Navigation("StockTickets");
 
-                    b.Navigation("StoreApprovals");
-
                     b.Navigation("SystemLogs");
 
                     b.Navigation("SystemNotifications");
@@ -4514,8 +3704,6 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("TriggeredNotifications");
 
                     b.Navigation("UserPermissions");
-
-                    b.Navigation("ViolationReports");
                 });
 #pragma warning restore 612, 618
         }

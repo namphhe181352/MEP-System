@@ -19,4 +19,10 @@ public class InvoiceItemDto
 
     /// <summary>Hệ số quy đổi (null hoặc 1 = BaseUnit).</summary>
     public decimal? ConvertValue { get; set; }
+
+    /// <summary>ID nhóm hàng (ProductTaxonomy.TaxonomyId). Dùng để tra cứu chính sách đổi/trả.</summary>
+    public Guid? CategoryId { get; set; }
+
+    /// <summary>Tên nhóm hàng (ProductTaxonomy.Name).</summary>
+    public string? CategoryName { get; set; }
 }

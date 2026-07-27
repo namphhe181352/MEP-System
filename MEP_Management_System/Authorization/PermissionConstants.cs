@@ -31,6 +31,12 @@ public static class PermissionConstants
     public const string PRODUCT_UPDATE = "PRODUCT_UPDATE";
     public const string PRODUCT_DELETE = "PRODUCT_DELETE";
 
+    // === LOCATION (Vị trí kho) ===
+    public const string LOCATION_VIEW = "LOCATION_VIEW";
+    public const string LOCATION_CREATE = "LOCATION_CREATE";
+    public const string LOCATION_UPDATE = "LOCATION_UPDATE";
+    public const string LOCATION_DELETE = "LOCATION_DELETE";
+
     // === STOCK / INVENTORY (Xuất nhập kho) ===
     public const string STOCK_VIEW = "STOCK_VIEW";
     public const string STOCK_INWARD_CREATE = "STOCK_INWARD_CREATE";

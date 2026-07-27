@@ -27,6 +27,10 @@ public partial class Branch
 
     public DateTime? UpdatedAt { get; set; }
 
+    // Return/Exchange policy settings
+    public int? ReturnDaysAllowed { get; set; }
+    public int? ExchangeDaysAllowed { get; set; }
+
     public virtual User? ManagerUser { get; set; }
 
     public virtual ICollection<BranchProduct> BranchProducts { get; set; } = new List<BranchProduct>();
@@ -39,6 +43,6 @@ public partial class Branch
 
     public virtual ICollection<SystemConfig> SystemConfigs { get; set; } = new List<SystemConfig>();
     public virtual ICollection<Shift> Shifts { get; set; } = new List<Shift>();
-    public virtual ICollection<DailySummary> DailySummaries { get; set; } = new List<DailySummary>();
     public virtual ICollection<Notification> Notifications { get; set; } = new List<Notification>();
 }
+

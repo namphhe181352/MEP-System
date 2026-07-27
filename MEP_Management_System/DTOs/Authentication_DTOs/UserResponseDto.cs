@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace MEP_Management_System.DTOs
@@ -11,5 +11,6 @@ namespace MEP_Management_System.DTOs
         public string FullName { get; set; } = null!;
         public string? Token { get; set; }
         public List<string> Roles { get; set; } = new();
+        public List<string> Permissions { get; set; } = new();
     }
 }
