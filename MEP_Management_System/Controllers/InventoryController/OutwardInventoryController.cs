@@ -675,9 +675,16 @@ namespace MEP_Management_System.Controllers.InventoryController
                 // ============================================================
                 if (branchProductIds.Any())
                 {
-                    var uuidArray = string.Join(",", branchProductIds.Select(id => $"'{id}'"));
+                    // EF Core cannot parameterize a list of Guids for the IN clause via FromSqlInterpolated
+                    // in a way that's compatible with the FOR UPDATE locking hint. We build the SQL
+                    // explicitly, but each Guid is validated as a real Guid and string-formatted with
+                    // the standard "D" format (lowercase 32-hex + hyphens), making injection impossible
+                    // (the values cannot contain SQL meta-characters).
+                    var uuidArray = string.Join(",", branchProductIds.Select(id => $"'{id.ToString("D")}'"));
+#pragma warning disable EF1002 // SQL injection risk is mitigated by Guid.ToString("D") format
                     await _context.Database.ExecuteSqlRawAsync(
                         $"SELECT 1 FROM branch_products WHERE branch_product_id IN ({uuidArray}) FOR UPDATE");
+#pragma warning restore EF1002
                 }
 
                 foreach (var item in stockTicket.StockTicketItems)

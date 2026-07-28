@@ -188,14 +188,31 @@ public class ReportService
             .Include(bp => bp.Product)
             .Where(bp => bp.BranchId == branchId.Value);
 
-        // Lọc theo nhóm sản phẩm nếu có
-        var requestedCategoryName = request.CategoryName?.Trim();
-
-        if (!string.IsNullOrWhiteSpace(requestedCategoryName))
+        // Ưu tiên filter theo CategoryId (Guid) - chính xác hơn
+        if (request.CategoryId.HasValue && request.CategoryId != Guid.Empty)
         {
-            productsQuery = productsQuery.Where(bp => bp.Product != null
-                && bp.Product.CategoryName != null
-                && bp.Product.CategoryName.Equals(requestedCategoryName, StringComparison.OrdinalIgnoreCase));
+            // lấy tên taxonomy để match với Product.CategoryName
+            var categoryName = await _context.ProductTaxonomies
+                .AsNoTracking()
+                .Where(t => t.TaxonomyId == request.CategoryId.Value && t.Type == "Category")
+                .Select(t => t.Name)
+                .FirstOrDefaultAsync();
+            if (!string.IsNullOrEmpty(categoryName))
+            {
+                productsQuery = productsQuery.Where(bp => bp.Product != null
+                    && bp.Product.CategoryName == categoryName);
+            }
+        }
+        // Fallback: filter theo CategoryName (string) cho backward compat
+        else
+        {
+            var requestedCategoryName = request.CategoryName?.Trim();
+            if (!string.IsNullOrWhiteSpace(requestedCategoryName))
+            {
+                productsQuery = productsQuery.Where(bp => bp.Product != null
+                    && bp.Product.CategoryName != null
+                    && bp.Product.CategoryName.Equals(requestedCategoryName, StringComparison.OrdinalIgnoreCase));
+            }
         }
 
         // Lọc theo sản phẩm nếu có
@@ -651,17 +668,37 @@ public class ReportService
 
         // Lọc theo nhóm sản phẩm nếu có
         var filteredItems = invoiceItems;
-        var requestedCategoryName = request.CategoryName?.Trim();
 
-        if (!string.IsNullOrWhiteSpace(requestedCategoryName))
+        // Ưu tiên filter theo CategoryId (Guid)
+        if (request.CategoryId.HasValue && request.CategoryId != Guid.Empty)
         {
-            var normalizedCategory = requestedCategoryName.Trim().ToLowerInvariant();
-            filteredItems = invoiceItems
-                .Where(ii => ii.BranchProduct != null
-                    && ii.BranchProduct.Product != null
-                    && !string.IsNullOrWhiteSpace(ii.BranchProduct.Product.CategoryName)
-                    && ii.BranchProduct.Product.CategoryName.Trim().ToLowerInvariant() == normalizedCategory)
-                .ToList();
+            var categoryName = await _context.ProductTaxonomies
+                .AsNoTracking()
+                .Where(t => t.TaxonomyId == request.CategoryId.Value && t.Type == "Category")
+                .Select(t => t.Name)
+                .FirstOrDefaultAsync();
+            if (!string.IsNullOrEmpty(categoryName))
+            {
+                filteredItems = invoiceItems
+                    .Where(ii => ii.BranchProduct != null
+                        && ii.BranchProduct.Product != null
+                        && ii.BranchProduct.Product.CategoryName == categoryName)
+                    .ToList();
+            }
+        }
+        else
+        {
+            var requestedCategoryName = request.CategoryName?.Trim();
+            if (!string.IsNullOrWhiteSpace(requestedCategoryName))
+            {
+                var normalizedCategory = requestedCategoryName.Trim().ToLowerInvariant();
+                filteredItems = invoiceItems
+                    .Where(ii => ii.BranchProduct != null
+                        && ii.BranchProduct.Product != null
+                        && !string.IsNullOrWhiteSpace(ii.BranchProduct.Product.CategoryName)
+                        && ii.BranchProduct.Product.CategoryName.Trim().ToLowerInvariant() == normalizedCategory)
+                    .ToList();
+            }
         }
 
         // Group by ProductId
@@ -730,7 +767,9 @@ public class ReportService
             TotalRevenue = items.Sum(x => x.Revenue),
             TotalCost = items.Sum(x => x.Cost),
             TotalProfit = items.Sum(x => x.Profit),
-            AverageProfitMargin = items.Count > 0 ? items.Average(x => x.ProfitMargin) : 0m,
+            AverageProfitMargin = items.Sum(x => x.Revenue) > 0
+                    ? (items.Sum(x => x.Profit) / items.Sum(x => x.Revenue)) * 100m
+                    : 0m,
             TotalQuantitySold = (int)items.Sum(x => x.QuantitySold)
         };
     }
@@ -754,34 +793,49 @@ public class ReportService
         }
 
         // Lay du lieu purchase orders
-        var purchaseOrders = await _context.PurchaseOrders
-            .Where(po => po.SupplierId == request.SupplierId)
+        var poQuery = _context.PurchaseOrders.Where(po => po.SupplierId == request.SupplierId);
+        if (request.PurchaseFromDate.HasValue)
+            poQuery = poQuery.Where(po => po.CreatedAt >= request.PurchaseFromDate.Value);
+        if (request.PurchaseToDate.HasValue)
+            poQuery = poQuery.Where(po => po.CreatedAt <= request.PurchaseToDate.Value);
+        var purchaseOrders = await poQuery
             .Select(po => new { po.PurchaseOrderId, po.OrderCode, po.TotalAmount, po.Status, po.CreatedAt })
             .ToListAsync();
 
         // Lay du lieu stock tickets
-        var stockTickets = await _context.StockTickets
-            .Where(st => st.SupplierId == request.SupplierId && st.TicketType == "PURCHASE")
+        var stQuery0 = _context.StockTickets
+            .Where(st => st.SupplierId == request.SupplierId && st.TicketType == "PURCHASE");
+        if (request.PurchaseFromDate.HasValue)
+            stQuery0 = stQuery0.Where(st => (st.CompletedAt ?? st.CreatedAt) >= request.PurchaseFromDate.Value);
+        if (request.PurchaseToDate.HasValue)
+            stQuery0 = stQuery0.Where(st => (st.CompletedAt ?? st.CreatedAt) <= request.PurchaseToDate.Value);
+        var stockTickets = await stQuery0
             .Select(st => new { st.StockTicketId, st.TicketCode, TotalAmount = (decimal?)st.TotalAmount, st.Status, CreatedAt = (DateTime?)(st.CompletedAt ?? st.CreatedAt) })
             .ToListAsync();
 
-        // Tinh tong no (PO APPROVED/PENDING + StockTicket COMPLETED)
-        var poDebt = purchaseOrders.Where(po => po.Status == "APPROVED" || po.Status == "PENDING").Sum(po => po.TotalAmount ?? 0m);
+        // FIX: Dùng StockTicket COMPLETED làm source of truth cho "đã mua"
+        // (PO khi confirm sẽ tạo StockTicket nên cộng cả 2 sẽ double-count)
         var stDebt = stockTickets.Where(st => st.Status == "COMPLETED").Sum(st => st.TotalAmount ?? 0m);
-        var totalDebt = poDebt + stDebt;
+        // PO APPROVED chưa được confirm thành StockTicket → vẫn tính nợ
+        var poUnconfirmedDebt = purchaseOrders.Where(po => po.Status == "APPROVED" || po.Status == "PENDING")
+            .Sum(po => po.TotalAmount ?? 0m);
+        var totalDebt = stDebt + poUnconfirmedDebt;
 
-        // Tong mua hang
-        var totalPurchaseAllTime = purchaseOrders.Sum(po => po.TotalAmount ?? 0m) + stockTickets.Sum(st => st.TotalAmount ?? 0m);
+        // Tong mua hang = chỉ StockTicket COMPLETED (đã confirmed)
+        var totalPurchaseAllTime = stockTickets.Where(st => st.Status == "COMPLETED").Sum(st => st.TotalAmount ?? 0m);
 
-        // So don hang cho (PO PENDING/APPROVED + StockTicket PENDING)
+        // So don hang cho = PO chưa confirm + StockTicket PENDING
         var poPending = purchaseOrders.Count(po => po.Status == "PENDING" || po.Status == "APPROVED");
         var stPending = stockTickets.Count(st => st.Status == "PENDING");
         int pendingOrders = poPending + stPending;
 
-        // Tat ca thanh toan
-        var allPayments = await _context.SupplierPayments
-            .Where(sp => sp.SupplierId == request.SupplierId)
-            .ToListAsync();
+        // Tat ca thanh toan (áp dụng date filter cho PaymentFromDate/PaymentToDate)
+        var paymentsQuery = _context.SupplierPayments.Where(sp => sp.SupplierId == request.SupplierId);
+        if (request.PaymentFromDate.HasValue)
+            paymentsQuery = paymentsQuery.Where(sp => sp.CreatedAt >= request.PaymentFromDate.Value);
+        if (request.PaymentToDate.HasValue)
+            paymentsQuery = paymentsQuery.Where(sp => sp.CreatedAt <= request.PaymentToDate.Value);
+        var allPayments = await paymentsQuery.ToListAsync();
         var totalPaidAllTime = allPayments.Sum(sp => sp.Amount);
 
         // Tinh cong no theo thang

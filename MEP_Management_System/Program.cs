@@ -38,7 +38,7 @@ builder.Services.AddScoped<IInwardInventoryExcelService, InwardInventoryExcelSer
 builder.Services.AddScoped<ReportService>();
 //builder.Services.AddScoped<IProductService, ProductService>(); // Removed: using static ProductService methods directly
 //builder.Services.AddScoped<IInvoiceService, InvoiceService>(); // Removed: InvoiceService is now static
-//builder.Services.AddScoped<ISupplierDebtService, SupplierDebtService>(); // Removed: using direct instantiation
+builder.Services.AddScoped<ISupplierDebtService, SupplierDebtService>();
 builder.Services.AddScoped<InwardInventoryQueryService>();
 //builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.ToolDispatcher>(); // Removed: ToolDispatcher not found
 builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.SqlExecutor>();

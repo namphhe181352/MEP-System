@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
@@ -56,6 +57,124 @@ namespace MEP_Management_System.Services
                 ContactEmail = supplier.ContactEmail,
                 PurchaseOrders = poDetails
             };
+        }
+
+        /// <summary>
+        /// Tính công nợ hiện tại dùng công thức thống nhất:
+        ///   TotalPurchased = POs(APPROVED|COMPLETED) + StockTickets(PURCHASE, COMPLETED, CompletedAt &lt;= asOfDate)
+        ///   TotalPaid = SupplierPayments(IsDeleted=0, PaymentDate &lt;= asOfDate)
+        ///   CurrentDebt = TotalPurchased - TotalPaid
+        ///   Status = "Còn nợ" nếu CurrentDebt > 0, ngược lại "Hết nợ"
+        /// </summary>
+        public async Task<SupplierDebtSummary> CalculateCurrentDebtAsync(Guid supplierId, DateTime? asOfDate = null)
+        {
+            var asOf = asOfDate ?? DateTime.UtcNow;
+
+            var poPurchased = await _context.PurchaseOrders
+                .Where(po => po.SupplierId == supplierId
+                          && (po.Status == "APPROVED" || po.Status == "COMPLETED")
+                          && po.CreatedAt <= asOf)
+                .SumAsync(po => (decimal?)(po.TotalAmount ?? 0)) ?? 0m;
+
+            var stockTicketPurchased = await _context.StockTickets
+                .Where(t => t.SupplierId == supplierId
+                         && t.TicketType == "PURCHASE"
+                         && t.Status == "COMPLETED"
+                         && t.CompletedAt.HasValue
+                         && t.CompletedAt.Value <= asOf)
+                .SumAsync(t => (decimal?)(t.TotalAmount)) ?? 0m;
+
+            var totalPaid = await _context.SupplierPayments
+                .Where(p => p.SupplierId == supplierId
+                         && p.IsDeleted == 0
+                         && p.PaymentDate <= asOf)
+                .SumAsync(p => (decimal?)(p.Amount)) ?? 0m;
+
+            var totalPurchased = poPurchased + stockTicketPurchased;
+            // Clamp về 0 — công nợ không thể âm. Khi trả thừa, hiển thị "Hết nợ" + OverpaidAmount
+            var raw = totalPurchased - totalPaid;
+            var currentDebt = raw < 0 ? 0m : raw;
+            var overpaid = raw < 0 ? -raw : 0m;
+
+            return new SupplierDebtSummary
+            {
+                CurrentDebt = currentDebt,
+                TotalPurchased = totalPurchased,
+                TotalPaid = totalPaid,
+                OverpaidAmount = overpaid,
+                Status = raw < 0 ? "Trả thừa" : (currentDebt > 0 ? "Còn nợ" : "Hết nợ")
+            };
+        }
+
+        public async Task<Dictionary<Guid, SupplierDebtSummary>> CalculateCurrentDebtBatchAsync(IEnumerable<Guid> supplierIds, DateTime? asOfDate = null)
+        {
+            var ids = supplierIds.ToList();
+            var result = new Dictionary<Guid, SupplierDebtSummary>();
+            if (ids.Count == 0) return result;
+
+            var asOf = asOfDate ?? DateTime.UtcNow;
+
+            // 1 query cho POs
+            var poPurchases = await _context.PurchaseOrders
+                .Where(po => ids.Contains(po.SupplierId)
+                          && (po.Status == "APPROVED" || po.Status == "COMPLETED")
+                          && po.CreatedAt <= asOf)
+                .GroupBy(po => po.SupplierId)
+                .Select(g => new { SupplierId = g.Key, Total = g.Sum(po => po.TotalAmount ?? 0) })
+                .ToListAsync();
+
+            // 1 query cho StockTickets
+            var stockTicketPurchases = await _context.StockTickets
+                .Where(t => t.SupplierId.HasValue && ids.Contains(t.SupplierId.Value)
+                         && t.TicketType == "PURCHASE"
+                         && t.Status == "COMPLETED"
+                         && t.CompletedAt.HasValue
+                         && t.CompletedAt.Value <= asOf)
+                .GroupBy(t => t.SupplierId)
+                .Select(g => new { SupplierId = g.Key, Total = g.Sum(t => t.TotalAmount) })
+                .ToListAsync();
+
+            // 1 query cho SupplierPayments
+            var payments = await _context.SupplierPayments
+                .Where(p => ids.Contains(p.SupplierId)
+                         && p.IsDeleted == 0
+                         && p.PaymentDate <= asOf)
+                .GroupBy(p => p.SupplierId)
+                .Select(g => new { SupplierId = g.Key, Total = g.Sum(p => p.Amount) })
+                .ToListAsync();
+
+            // Convert sang Dictionary để O(1) lookup, tránh N+1 trong loop
+            // Note: EF Core may project SupplierId of mixed nullability (StockTicket.SupplierId is Guid?,
+            // SupplierPayment.SupplierId is Guid); cast to Guid to satisfy ToDictionary's notnull TKey constraint.
+#pragma warning disable CS8714
+            var poMap = poPurchases.ToDictionary(x => (Guid)x.SupplierId!, x => x.Total);
+            var stMap = stockTicketPurchases.ToDictionary(x => (Guid)x.SupplierId!, x => x.Total);
+            var paidMap = payments.ToDictionary(x => x.SupplierId, x => x.Total);
+#pragma warning restore CS8714
+
+            foreach (var id in ids)
+            {
+                var poSum = poMap.GetValueOrDefault(id, 0m);
+                var stSum = stMap.GetValueOrDefault(id, 0m);
+                var paidSum = paidMap.GetValueOrDefault(id, 0m);
+
+                var totalPurchased = poSum + stSum;
+                // Clamp về 0 — khi trả thừa, rawDebt < 0 → trả về 0 + OverpaidAmount
+                var raw = totalPurchased - paidSum;
+                var currentDebt = raw < 0 ? 0m : raw;
+                var overpaid = raw < 0 ? -raw : 0m;
+
+                result[id] = new SupplierDebtSummary
+                {
+                    CurrentDebt = currentDebt,
+                    TotalPurchased = totalPurchased,
+                    TotalPaid = paidSum,
+                    OverpaidAmount = overpaid,
+                    Status = raw < 0 ? "Trả thừa" : (currentDebt > 0 ? "Còn nợ" : "Hết nợ")
+                };
+            }
+
+            return result;
         }
     }
 }
