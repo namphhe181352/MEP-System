@@ -32,7 +32,7 @@ namespace MEP_Management_System.Tests.Controllers
         private SupplierController CreateController(MEPDatabaseContext context, Guid? userId = null)
         {
             var mockDebtService = new Mock<ISupplierDebtService>();
-            mockDebtService.Setup(s => s.CalculateCurrentDebtBatchAsync(It.IsAny<List<Guid>>()))
+            mockDebtService.Setup(s => s.CalculateCurrentDebtBatchAsync(It.IsAny<IEnumerable<Guid>>(), null))
                 .ReturnsAsync(new Dictionary<Guid, SupplierDebtSummary>());
 
             var controller = new SupplierController(context, mockDebtService.Object);
