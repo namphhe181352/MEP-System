@@ -7,10 +7,12 @@ using MEP_Management_System.Controllers.InventoryController.Supplier;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Moq;
 using Xunit;
 
 namespace MEP_Management_System.Tests.Controllers
@@ -29,7 +31,7 @@ namespace MEP_Management_System.Tests.Controllers
 
         private SupplierDebtController CreateController(MEPDatabaseContext context, Guid? userId = null)
         {
-            var controller = new SupplierDebtController(context);
+            var controller = new SupplierDebtController(context, new Mock<ISupplierDebtService>().Object);
 
             var claims = new List<Claim>();
             if (userId.HasValue)
