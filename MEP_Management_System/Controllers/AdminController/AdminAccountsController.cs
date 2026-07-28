@@ -265,6 +265,51 @@ public class AdminAccountsController : ControllerBase
         return Ok(await MapToDtoAsync(user));
     }
 
+    /// <summary>
+    /// GET /api/admin/accounts/{id}/activities - Lịch sử hoạt động của tài khoản
+    /// </summary>
+    [HttpGet("{id:guid}/activities")]
+    public async Task<IActionResult> GetAccountActivities(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    {
+        var userExists = await _context.Users.AnyAsync(u => u.UserId == id);
+        if (!userExists)
+            return NotFound(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-404", Message = "Không tìm thấy người dùng." } });
+
+        var query = _context.SystemLogs
+            .Include(l => l.User)
+            .Where(l => l.UserId == id || l.EntityId == id);
+
+        var totalCount = await query.CountAsync();
+
+        var items = await query
+            .OrderByDescending(l => l.Timestamp)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(l => new SystemLogDto
+            {
+                LogId = l.LogId,
+                Action = l.Action,
+                TableName = l.TableName,
+                EntityType = l.EntityType,
+                Description = l.Description,
+                IpAddress = l.IpAddress,
+                UserAgent = l.UserAgent,
+                Level = l.Level,
+                Source = l.Source,
+                UserName = l.User != null ? l.User.FullName : "System",
+                Timestamp = l.Timestamp
+            })
+            .ToListAsync();
+
+        return Ok(new PageResultDto<SystemLogDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            PageNumber = page,
+            PageSize = pageSize
+        });
+    }
+
     #endregion
 
     #region POST /api/admin/accounts/owners
