@@ -140,12 +140,7 @@ namespace MEP_Management_System.Controllers
                 }
 
                 var query = _context.ExpenseVouchers
-                    .Include(ev => ev.Category)
-                    .Include(ev => ev.Supplier)
-                    .Include(ev => ev.CreatedByUser)
-                    .Include(ev => ev.ConfirmedByUser)
-                    .Include(ev => ev.CancelledByUser)
-                    .Include(ev => ev.Branch)
+                    .AsNoTracking()
                     .Where(ev => ev.BranchId == branchIdResolved)
                     .AsQueryable();
 
@@ -155,7 +150,7 @@ namespace MEP_Management_System.Controllers
                     var normalizedStatus = @params.Status.Trim().ToUpperInvariant();
                     if (normalizedStatus != "ALL")
                     {
-                        query = query.Where(ev => ev.Status != null && ev.Status.ToUpper() == normalizedStatus);
+                        query = query.Where(ev => ev.Status == normalizedStatus);
                     }
                 }
                 else
@@ -187,16 +182,40 @@ namespace MEP_Management_System.Controllers
                     query = query.Where(ev => ev.CreatedAt <= @params.ToDate.Value.AddDays(1));
                 }
 
-                // Sorting
-                query = ApplyVoucherSorting(query, @params.Sort, @params.Order);
+                // Chống duplicate rows do DB có data trùng voucher_id (hoặc bất kỳ
+                // fan-out nào phát sinh sau này): lấy danh sách VoucherId duy nhất
+                // đã sort & lọc, paging, rồi mới load kèm navigation properties.
+                var sortedQuery = ApplyVoucherSorting(query, @params.Sort, @params.Order);
 
-                var totalCount = await query.CountAsync();
+                var totalCount = await sortedQuery.CountAsync();
                 var totalPages = (int)Math.Ceiling(totalCount / (double)@params.PageSize);
 
-                var items = await query
+                var pageIds = await sortedQuery
                     .Skip((@params.PageNumber - 1) * @params.PageSize)
                     .Take(@params.PageSize)
+                    .Select(ev => ev.VoucherId)
                     .ToListAsync();
+
+                var pageIdSet = pageIds.Distinct().ToList();
+
+                var items = await _context.ExpenseVouchers
+                    .AsNoTracking()
+                    .Where(ev => pageIdSet.Contains(ev.VoucherId))
+                    .Include(ev => ev.Category)
+                    .Include(ev => ev.Supplier)
+                    .Include(ev => ev.CreatedByUser)
+                    .Include(ev => ev.ConfirmedByUser)
+                    .Include(ev => ev.CancelledByUser)
+                    .Include(ev => ev.Branch)
+                    .ToListAsync();
+
+                // Sắp xếp lại theo thứ tự pageIds đã sort ở trên để giữ đúng thứ tự
+                // paging sau khi load navigation.
+                items = items
+                    .GroupBy(ev => ev.VoucherId)
+                    .Select(g => g.First())
+                    .OrderBy(ev => pageIds.IndexOf(ev.VoucherId))
+                    .ToList();
 
                 var resultList = items.Select(MapToExpenseVoucherResponse).ToList();
 
@@ -343,21 +362,8 @@ namespace MEP_Management_System.Controllers
                     });
                 }
 
-                // Kiểm tra Supplier nếu có
-                if (dto.SupplierId.HasValue)
-                {
-                    var supplier = await _context.Suppliers
-                        .FirstOrDefaultAsync(s => s.SupplierId == dto.SupplierId.Value && s.Status == 1);
-
-                    if (supplier == null)
-                    {
-                        return BadRequest(new ApiResponse<object>
-                        {
-                            Success = false,
-                            Message = "Nhà cung cấp không hợp lệ hoặc đã bị vô hiệu hóa."
-                        });
-                    }
-                }
+                // NOTE: Phiếu chi tiền CHỈ dùng cho chi phí nội bộ (điện, nước, lương,...)
+                // KHÔNG dùng để thanh toán NCC - dùng /api/supplierpayments cho việc đó.
 
                 var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
                 var voucherCode = await GenerateVoucherCode(resolvedBranchId.Value, currentTime);
@@ -368,7 +374,7 @@ namespace MEP_Management_System.Controllers
                     VoucherCode = voucherCode,
                     BranchId = resolvedBranchId.Value,
                     CategoryId = dto.CategoryId,
-                    SupplierId = dto.SupplierId,
+                    SupplierId = null, // Không gán NCC - dùng SupplierPayments riêng
                     Amount = dto.Amount,
                     Reason = dto.Reason.Trim(),
                     Note = dto.Note?.Trim(),
@@ -461,7 +467,9 @@ namespace MEP_Management_System.Controllers
                 }
 
                 // Kiểm tra trạng thái
-                if (voucher.Status == "COMPLETED")
+                var currentStatus = (voucher.Status ?? string.Empty).Trim().ToUpperInvariant();
+
+                if (currentStatus == "COMPLETED")
                 {
                     return BadRequest(new ApiResponse<object>
                     {
@@ -470,12 +478,21 @@ namespace MEP_Management_System.Controllers
                     });
                 }
 
-                if (voucher.Status == "CANCELLED")
+                if (currentStatus == "CANCELLED")
                 {
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
                         Message = "Phiếu đã bị hủy. Không thể xác nhận."
+                    });
+                }
+
+                if (currentStatus != "PENDING")
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = $"Trạng thái phiếu không hợp lệ để xác nhận: '{voucher.Status}'."
                     });
                 }
 
@@ -577,13 +594,34 @@ namespace MEP_Management_System.Controllers
                     });
                 }
 
-                // Kiểm tra trạng thái
-                if (voucher.Status == "CANCELLED")
+                // Chuẩn hoá status để so sánh an toàn (tránh lệch do DB/seed cũ viết thường).
+                var currentStatus = (voucher.Status ?? string.Empty).Trim().ToUpperInvariant();
+
+                // Chỉ phiếu đang ở PENDING mới được phép hủy.
+                if (currentStatus == "CANCELLED")
                 {
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
                         Message = "Phiếu đã được hủy trước đó."
+                    });
+                }
+
+                if (currentStatus == "COMPLETED")
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Phiếu đã được xác nhận hoàn thành. Không thể hủy."
+                    });
+                }
+
+                if (currentStatus != "PENDING")
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = $"Trạng thái phiếu không hợp lệ để hủy: '{voucher.Status}'."
                     });
                 }
 
@@ -864,7 +902,8 @@ namespace MEP_Management_System.Controllers
         }
 
         /// <summary>
-        /// DELETE /api/expense/categories/{id} - Xóa nhóm chi phí (chỉ khi không còn phiếu PENDING).
+        /// DELETE /api/expense/categories/{id} - Xóa CỨNG nhóm chi phí (chỉ khi không còn phiếu PENDING).
+        /// Các phiếu đã confirmed/cancelled giữ nguyên, FK sẽ tự set null category_id.
         /// </summary>
         [HttpDelete("categories/{id:guid}")]
         [HasPermission(PermissionConstants.EXPENSE_CATEGORY_MANAGE)]
@@ -895,7 +934,7 @@ namespace MEP_Management_System.Controllers
                     });
                 }
 
-                // Kiểm tra có phiếu PENDING nào đang dùng không
+                // Chặn xóa nếu còn phiếu PENDING đang dùng (tránh mất tham chiếu của người đang thao tác)
                 var pendingVouchers = category.ExpenseVouchers
                     .Where(ev => ev.Status == "PENDING")
                     .ToList();
@@ -917,23 +956,23 @@ namespace MEP_Management_System.Controllers
                 var categoryName = category.CategoryName;
                 var totalVouchers = category.ExpenseVouchers.Count;
 
-                // Xóa mềm: set IsActive = 0
-                category.IsActive = 0;
-
+                // XÓA CỨNG - DB ON DELETE SET NULL ở expense_vouchers.category_id sẽ tự động
+                // set CategoryId = NULL cho các phiếu đã confirmed/cancelled giữ lại.
+                _context.ExpenseCategories.Remove(category);
                 await _context.SaveChangesAsync();
 
                 // Ghi log
                 await TryWriteSystemLog(
                     "DELETE_EXPENSE_CATEGORY",
                     "ExpenseCategory",
-                    category.CategoryId,
-                    $"Xóa nhóm chi phí: {categoryName} (có {totalVouchers} phiếu)"
+                    id,
+                    $"Xóa cứng nhóm chi phí: {categoryName} (đã giải phóng tham chiếu của {totalVouchers} phiếu)"
                 );
 
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = $"Xóa nhóm chi phí '{categoryName}' thành công. (Có {totalVouchers} phiếu chi tiền được giữ lại)"
+                    Message = $"Đã xóa cứng nhóm chi phí '{categoryName}'. (Có {totalVouchers} phiếu chi tiền cũ được giữ lại với nhóm rỗng)"
                 });
             }
             catch (Exception ex)
@@ -1040,7 +1079,7 @@ namespace MEP_Management_System.Controllers
                 BranchId = ev.BranchId,
                 BranchName = ev.Branch?.BranchName,
                 CategoryId = ev.CategoryId,
-                CategoryName = ev.Category?.CategoryName ?? "N/A",
+                CategoryName = ev.Category?.CategoryName,
                 SupplierId = ev.SupplierId,
                 SupplierName = ev.Supplier?.SupplierName,
                 Amount = ev.Amount,

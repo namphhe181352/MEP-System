@@ -99,7 +99,6 @@ namespace MEP_Management_System.Tests.Controllers
             var orderId = Guid.NewGuid();
             var order = new Order { OrderId = orderId, OrderCode = "ORD-001", BranchId = branchId, UserId = userId, Status = "Draft", CreatedAt = DateTime.UtcNow, User = user };
             var invoice = new Invoice { InvoiceId = Guid.NewGuid(), InvoiceCode = "INV-001", OrderId = orderId, Status = "Draft", CreatedAt = DateTime.UtcNow, UserId = userId, Order = order };
-            order.Invoices.Add(invoice);
             
             context.Orders.Add(order);
             context.Invoices.Add(invoice);

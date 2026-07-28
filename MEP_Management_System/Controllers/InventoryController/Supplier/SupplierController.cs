@@ -2,6 +2,7 @@ using MEP_Management_System.Authorization;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,10 +17,12 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
     public class SupplierController : ControllerBase
     {
         private readonly MEPDatabaseContext _context;
+        private readonly ISupplierDebtService _supplierDebtService;
 
-        public SupplierController(MEPDatabaseContext context)
+        public SupplierController(MEPDatabaseContext context, ISupplierDebtService supplierDebtService)
         {
             _context = context;
+            _supplierDebtService = supplierDebtService;
         }
 
         // Helper: chuyển mã hiển thị từ GUID (8 ký tự đầu)
@@ -70,7 +73,6 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
 
                 // Thực hiện Phân trang (Skip/Take) ngay tại SQL và chỉ lấy trang hiện tại lên RAM
                 var suppliers = await query
-                    .Include(s => s.PurchaseOrders)
                     .OrderByDescending(s => s.CreatedAt)
                     .Skip((p.PageNumber - 1) * p.PageSize)
                     .Take(p.PageSize)
@@ -84,26 +86,32 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     .OrderBy(g => g)
                     .ToListAsync();
 
-                // Map dữ liệu của trang hiện tại sang DTO (kèm computed: currentDebt, totalPurchased)
-                var items = suppliers.Select(s => new SupplierListItemDto
+                // Tính công nợ chính xác qua ISupplierDebtService (batch) - đảm bảo đồng bộ với /api/supplierdebt
+                var supplierIds = suppliers.Select(s => s.SupplierId).ToList();
+                var debtMap = await _supplierDebtService.CalculateCurrentDebtBatchAsync(supplierIds);
+
+                // Map dữ liệu của trang hiện tại sang DTO (kèm computed: currentDebt, totalPurchased, overpaid)
+                var items = suppliers.Select(s =>
                 {
-                    Id = s.SupplierId,
-                    Code = ToCode(s.SupplierId),
-                    Name = s.SupplierName,
-                    ContactPerson = s.ContactPerson,
-                    ContactPhone = s.ContactPhone,
-                    ContactEmail = s.ContactEmail,
-                    Address = s.Address,
-                    GroupName = s.GroupName,
-                    TaxCode = s.TaxCode,
-                    Status = StatusLabel(s.Status),
-                    CreatedAt = s.CreatedAt,
-                    CurrentDebt = s.PurchaseOrders
-                        .Where(po => po.Status == "APPROVED")
-                        .Sum(po => po.TotalAmount ?? 0),
-                    TotalPurchased = s.PurchaseOrders
-                        .Where(po => po.Status == "COMPLETED" || po.Status == "APPROVED")
-                        .Sum(po => po.TotalAmount ?? 0)
+                    var debt = debtMap.TryGetValue(s.SupplierId, out var d) ? d : new SupplierDebtSummary();
+                    return new SupplierListItemDto
+                    {
+                        Id = s.SupplierId,
+                        Code = ToCode(s.SupplierId),
+                        Name = s.SupplierName,
+                        ContactPerson = s.ContactPerson,
+                        ContactPhone = s.ContactPhone,
+                        ContactEmail = s.ContactEmail,
+                        Address = s.Address,
+                        GroupName = s.GroupName,
+                        TaxCode = s.TaxCode,
+                        Status = StatusLabel(s.Status),
+                        CreatedAt = s.CreatedAt,
+                        CurrentDebt = debt.CurrentDebt,
+                        TotalPurchased = debt.TotalPurchased,
+                        OverpaidAmount = debt.OverpaidAmount,
+                        DebtStatus = debt.Status
+                    };
                 }).ToList();
 
                 var totalPages = (int)Math.Ceiling(totalCount / (double)p.PageSize);
@@ -442,5 +450,75 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                 });
             }
         }
+
+        // ============================================================
+        // PATCH /api/suppliers/{id}/status
+        // Toggle trạng thái hợp tác: "active" ↔ "inactive" (Ngừng hợp tác / Kích hoạt lại)
+        // Body: { "status": "active" | "inactive" }
+        // Quyền truy cập: SUPPLIER_UPDATE
+        // ============================================================
+        [HttpPatch("{id:guid}/status")]
+        [HasPermission(PermissionConstants.SUPPLIER_UPDATE)]
+        public async Task<IActionResult> ToggleSupplierStatus(Guid id, [FromBody] StatusToggleRequest req)
+        {
+            try
+            {
+                if (req == null || string.IsNullOrWhiteSpace(req.Status))
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Status is required",
+                        Errors = new() { "Body must be: { \"status\": \"active\" | \"inactive\" }" }
+                    });
+                }
+
+                var s = await _context.Suppliers.FirstOrDefaultAsync(x => x.SupplierId == id);
+                if (s == null)
+                    return NotFound(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Supplier not found",
+                        Errors = new() { $"No supplier with ID: {id}" }
+                    });
+
+                var newStatus = ParseStatus(req.Status);
+                s.Status = newStatus;
+
+                // Audit: người cập nhật
+                Guid? currentUserId = null;
+                var nameIdentifier = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (Guid.TryParse(nameIdentifier, out var parsedGuid))
+                {
+                    currentUserId = parsedGuid;
+                }
+                s.UpdatedBy = currentUserId;
+                s.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = newStatus == 1 ? "Đã kích hoạt lại nhà cung cấp." : "Đã ngừng hợp tác với nhà cung cấp.",
+                    Data = new { Id = s.SupplierId, Status = StatusLabel(s.Status) }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Internal server error",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+    }
+
+    /// <summary>Request body cho PATCH /api/suppliers/{id}/status. Hỗ trợ "active" | "inactive".</summary>
+    public class StatusToggleRequest
+    {
+        public string? Status { get; set; }
     }
 }

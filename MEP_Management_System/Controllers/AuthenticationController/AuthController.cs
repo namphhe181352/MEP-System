@@ -112,7 +112,81 @@ namespace MEP_Management_System.Controllers
         }
 
         // ==========================================
-        // 3. LOGIN: ĐĂNG NHẬP ĐƠN GIẢN HÓA CÓ THU THẬP QUYỀN TRUY CẬP (RBAC FLOW)
+        // 3. FORGOT PASSWORD START: GỬI OTP RESET PASSWORD
+        // ==========================================
+        [EnableRateLimiting("StrictLimit")]
+        [HttpPost("forgot-password/start")]
+        public async Task<IActionResult> ForgotPasswordStart([FromBody] ForgotPasswordStartDto dto)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(x => x.Email == dto.Email);
+            if (user == null)
+                return BadRequest(new { message = "Email chưa được đăng ký." });
+
+            if (user.IsActive != 1 || !user.IsVerified)
+                return BadRequest(new { message = "Tài khoản đang bị khóa hoặc chưa xác minh." });
+
+            // Vô hiệu hóa các OTP cũ của email này trước khi tạo mới
+            var oldOtps = await _context.OtpVerifications
+                .Where(x => x.Email == dto.Email && x.Purpose == "RESET_PASSWORD" && x.IsUsed == 0)
+                .ToListAsync();
+            foreach (var old in oldOtps) old.IsUsed = 1;
+
+            var otpCode = new Random().Next(100000, 999999).ToString();
+            var otpVerification = new OtpVerification
+            {
+                OtpId = Guid.NewGuid(),
+                Email = dto.Email,
+                OtpCode = otpCode,
+                Purpose = "RESET_PASSWORD",
+                ExpiredAt = DateTime.SpecifyKind(DateTime.UtcNow.AddMinutes(10), DateTimeKind.Unspecified),
+                IsUsed = 0
+            };
+            _context.OtpVerifications.Add(otpVerification);
+
+            await _context.SaveChangesAsync();
+
+            try
+            {
+                await _emailService.SendOtpEmailAsync(dto.Email, otpCode);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = ex.Message });
+            }
+
+            return Ok(new { message = "Mã xác nhận đã được gửi đến email của bạn." });
+        }
+
+        // ==========================================
+        // 4. FORGOT PASSWORD VERIFY: XÁC NHẬN OTP + ĐẶT LẠI PASSWORD
+        // ==========================================
+        [EnableRateLimiting("StrictLimit")]
+        [HttpPost("forgot-password/verify")]
+        public async Task<IActionResult> ForgotPasswordVerify([FromBody] ForgotPasswordVerifyDto dto)
+        {
+            var otp = await _context.OtpVerifications
+                .FirstOrDefaultAsync(x => x.Email == dto.Email
+                                       && x.OtpCode == dto.OtpCode
+                                       && x.Purpose == "RESET_PASSWORD"
+                                       && x.IsUsed == 0
+                                       && x.ExpiredAt > DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified));
+
+            if (otp == null)
+                return BadRequest(new { message = "Mã xác nhận không hợp lệ hoặc đã hết hạn." });
+
+            var user = await _context.Users.FirstOrDefaultAsync(x => x.Email == dto.Email);
+            if (user == null)
+                return BadRequest(new { message = "Tài khoản không tồn tại." });
+
+            otp.IsUsed = 1;
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword.Trim());
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Đặt lại mật khẩu thành công." });
+        }
+
+        // ==========================================
+        // 5. LOGIN: ĐĂNG NHẬP ĐƠN GIẢN HÓA CÓ THU THẬP QUYỀN TRUY CẬP (RBAC FLOW)
         // ==========================================
         [EnableRateLimiting("StrictLimit")]
         [HttpPost("login")]

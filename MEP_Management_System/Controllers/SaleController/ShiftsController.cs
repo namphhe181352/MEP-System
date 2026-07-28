@@ -39,15 +39,64 @@ public class ShiftsController : ControllerBase
 
     // POST /api/pos/shifts/start
     [HttpPost("start")]
+    [HasPermission(PermissionConstants.SHIFT_CREATE)]
     public async Task<ActionResult<ShiftDto>> StartShift([FromBody] CreateShiftRequest request)
     {
         var userId = GetUserId();
         var branchId = GetBranchId();
         if (branchId == null) return BadRequest(ApiErrorResponse.Create("MSG-76", "Tài khoản chưa được phân công chi nhánh. Vui lòng liên hệ chủ cửa hàng."));
 
+        // ===== SAFETY CHECK =====
+        // Đảm bảo user đã được active (không tự động mở ca khi vừa tạo)
+        var user = await _context.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.UserId == userId);
+        if (user == null)
+            return BadRequest(ApiErrorResponse.Create("MSG-100", "Tài khoản không tồn tại."));
+        if (user.IsActive == 0 || (user.Status != null && user.Status.ToUpper() != "ACTIVE"))
+            return BadRequest(ApiErrorResponse.Create("MSG-101", "Tài khoản đang bị khoá/ẩn, không thể mở ca."));
+        // ===== END SAFETY CHECK =====
+
         var openShift = await _context.Shifts
             .FirstOrDefaultAsync(s => s.UserId == userId && s.BranchId == branchId.Value && s.Status == "OPEN");
-        if (openShift != null) return Conflict(ApiErrorResponse.Create("MSG-76", "You already have an open shift"));
+            
+        if (openShift != null)
+        {
+            if ((DateTime.UtcNow - openShift.StartedAt).TotalHours > 24)
+            {
+                var completedInvoices = await _context.Invoices
+                    .Where(i => i.UserId == openShift.UserId && i.Status == "Completed" && i.CreatedAt >= openShift.StartedAt && i.CreatedAt <= DateTime.UtcNow)
+                    .Include(i => i.Payments)
+                    .ToListAsync();
+
+                openShift.TotalRevenue = completedInvoices.Sum(i => i.TotalAmount);
+                openShift.TotalOrders = completedInvoices.Count;
+                var allPayments = completedInvoices.SelectMany(i => i.Payments).Where(p => p.Method == "Cash" && p.Status == "Confirmed").ToList();
+                openShift.ExpectedCash = openShift.OpeningBalance + allPayments.Sum(p => p.Amount);
+                openShift.ActualCash = openShift.ExpectedCash;
+                openShift.Variance = 0;
+                openShift.Note = "Hệ thống tự động chốt ca do đã mở quá 24h";
+                openShift.EndedAt = DateTime.UtcNow;
+                openShift.Status = "CLOSED";
+                
+                await _context.SaveChangesAsync();
+                
+                _ = _notifications.NotifyBranchShiftClosed(branchId.Value, openShift.ShiftId.ToString(), new
+                {
+                    openShift.ShiftId,
+                    openShift.ShiftCode,
+                    openShift.TotalRevenue,
+                    openShift.TotalOrders,
+                    openShift.Variance,
+                    openShift.ExpectedCash,
+                    openShift.ActualCash,
+                    openShift.EndedAt
+                });
+            }
+            else
+            {
+                return Conflict(ApiErrorResponse.Create("MSG-76", "You already have an open shift"));
+            }
+        }
 
         var today = DateTime.UtcNow.Date;
         var tomorrow = today.AddDays(1);
@@ -96,6 +145,7 @@ public class ShiftsController : ControllerBase
 
     // POST /api/pos/shifts/{shiftId}/end
     [HttpPost("{shiftId:guid}/end")]
+    [HasPermission(PermissionConstants.SHIFT_UPDATE)]
     public async Task<ActionResult<ShiftDto>> EndShift(Guid shiftId, [FromBody] EndShiftRequest request)
     {
         var userId = GetUserId();

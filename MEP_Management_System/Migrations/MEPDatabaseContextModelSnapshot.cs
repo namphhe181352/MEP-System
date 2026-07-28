@@ -375,7 +375,7 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("cancelled_by");
 
-                    b.Property<Guid>("CategoryId")
+                    b.Property<Guid?>("CategoryId")
                         .HasColumnType("uuid")
                         .HasColumnName("category_id");
 
@@ -2811,8 +2811,7 @@ namespace MEP_Management_System.Migrations
                     b.HasOne("MEP_Management_System.Models.ExpenseCategory", "Category")
                         .WithMany("ExpenseVouchers")
                         .HasForeignKey("CategoryId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
+                        .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("expense_vouchers_category_id_fkey");
 
                     b.HasOne("MEP_Management_System.Models.User", "ConfirmedByUser")

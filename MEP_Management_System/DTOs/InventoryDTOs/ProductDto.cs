@@ -487,5 +487,15 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? Note { get; set; }
         public List<UpdateTicketItemDto>? Items { get; set; }
     }
+
+    /// <summary>
+    /// DTO for bulk importing products from Excel
+    /// </summary>
+    public class ProductBulkImportDto
+    {
+        public List<ProductUpsertDto> Products { get; set; } = new();
+        public bool AutoCreateMissingCategories { get; set; } = true;
+        public bool AutoCreateMissingBrands { get; set; } = true;
+    }
     #endregion
 }
