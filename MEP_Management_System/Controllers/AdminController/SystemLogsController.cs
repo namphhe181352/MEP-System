@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text;
+using ClosedXML.Excel;
 
 namespace MEP_Management_System.Controllers.AdminController;
 
@@ -96,7 +97,50 @@ public class SystemLogsController : ControllerBase
             {
                 csv.AppendLine($"\"{l.LogId}\",\"{l.Timestamp:yyyy-MM-dd HH:mm:ss}\",\"{l.Level}\",\"{l.Source}\",\"{l.Action}\",\"{l.Description?.Replace("\"", "\"\"")}\",\"{l.User?.Email}\",\"{l.IpAddress}\"");
             }
-            return File(Encoding.UTF8.GetBytes(csv.ToString()), "text/csv", $"system-logs-{DateTime.UtcNow:yyyyMMdd}.csv");
+            
+            var contentBytes = Encoding.UTF8.GetBytes(csv.ToString());
+            var bom = Encoding.UTF8.GetPreamble();
+            var result = bom.Concat(contentBytes).ToArray();
+            
+            return File(result, "text/csv", $"system-logs-{DateTime.UtcNow:yyyyMMdd}.csv");
+        }
+        else if (format.ToLower() == "excel")
+        {
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("System Logs");
+            
+            // Add Header
+            var headers = new string[] { "LogId", "Timestamp", "Level", "Source", "Action", "Description", "UserEmail", "IpAddress" };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                worksheet.Cell(1, i + 1).Value = headers[i];
+            }
+            var headerRow = worksheet.Row(1);
+            headerRow.Style.Font.Bold = true;
+            headerRow.Style.Fill.BackgroundColor = XLColor.LightGray;
+
+            // Add Data
+            for (int i = 0; i < logs.Count; i++)
+            {
+                var l = logs[i];
+                int row = i + 2;
+                worksheet.Cell(row, 1).Value = l.LogId.ToString();
+                worksheet.Cell(row, 2).Value = $"{l.Timestamp:yyyy-MM-dd HH:mm:ss}";
+                worksheet.Cell(row, 3).Value = l.Level;
+                worksheet.Cell(row, 4).Value = l.Source;
+                worksheet.Cell(row, 5).Value = l.Action;
+                worksheet.Cell(row, 6).Value = l.Description;
+                worksheet.Cell(row, 7).Value = l.User?.Email;
+                worksheet.Cell(row, 8).Value = l.IpAddress;
+            }
+
+            // Auto-fit columns
+            worksheet.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var content = stream.ToArray();
+            return File(content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"system-logs-{DateTime.UtcNow:yyyyMMdd}.xlsx");
         }
         else
         {

@@ -194,16 +194,16 @@ public class AdminAccountsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(status))
         {
             if (status.Equals("active", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(u => u.Status == "ACTIVE" && u.IsActive == 1);
+                query = query.Where(u => (u.Status.ToUpper() == "ACTIVE" || u.Status == null) && u.IsActive == 1);
             else if (status.Equals("suspended", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(u => u.Status == "SUSPENDED" || u.IsActive == 0 && u.Status != "DELETED");
+                query = query.Where(u => u.Status.ToUpper() == "SUSPENDED" || (u.IsActive == 0 && u.Status.ToUpper() != "DELETED" && u.Status.ToUpper() != "PERMANENT_DELETED"));
             else if (status.Equals("deleted", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(u => u.Status == "DELETED");
+                query = query.Where(u => u.Status.ToUpper() == "DELETED" || u.Status.ToUpper() == "PERMANENT_DELETED");
         }
         else
         {
             // Mặc định không hiện user đã xóa mềm
-            query = query.Where(u => u.Status != "DELETED");
+            query = query.Where(u => u.Status.ToUpper() != "DELETED" && u.Status.ToUpper() != "PERMANENT_DELETED");
         }
 
         // Search
