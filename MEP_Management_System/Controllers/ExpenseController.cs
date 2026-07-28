@@ -574,6 +574,15 @@ namespace MEP_Management_System.Controllers
                     });
                 }
 
+                if (voucher.Status == "COMPLETED")
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Phiếu đã được xác nhận hoàn thành. Không thể hủy."
+                    });
+                }
+
                 var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
                 voucher.Status = "CANCELLED";
