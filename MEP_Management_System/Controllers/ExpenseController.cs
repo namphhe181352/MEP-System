@@ -140,12 +140,7 @@ namespace MEP_Management_System.Controllers
                 }
 
                 var query = _context.ExpenseVouchers
-                    .Include(ev => ev.Category)
-                    .Include(ev => ev.Supplier)
-                    .Include(ev => ev.CreatedByUser)
-                    .Include(ev => ev.ConfirmedByUser)
-                    .Include(ev => ev.CancelledByUser)
-                    .Include(ev => ev.Branch)
+                    .AsNoTracking()
                     .Where(ev => ev.BranchId == branchIdResolved)
                     .AsQueryable();
 
@@ -155,7 +150,7 @@ namespace MEP_Management_System.Controllers
                     var normalizedStatus = @params.Status.Trim().ToUpperInvariant();
                     if (normalizedStatus != "ALL")
                     {
-                        query = query.Where(ev => ev.Status != null && ev.Status.ToUpper() == normalizedStatus);
+                        query = query.Where(ev => ev.Status == normalizedStatus);
                     }
                 }
                 else
@@ -187,16 +182,40 @@ namespace MEP_Management_System.Controllers
                     query = query.Where(ev => ev.CreatedAt <= @params.ToDate.Value.AddDays(1));
                 }
 
-                // Sorting
-                query = ApplyVoucherSorting(query, @params.Sort, @params.Order);
+                // Chống duplicate rows do DB có data trùng voucher_id (hoặc bất kỳ
+                // fan-out nào phát sinh sau này): lấy danh sách VoucherId duy nhất
+                // đã sort & lọc, paging, rồi mới load kèm navigation properties.
+                var sortedQuery = ApplyVoucherSorting(query, @params.Sort, @params.Order);
 
-                var totalCount = await query.CountAsync();
+                var totalCount = await sortedQuery.CountAsync();
                 var totalPages = (int)Math.Ceiling(totalCount / (double)@params.PageSize);
 
-                var items = await query
+                var pageIds = await sortedQuery
                     .Skip((@params.PageNumber - 1) * @params.PageSize)
                     .Take(@params.PageSize)
+                    .Select(ev => ev.VoucherId)
                     .ToListAsync();
+
+                var pageIdSet = pageIds.Distinct().ToList();
+
+                var items = await _context.ExpenseVouchers
+                    .AsNoTracking()
+                    .Where(ev => pageIdSet.Contains(ev.VoucherId))
+                    .Include(ev => ev.Category)
+                    .Include(ev => ev.Supplier)
+                    .Include(ev => ev.CreatedByUser)
+                    .Include(ev => ev.ConfirmedByUser)
+                    .Include(ev => ev.CancelledByUser)
+                    .Include(ev => ev.Branch)
+                    .ToListAsync();
+
+                // Sắp xếp lại theo thứ tự pageIds đã sort ở trên để giữ đúng thứ tự
+                // paging sau khi load navigation.
+                items = items
+                    .GroupBy(ev => ev.VoucherId)
+                    .Select(g => g.First())
+                    .OrderBy(ev => pageIds.IndexOf(ev.VoucherId))
+                    .ToList();
 
                 var resultList = items.Select(MapToExpenseVoucherResponse).ToList();
 
@@ -448,7 +467,9 @@ namespace MEP_Management_System.Controllers
                 }
 
                 // Kiểm tra trạng thái
-                if (voucher.Status == "COMPLETED")
+                var currentStatus = (voucher.Status ?? string.Empty).Trim().ToUpperInvariant();
+
+                if (currentStatus == "COMPLETED")
                 {
                     return BadRequest(new ApiResponse<object>
                     {
@@ -457,12 +478,21 @@ namespace MEP_Management_System.Controllers
                     });
                 }
 
-                if (voucher.Status == "CANCELLED")
+                if (currentStatus == "CANCELLED")
                 {
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
                         Message = "Phiếu đã bị hủy. Không thể xác nhận."
+                    });
+                }
+
+                if (currentStatus != "PENDING")
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = $"Trạng thái phiếu không hợp lệ để xác nhận: '{voucher.Status}'."
                     });
                 }
 
@@ -564,8 +594,11 @@ namespace MEP_Management_System.Controllers
                     });
                 }
 
-                // Kiểm tra trạng thái
-                if (voucher.Status == "CANCELLED")
+                // Chuẩn hoá status để so sánh an toàn (tránh lệch do DB/seed cũ viết thường).
+                var currentStatus = (voucher.Status ?? string.Empty).Trim().ToUpperInvariant();
+
+                // Chỉ phiếu đang ở PENDING mới được phép hủy.
+                if (currentStatus == "CANCELLED")
                 {
                     return BadRequest(new ApiResponse<object>
                     {
@@ -574,12 +607,21 @@ namespace MEP_Management_System.Controllers
                     });
                 }
 
-                if (voucher.Status == "COMPLETED")
+                if (currentStatus == "COMPLETED")
                 {
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
                         Message = "Phiếu đã được xác nhận hoàn thành. Không thể hủy."
+                    });
+                }
+
+                if (currentStatus != "PENDING")
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = $"Trạng thái phiếu không hợp lệ để hủy: '{voucher.Status}'."
                     });
                 }
 
