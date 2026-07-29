@@ -135,7 +135,17 @@ public class OrderDiscountTiersController : ControllerBase
         };
 
         _context.OrderDiscountTiers.Add(tier);
-        await _context.SaveChangesAsync();
+
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message?.Contains("23505") == true
+            || ex.InnerException?.Message?.Contains("duplicate key") == true
+            || ex.InnerException?.Message?.Contains("unique constraint") == true)
+        {
+            return Conflict(ApiErrorResponse.Create("MSG-68", "MinOrderValue đã tồn tại trong chi nhánh này"));
+        }
 
         var dto = new OrderDiscountTierDto
         {
