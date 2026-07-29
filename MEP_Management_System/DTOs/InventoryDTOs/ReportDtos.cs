@@ -25,6 +25,11 @@ public class DailyEndReportDto
     // Phiếu kho phát sinh trong ngày
     public int InwardTicketCount { get; set; }
     public int OutwardTicketCount { get; set; }
+
+    // Hoàn tiền (chỉ áp dụng cho đơn Trả hàng / REFUND, không bao gồm đổi ngang giá / EXCHANGE)
+    public decimal RefundCashAmount { get; set; }
+    public decimal RefundTransferAmount { get; set; }
+    public int RefundCount { get; set; }
 }
 
 public class PaymentMethodBreakdown
