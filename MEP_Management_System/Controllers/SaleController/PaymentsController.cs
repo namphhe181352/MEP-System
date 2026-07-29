@@ -36,6 +36,27 @@ public class PaymentsController : ControllerBase
     private Guid GetUserId() =>
         Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value ?? throw new Exception("userId"));
 
+    /// <summary>
+    /// Ghi log hoạt động vào bảng system_logs. Được gọi trước SaveChangesAsync để
+    /// log + entity commit trong cùng một transaction.
+    /// </summary>
+    private void LogAction(Guid targetEntityId, string action, string tableName, string entityType, string description)
+    {
+        _context.SystemLogs.Add(new SystemLog
+        {
+            LogId = Guid.NewGuid(),
+            UserId = GetUserId(),
+            Action = action,
+            TableName = tableName,
+            EntityType = entityType,
+            EntityId = targetEntityId,
+            Description = description,
+            Level = "INFO",
+            Source = "PaymentService",
+            Timestamp = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
+        });
+    }
+
     // POST /api/pos/invoices/{invoiceId}/payments
     [HttpPost("invoices/{invoiceId:guid}/payments")]
     public async Task<ActionResult<PaymentDto>> CreatePayment(Guid invoiceId, [FromBody] CreatePaymentRequest request)
@@ -97,6 +118,8 @@ public class PaymentsController : ControllerBase
                 BranchId = branchId
             };
             _context.Payments.Add(payment);
+            LogAction(payment.PaymentId, "RECORD_PAYMENT", "payments", "Payment",
+                $"Thanh toán tiền mặt {payment.Amount:N0} VND cho hóa đơn {invoice.InvoiceCode}");
             await _context.SaveChangesAsync();
             return Created($"/api/pos/payments/{payment.PaymentId}", _mapper.Map<PaymentDto>(payment));
         }
@@ -122,6 +145,8 @@ public class PaymentsController : ControllerBase
                 BranchId = branchId
             };
             _context.Payments.Add(payment);
+            LogAction(payment.PaymentId, "RECORD_PAYMENT", "payments", "Payment",
+                $"Tạo QR chuyển khoản {payment.Amount:N0} VND cho hóa đơn {invoice.InvoiceCode}");
             await _context.SaveChangesAsync();
 
             var dto = _mapper.Map<PaymentDto>(payment);
@@ -190,6 +215,8 @@ public class PaymentsController : ControllerBase
 
                 _context.Payments.Add(p);
             }
+            LogAction(invoiceId, "RECORD_PAYMENT", "payments", "Payment",
+                $"Thanh toán kết hợp cho hóa đơn {invoice.InvoiceCode}, tổng {request.Amount:N0} VND");
             await _context.SaveChangesAsync();
 
             var allPayments = await _context.Payments.Where(p => p.InvoiceId == invoiceId).ToListAsync();
@@ -244,6 +271,8 @@ public class PaymentsController : ControllerBase
 
         payment.Status = "Confirmed";
         payment.PaidAt = DateTime.UtcNow;
+        LogAction(payment.PaymentId, "CONFIRM_TRANSFER", "payments", "Payment",
+            $"Xác nhận chuyển khoản {payment.Amount:N0} VND cho hóa đơn {payment.InvoiceId}");
         await _context.SaveChangesAsync();
 
         // Real-time: notify branch staff that transfer was confirmed
@@ -270,6 +299,8 @@ public class PaymentsController : ControllerBase
         if (payment.Status != "Pending") return BadRequest(ApiErrorResponse.Create("MSG-76", "Only pending payments can be cancelled"));
         
         payment.Status = "Cancelled";
+        LogAction(payment.PaymentId, "CANCEL_PAYMENT", "payments", "Payment",
+            $"Hủy thanh toán {payment.Amount:N0} VND");
         await _context.SaveChangesAsync();
         return Ok(new { success = true, message = "Payment cancelled" });
     }
