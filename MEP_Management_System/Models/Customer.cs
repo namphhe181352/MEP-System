@@ -24,6 +24,9 @@ public partial class Customer
     /// <summary>Dư nợ hiện tại (AP/AR tracking).</summary>
     public decimal? CurrentDebt { get; set; }
 
+    /// <summary>Tiền khách trả trước / dư tạm ứng (khi trả nợ vượt quá số nợ).</summary>
+    public decimal? AdvanceBalance { get; set; }
+
     /// <summary>Trạng thái: 1=Active, 0=Blocked. Mặc định 1.</summary>
     public short? Status { get; set; }
 

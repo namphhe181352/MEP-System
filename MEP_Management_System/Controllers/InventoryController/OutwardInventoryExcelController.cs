@@ -71,8 +71,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 using var workbook = new XLWorkbook();
                 var worksheet = workbook.Worksheets.Add("XuatKho");
 
-                // Header: MaSanPham | TenSanPham | SoLuong | DonGiaXuat | LyDo | GhiChu
-                string[] headers = { "MaSanPham", "TenSanPham", "SoLuong", "DonGiaXuat", "LyDo", "GhiChu" };
+                // Header: MaSanPham | TenSanPham | SoLuong | DonGiaXuat (tuỳ chọn) | LyDo | GhiChu
+                string[] headers = { "MaSanPham", "TenSanPham", "SoLuong", "DonGiaXuat (tuỳ chọn)", "LyDo", "GhiChu" };
                 for (int i = 0; i < headers.Length; i++)
                 {
                     worksheet.Cell(1, i + 1).Value = headers[i];
@@ -152,14 +152,14 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 // Header row (row 1)
                 var headers = new Dictionary<string, int>();
-                for (int c = 1; c <= worksheet.LastColumnUsed().ColumnNumber(); c++)
+                for (int c = 1; c <= (worksheet.LastColumnUsed()?.ColumnNumber() ?? 0); c++)
                 {
                     var h = worksheet.Cell(1, c).GetString().Trim();
                     if (!string.IsNullOrEmpty(h)) headers[h] = c;
                 }
 
                 // Validate required headers
-                var requiredHeaders = new[] { "MaSanPham", "SoLuong", "DonGiaXuat", "LyDo" };
+                var requiredHeaders = new[] { "MaSanPham", "SoLuong", "LyDo" };
                 foreach (var req in requiredHeaders)
                 {
                     if (!headers.ContainsKey(req))
@@ -173,7 +173,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 // Parse rows
-                for (int row = 2; row <= worksheet.LastRowUsed().RowNumber(); row++)
+                for (int row = 2; row <= (worksheet.LastRowUsed()?.RowNumber() ?? 0); row++)
                 {
                     var maSanPham = worksheet.Cell(row, headers["MaSanPham"]).GetString().Trim();
                     var soLuongStr = worksheet.Cell(row, headers["SoLuong"]).GetString().Trim();
@@ -189,10 +189,15 @@ namespace MEP_Management_System.Controllers.InventoryController
                         errors.Add(new OutwardExcelErrorDto { RowNumber = row, MaSanPham = maSanPham, ErrorMessage = "SoLuong phải là số nguyên dương." });
                         continue;
                     }
-                    if (!decimal.TryParse(donGiaStr, out decimal donGia) || donGia < 0)
+                    decimal? donGia = null;
+                    if (!string.IsNullOrEmpty(donGiaStr))
                     {
-                        errors.Add(new OutwardExcelErrorDto { RowNumber = row, MaSanPham = maSanPham, ErrorMessage = "DonGiaXuat phải là số không âm." });
-                        continue;
+                        if (!decimal.TryParse(donGiaStr, out decimal parsedDonGia) || parsedDonGia < 0)
+                        {
+                            errors.Add(new OutwardExcelErrorDto { RowNumber = row, MaSanPham = maSanPham, ErrorMessage = "DonGiaXuat phải là số không âm." });
+                            continue;
+                        }
+                        donGia = parsedDonGia;
                     }
                     var ticketType = GetTicketTypeFromReason(lyDo);
                     if (ticketType == null)
@@ -244,7 +249,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                         TicketType = g.Key,
                         LyDo = g.First().LyDo,
                         ItemCount = g.Count(),
-                        TotalValue = g.Sum(x => x.SoLuong * x.DonGiaXuat)
+                        TotalValue = g.Sum(x => x.SoLuong * (x.DonGiaXuat ?? 0))
                     })
                     .ToList();
 
@@ -339,7 +344,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                             UnitPrice = row.DonGiaXuat
                         };
                         items.Add(item);
-                        totalValue += row.SoLuong * row.DonGiaXuat;
+                        totalValue += row.SoLuong * (row.DonGiaXuat ?? 0);
                     }
 
                     stockTicket.TotalAmount = totalValue;

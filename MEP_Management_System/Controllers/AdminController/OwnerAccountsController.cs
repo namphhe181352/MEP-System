@@ -96,8 +96,6 @@ public class OwnerAccountsController : ControllerBase
             SuspendedUntil = u.SuspendedUntil,
             SubscriptionPlan = u.SubscriptionPlan,
             Roles = u.Roles,
-            BranchId = u.Assignment?.BranchId,
-            BranchName = u.Assignment?.Branch?.BranchName,
             CreatedAt = u.CreatedAt
         }).ToList();
 
@@ -129,7 +127,6 @@ public class OwnerAccountsController : ControllerBase
                 Error = new ErrorDetail { Code = "MSG-404", Message = "Tài khoản không tồn tại." }
             });
 
-        var staffAssignment = staff.StaffAssignments.FirstOrDefault();
         return Ok(new StaffAccountDto
         {
             UserId = staff.UserId,
@@ -143,8 +140,6 @@ public class OwnerAccountsController : ControllerBase
             SuspendedUntil = staff.SuspendedUntil,
             SubscriptionPlan = staff.SubscriptionPlan,
             Roles = staff.Roles.Select(r => r.RoleName).ToList(),
-            BranchId = staffAssignment?.BranchId,
-            BranchName = staffAssignment?.Branch?.BranchName,
             CreatedAt = staff.CreatedAt
         });
     }
