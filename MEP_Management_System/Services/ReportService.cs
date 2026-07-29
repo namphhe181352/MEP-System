@@ -100,7 +100,7 @@ public class ReportService
         // 1. Lấy đơn hàng trong ngày
         var orders = await _context.Orders
             .Where(o => o.BranchId == branchId.Value
-                && o.Status == "Completed"
+                && o.Status == "COMPLETED"
                 && o.CreatedAt >= reportDate
                 && o.CreatedAt < nextDate)
             .ToListAsync();

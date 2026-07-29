@@ -200,6 +200,13 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("address");
 
+                    b.Property<decimal?>("AdvanceBalance")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("advance_balance");
+
                     b.Property<Guid?>("BranchId")
                         .HasColumnType("uuid");
 
@@ -291,6 +298,13 @@ namespace MEP_Management_System.Migrations
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("updated_at");
+
+                    b.Property<decimal?>("AdvanceBalance")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("advance_balance");
 
                     b.HasKey("CustomerId")
                         .HasName("customers_pkey");
@@ -837,6 +851,132 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("invoice_items", (string)null);
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.InvoicePrintTemplate", b =>
+                {
+                    b.Property<Guid>("TemplateId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("template_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CustomFieldsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("{}")
+                        .HasColumnName("custom_fields_json");
+
+                    b.Property<string>("FontFamily")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("monospace")
+                        .HasColumnName("font_family");
+
+                    b.Property<int>("FontSize")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(12)
+                        .HasColumnName("font_size");
+
+                    b.Property<string>("FooterText")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("footer_text");
+
+                    b.Property<string>("HeaderText")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("header_text");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("LogoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("logo_url");
+
+                    b.Property<string>("PaperSize")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("K80")
+                        .HasColumnName("paper_size");
+
+                    b.Property<bool>("ShowBranchInfo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("show_branch_info");
+
+                    b.Property<bool>("ShowCashierName")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("show_cashier_name");
+
+                    b.Property<bool>("ShowCustomerInfo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("show_customer_info");
+
+                    b.Property<bool>("ShowLogo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("show_logo");
+
+                    b.Property<bool>("ShowPaymentMethod")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("show_payment_method");
+
+                    b.Property<bool>("ShowTaxInfo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("show_tax_info");
+
+                    b.Property<decimal>("TaxRate")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasDefaultValue(8.00m)
+                        .HasColumnName("tax_rate");
+
+                    b.Property<string>("ThankYouMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("thank_you_message");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("TemplateId")
+                        .HasName("invoice_print_templates_pkey");
+
+                    b.HasIndex("BranchId");
+
+                    b.ToTable("invoice_print_templates", (string)null);
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.MediaResource", b =>
                 {
                     b.Property<Guid>("MediaId")
@@ -1066,11 +1206,9 @@ namespace MEP_Management_System.Migrations
                     b.HasKey("OrderDiscountTierId")
                         .HasName("order_discount_tiers_pkey");
 
-                    b.HasIndex("BranchId");
-
-                    b.HasIndex("MinOrderValue")
+                    b.HasIndex("BranchId", "MinOrderValue")
                         .IsUnique()
-                        .HasDatabaseName("ix_order_discount_tiers_min_order_value");
+                        .HasDatabaseName("ix_order_discount_tiers_branch_min_order");
 
                     b.ToTable("order_discount_tiers", (string)null);
                 });
@@ -1157,6 +1295,60 @@ namespace MEP_Management_System.Migrations
                         .HasName("otp_verifications_pkey");
 
                     b.ToTable("otp_verifications", (string)null);
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.PasswordResetToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("ip_address");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("token_hash");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("used_at");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("user_agent");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("password_reset_tokens_pkey");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_password_reset_tokens_token_hash");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("password_reset_tokens", (string)null);
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.Payment", b =>
@@ -2105,6 +2297,115 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("staff_assignments", (string)null);
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.StockPrintTemplate", b =>
+                {
+                    b.Property<Guid>("TemplateId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("template_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CustomFieldsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("{}")
+                        .HasColumnName("custom_fields_json");
+
+                    b.Property<string>("FontFamily")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("monospace")
+                        .HasColumnName("font_family");
+
+                    b.Property<int>("FontSize")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(12)
+                        .HasColumnName("font_size");
+
+                    b.Property<string>("FooterText")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("footer_text");
+
+                    b.Property<string>("HeaderText")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("header_text");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("LogoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("logo_url");
+
+                    b.Property<string>("PaperSize")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("A5")
+                        .HasColumnName("paper_size");
+
+                    b.Property<bool>("ShowBranchInfo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("show_branch_info");
+
+                    b.Property<bool>("ShowLogo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("show_logo");
+
+                    b.Property<bool>("ShowSignature")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("show_signature");
+
+                    b.Property<bool>("ShowSupplier")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("show_supplier");
+
+                    b.Property<string>("TicketType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("ticket_type");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("TemplateId")
+                        .HasName("stock_print_templates_pkey");
+
+                    b.HasIndex("BranchId", "TicketType")
+                        .IsUnique()
+                        .HasDatabaseName("ix_stock_print_templates_branch_ticket");
+
+                    b.ToTable("stock_print_templates", (string)null);
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.StockTicket", b =>
                 {
                     b.Property<Guid>("StockTicketId")
@@ -2237,6 +2538,50 @@ namespace MEP_Management_System.Migrations
                     b.HasIndex("StockTicketId");
 
                     b.ToTable("stock_ticket_items", (string)null);
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.StockTicketReceipt", b =>
+                {
+                    b.Property<Guid>("ReceiptId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("receipt_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("HtmlContent")
+                        .HasColumnType("text")
+                        .HasColumnName("html_content");
+
+                    b.Property<DateTime?>("PrintedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("printed_at");
+
+                    b.Property<string>("ReceiptCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("receipt_code");
+
+                    b.Property<Guid>("StockTicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stock_ticket_id");
+
+                    b.HasKey("ReceiptId")
+                        .HasName("stock_ticket_receipts_pkey");
+
+                    b.HasIndex("ReceiptCode")
+                        .IsUnique()
+                        .HasDatabaseName("ix_stock_ticket_receipts_code");
+
+                    b.HasIndex("StockTicketId");
+
+                    b.ToTable("stock_ticket_receipts", (string)null);
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.Supplier", b =>
@@ -2996,6 +3341,16 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Invoice");
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.InvoicePrintTemplate", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Branch");
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.MediaResource", b =>
                 {
                     b.HasOne("MEP_Management_System.Models.Product", "Product")
@@ -3095,6 +3450,17 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("BranchProduct");
 
                     b.Navigation("Order");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.PasswordResetToken", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.Payment", b =>
@@ -3354,6 +3720,16 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.StockPrintTemplate", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Branch");
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.StockTicket", b =>
                 {
                     b.HasOne("MEP_Management_System.Models.Branch", "Branch")
@@ -3413,6 +3789,17 @@ namespace MEP_Management_System.Migrations
                         .HasConstraintName("stock_ticket_items_stock_ticket_id_fkey");
 
                     b.Navigation("BranchProduct");
+
+                    b.Navigation("StockTicket");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.StockTicketReceipt", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.StockTicket", "StockTicket")
+                        .WithMany()
+                        .HasForeignKey("StockTicketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("StockTicket");
                 });

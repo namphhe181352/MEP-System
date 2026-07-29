@@ -1,5 +1,6 @@
 using MEP_Management_System.DTOs;
 using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,10 +15,12 @@ namespace MEP_Management_System.Controllers;
 public class AdminDashboardController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
+    private readonly CustomerDebtService _customerDebtService;
 
-    public AdminDashboardController(MEPDatabaseContext context)
+    public AdminDashboardController(MEPDatabaseContext context, CustomerDebtService customerDebtService)
     {
         _context = context;
+        _customerDebtService = customerDebtService;
     }
 
     /// <summary>
@@ -53,8 +56,8 @@ public class AdminDashboardController : ControllerBase
         // overdueAlerts = customers with CurrentDebt > DebtLimit
         var overdueAlerts = await _context.Customers
             .AsNoTracking()
-            .Where(c => c.CurrentDebt > c.DebtLimit)
-            .CountAsync();
+            .Where(c => c.Status == 1 && c.DebtLimit.HasValue)
+            .CountAsync(c => c.CurrentDebt > c.DebtLimit);
 
         return Ok(new DashboardStatsDto
         {
@@ -160,8 +163,8 @@ public class AdminDashboardController : ControllerBase
 
         var overdueAlerts = await _context.Customers
             .AsNoTracking()
-            .Where(c => c.CurrentDebt > c.DebtLimit)
-            .CountAsync();
+            .Where(c => c.Status == 1 && c.DebtLimit.HasValue)
+            .CountAsync(c => c.CurrentDebt > c.DebtLimit);
 
         var recentLogs = await _context.SystemLogs
             .AsNoTracking()

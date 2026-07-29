@@ -40,10 +40,9 @@ public class CustomersController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<PageResultDto<CustomerDto>>> GetCustomers(
         [FromQuery] string? search, [FromQuery] string? group,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
     {
         var branchId = GetBranchId();
-        Console.WriteLine($"[DEBUG] GetCustomers - BranchId: {branchId}, search: '{search}', group: '{group}', totalInDB: {await _context.Customers.CountAsync()}");
 
         var query = _context.Customers.Where(c => c.BranchId == branchId).AsQueryable();
 
@@ -61,6 +60,8 @@ public class CustomersController : ControllerBase
             .Skip((page - 1) * pageSize).Take(pageSize)
             .ToListAsync();
 
+        Response.Headers["X-Total-Count"] = total.ToString();
+
         return Ok(new PageResultDto<CustomerDto>
         {
             Items = customers.Select(_mapper.Map<CustomerDto>).ToList(),
@@ -68,6 +69,24 @@ public class CustomersController : ControllerBase
             PageSize = pageSize,
             TotalCount = total
         });
+    }
+
+    // GET /api/pos/customers/all?search=
+    [HttpGet("all")]
+    public async Task<ActionResult<List<CustomerDto>>> GetAllCustomers([FromQuery] string? search)
+    {
+        var branchId = GetBranchId();
+
+        var query = _context.Customers.Where(c => c.BranchId == branchId).AsQueryable();
+
+        if (!string.IsNullOrEmpty(search))
+            query = query.Where(c =>
+                (c.CustomerName != null && c.CustomerName.Contains(search)) ||
+                (c.PhoneNumber != null && c.PhoneNumber.Contains(search)) ||
+                (c.Email != null && c.Email.Contains(search)));
+
+        var customers = await query.OrderBy(c => c.CustomerName).ToListAsync();
+        return Ok(customers.Select(_mapper.Map<CustomerDto>).ToList());
     }
 
     // POST /api/pos/customers

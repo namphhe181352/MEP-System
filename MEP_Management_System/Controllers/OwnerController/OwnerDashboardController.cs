@@ -20,11 +20,13 @@ public class OwnerDashboardController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
     private readonly ICurrentBranchAccessor _currentBranch;
+    private readonly CustomerDebtService _customerDebtService;
 
-    public OwnerDashboardController(MEPDatabaseContext context, ICurrentBranchAccessor currentBranch)
+    public OwnerDashboardController(MEPDatabaseContext context, ICurrentBranchAccessor currentBranch, CustomerDebtService customerDebtService)
     {
         _context = context;
         _currentBranch = currentBranch;
+        _customerDebtService = customerDebtService;
     }
 
     /// <summary>
@@ -59,11 +61,11 @@ public class OwnerDashboardController : ControllerBase
             });
         }
 
-        var now = DateTime.UtcNow;
+        var now = VietnamTime.Now;
         var last30Days = now.AddDays(-30);
         var last7Days = now.AddDays(-7);
         var last24Hours = now.AddDays(-1);
-        var yearStart = new DateTime(now.Year, 1, 1);
+        var yearStart = new DateTime(VietnamTime.Now.Year, 1, 1);
         var twelveMonthsAgo = new DateTime(now.Year, now.Month, 1).AddMonths(-11);
 
         var branchCount = await _context.Branches
@@ -229,7 +231,7 @@ public class OwnerDashboardController : ControllerBase
                          && ev.CreatedAt.HasValue && ev.CreatedAt >= twelveMonthsAgo && ev.CreatedAt < now),
             "CreatedAt", "Amount", twelveMonthsAgo, now, 12);
 
-        var revenueToday = await GetBranchMetricsAsync(branchId.Value, now.Date, now);
+        var revenueToday = await GetBranchMetricsAsync(branchId.Value, VietnamTime.TodayStart, VietnamTime.TodayEnd);
         var newCustomerCountToday = await _context.Customers.AsNoTracking()
             .Where(c => c.BranchId == branchId.Value && c.Status == 1 && c.CreatedAt.HasValue && c.CreatedAt >= now.Date && c.CreatedAt < now)
             .CountAsync();
@@ -404,36 +406,36 @@ public class OwnerDashboardController : ControllerBase
             var revenue = await _context.Invoices
                 .AsNoTracking()
                 .Where(i => i.Order.BranchId == branch
-                            && (i.Status == "COMPLETED" || i.Status == "Completed")
-                            && i.CreatedAt.HasValue && i.CreatedAt >= start && i.CreatedAt < end)
+                            && i.Status == "COMPLETED"
+                            && i.Payments.Any(p => p.Status == "Confirmed" && p.PaidAt.HasValue && p.PaidAt >= start && p.PaidAt < end))
                 .SumAsync(i => (decimal?)i.TotalAmount) ?? 0m;
 
             var orderCount = await _context.Orders
                 .AsNoTracking()
                 .Where(o => o.BranchId == branch
-                            && (o.Status == "COMPLETED" || o.Status == "Completed")
+                            && o.Status == "COMPLETED"
                             && o.CreatedAt.HasValue && o.CreatedAt >= start && o.CreatedAt < end)
                 .CountAsync();
 
             var expense = await _context.ExpenseVouchers
                 .AsNoTracking()
                 .Where(ev => ev.BranchId == branch
-                             && (ev.Status == "COMPLETED" || ev.Status == "Completed")
+                             && ev.Status == "COMPLETED"
                              && ev.CreatedAt.HasValue && ev.CreatedAt >= start && ev.CreatedAt < end)
                 .SumAsync(ev => (decimal?)ev.Amount) ?? 0m;
 
             var refund = await _context.ReturnOrders
                 .AsNoTracking()
                 .Where(ro => ro.Order.BranchId == branch
-                             && (ro.Status == "COMPLETED" || ro.Status == "Completed")
+                             && ro.Status == "COMPLETED"
                              && ro.CreatedAt.HasValue && ro.CreatedAt >= start && ro.CreatedAt < end)
                 .SumAsync(ro => (decimal?)ro.RefundAmount) ?? 0m;
 
             var cogs = await _context.OrderItems
                 .AsNoTracking()
                 .Where(oi => oi.Order.BranchId == branch
-                             && (oi.Order.Status == "COMPLETED" || oi.Order.Status == "Completed")
-                             && oi.Order.CreatedAt.HasValue && oi.Order.CreatedAt >= start && oi.Order.CreatedAt < end)
+                             && oi.Order.Invoice.Status == "COMPLETED"
+                             && oi.Order.Invoice.Payments.Any(p => p.Status == "Confirmed" && p.PaidAt.HasValue && p.PaidAt >= start && p.PaidAt < end))
                 .SumAsync(oi => (decimal?)oi.Quantity * oi.BranchProduct.CostPrice) ?? 0m;
 
             var paymentBreakdown = await _context.Payments
@@ -512,7 +514,184 @@ public class OwnerDashboardController : ControllerBase
                 .ToList();
         }
     }
-        private Guid GetCurrentUserId()
+        /// <summary>
+    /// GET /api/owner/dashboard/customer-debt
+    /// List customer debts with pagination, filter by isOverdue, sort by CurrentDebt DESC.
+    /// </summary>
+    [HttpGet("customer-debt")]
+    public async Task<IActionResult> GetCustomerDebtList(
+        [FromQuery] bool? isOverdue,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? search = null)
+    {
+        var branchId = _currentBranch.GetBranchId();
+        if (branchId == null) return Unauthorized(new ApiResponse<object> { Success = false, Message = "Branch required." });
+
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var query = _context.Customers.AsNoTracking()
+            .Where(c => c.BranchId == branchId.Value && c.Status == 1);
+
+        if (isOverdue == true)
+            query = query.Where(c => c.DebtLimit.HasValue && c.CurrentDebt.HasValue && c.CurrentDebt > c.DebtLimit);
+        else if (isOverdue == false)
+            query = query.Where(c => !c.DebtLimit.HasValue || !c.CurrentDebt.HasValue || c.CurrentDebt <= c.DebtLimit);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            query = query.Where(c =>
+                (c.CustomerName != null && c.CustomerName.Contains(s)) ||
+                (c.PhoneNumber != null && c.PhoneNumber.Contains(s)));
+        }
+
+        var total = await query.CountAsync();
+
+        var customers = await query
+            .OrderByDescending(c => c.CurrentDebt ?? 0m)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        var items = new List<MEP_Management_System.DTOs.CustomerDebtListItemDto>();
+        foreach (var c in customers)
+        {
+            var debt = await _customerDebtService.CalculateCurrentDebtAsync(c.CustomerId);
+            var lastOrder = await _context.Orders
+                .Where(o => o.CustomerId == c.CustomerId)
+                .MaxAsync(o => (DateTime?)o.CreatedAt);
+            var lastPayment = await _context.Payments
+                .Where(p => p.Invoice != null && p.Invoice.Order.CustomerId == c.CustomerId && p.Status == "Confirmed")
+                .MaxAsync(p => (DateTime?)p.CreatedAt);
+
+            items.Add(new MEP_Management_System.DTOs.CustomerDebtListItemDto
+            {
+                CustomerId = c.CustomerId,
+                FullName = c.CustomerName ?? "",
+                Phone = c.PhoneNumber,
+                CurrentDebt = debt.CurrentDebt,
+                DebtLimit = c.DebtLimit ?? 0m,
+                LastOrderDate = lastOrder,
+                LastPaymentDate = lastPayment,
+                IsOverdue = c.DebtLimit.HasValue && debt.CurrentDebt > c.DebtLimit.Value
+            });
+        }
+
+        return Ok(new
+        {
+            success = true,
+            data = items,
+            pagination = new
+            {
+                page,
+                pageSize,
+                total,
+                totalPages = (int)Math.Ceiling(total / (double)pageSize)
+            }
+        });
+    }
+
+    /// <summary>
+    /// GET /api/owner/dashboard/customer-debt/overview
+    /// Returns 6-field overview: TotalDebt, OverdueDebt, AverageDebtPerCustomer, OverdueCount, ActiveCount, TotalCustomers.
+    /// </summary>
+    [HttpGet("customer-debt/overview")]
+    public async Task<IActionResult> GetCustomerDebtOverview()
+    {
+        var branchId = _currentBranch.GetBranchId();
+        if (branchId == null) return Unauthorized(new ApiResponse<object> { Success = false, Message = "Branch required." });
+
+        var customers = await _context.Customers.AsNoTracking()
+            .Where(c => c.BranchId == branchId.Value && c.Status == 1)
+            .ToListAsync();
+
+        decimal totalDebt = 0m;
+        decimal overdueDebt = 0m;
+        int overdueCount = 0;
+
+        foreach (var c in customers)
+        {
+            var debt = await _customerDebtService.CalculateCurrentDebtAsync(c.CustomerId);
+            totalDebt += debt.CurrentDebt;
+            if (c.DebtLimit.HasValue && debt.CurrentDebt > c.DebtLimit.Value)
+            {
+                overdueDebt += debt.CurrentDebt;
+                overdueCount++;
+            }
+        }
+
+        var totalCustomers = customers.Count;
+        var activeCount = totalCustomers;
+        var avgDebt = totalCustomers > 0 ? Math.Round(totalDebt / totalCustomers, 2) : 0m;
+
+        return Ok(new MEP_Management_System.DTOs.CustomerDebtOverviewDto
+        {
+            TotalDebt = totalDebt,
+            OverdueDebt = overdueDebt,
+            AverageDebtPerCustomer = avgDebt,
+            OverdueCount = overdueCount,
+            ActiveCount = activeCount,
+            TotalCustomers = totalCustomers
+        });
+    }
+
+    /// <summary>
+    /// GET /api/owner/dashboard/top-products?from=&to=&limit=10&sortBy=revenue
+    /// Top products by revenue or profit within a date range.
+    /// </summary>
+    [HttpGet("top-products")]
+    public async Task<IActionResult> GetTopProducts(
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        [FromQuery] int limit = 10,
+        [FromQuery] string sortBy = "revenue")
+    {
+        var branchId = _currentBranch.GetBranchId();
+        if (branchId == null) return Unauthorized(new ApiResponse<object> { Success = false, Message = "Branch required." });
+
+        var now = VietnamTime.Now;
+        var start = from ?? now.AddDays(-30);
+        var end = to ?? now;
+        limit = Math.Clamp(limit, 1, 50);
+
+        var products = await _context.OrderItems
+            .AsNoTracking()
+            .Where(oi => oi.Order != null && oi.Order.BranchId == branchId.Value
+                         && (oi.Order.Status == "COMPLETED" || oi.Order.Status == "Completed")
+                         && oi.Order.CreatedAt.HasValue && oi.Order.CreatedAt >= start && oi.Order.CreatedAt < end)
+            .GroupBy(oi => new { oi.BranchProduct.ProductId, oi.BranchProduct.Product.ProductName, oi.BranchProduct.Product.ProductCode })
+            .Select(g => new
+            {
+                g.Key.ProductId,
+                g.Key.ProductName,
+                g.Key.ProductCode,
+                Revenue = g.Sum(x => x.Quantity * x.SellPrice),
+                QuantitySold = g.Sum(x => x.Quantity),
+                Cost = g.Sum(x => x.Quantity * x.BranchProduct.CostPrice)
+            })
+            .ToListAsync();
+
+        var sorted = (sortBy == "profit"
+            ? products.OrderByDescending(p => p.Revenue - p.Cost)
+            : products.OrderByDescending(p => p.Revenue))
+            .Take(limit)
+            .Select(p => new MEP_Management_System.DTOs.TopProductDto
+            {
+                ProductId = p.ProductId,
+                ProductName = p.ProductName,
+                ProductCode = p.ProductCode,
+                Revenue = p.Revenue,
+                QuantitySold = (int)p.QuantitySold,
+                Profit = p.Revenue - p.Cost
+            })
+            .ToList();
+
+        return Ok(new { success = true, data = sorted });
+    }
+
+    private Guid GetCurrentUserId()
         {
             var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             return Guid.TryParse(claim, out var userId) ? userId : Guid.Empty;

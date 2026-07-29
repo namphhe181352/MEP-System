@@ -19,7 +19,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? TenSanPham { get; set; }
         public Guid? ProductId { get; set; }
         public int SoLuong { get; set; }
-        public decimal DonGiaXuat { get; set; }
+        public decimal? DonGiaXuat { get; set; }
         public string LyDo { get; set; } = null!;
         public string TicketType { get; set; } = null!; // RETURN_SUPPLIER | WRITE_OFF | TRANSFER
         public string? GhiChu { get; set; }

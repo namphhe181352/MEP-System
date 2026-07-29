@@ -1,5 +1,6 @@
 using AutoMapper;
 using MEP_Management_System.DTOs;
+using MEP_Management_System.DTOs.AuthenticationDTOs;
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
 using MEP_Management_System.Services.Email;
@@ -12,6 +13,8 @@ using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace MEP_Management_System.Controllers
@@ -186,7 +189,123 @@ namespace MEP_Management_System.Controllers
         }
 
         // ==========================================
-        // 5. LOGIN: ĐĂNG NHẬP ĐƠN GIẢN HÓA CÓ THU THẬP QUYỀN TRUY CẬP (RBAC FLOW)
+        // 5. FORGOT PASSWORD (TOKEN-BASED) — T11
+        // ==========================================
+
+        // POST /api/auth/forgot-password — body {email}
+        [EnableRateLimiting("StrictLimit")]
+        [HttpPost("forgot-password")]
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest dto)
+        {
+            // Always return 200 to prevent email enumeration
+            var user = await _context.Users.FirstOrDefaultAsync(x => x.Email == dto.Email);
+            if (user == null)
+                return Ok(new { message = "Nếu email tồn tại trong hệ thống, một liên kết đặt lại mật khẩu đã được gửi." });
+
+            // Invalidate previous tokens
+            var oldTokens = await _context.PasswordResetTokens
+                .Where(t => t.UserId == user.UserId && t.UsedAt == null)
+                .ToListAsync();
+            foreach (var t in oldTokens) t.UsedAt = DateTime.UtcNow;
+
+            // Generate token (plaintext)
+            var plainToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+            var tokenHash = ComputeSha256Hash(plainToken);
+            var expiresAt = DateTime.UtcNow.AddMinutes(30);
+
+            var resetToken = new PasswordResetToken
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.UserId,
+                TokenHash = tokenHash,
+                ExpiresAt = expiresAt,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                UserAgent = Request.Headers.UserAgent.ToString(),
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.PasswordResetTokens.Add(resetToken);
+            await _context.SaveChangesAsync();
+
+            // Build reset link
+            var baseUrl = "https://mep.vn";
+            var resetLink = $"{baseUrl}/reset-password?token={plainToken}";
+
+            // Send email
+            try
+            {
+                await _emailService.SendPasswordResetEmailAsync(user.Email, user.FullName, resetLink);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[EMAIL ERROR] Failed to send reset email: {ex.Message}");
+                // Don't expose email failures to client
+            }
+
+            return Ok(new { message = "Nếu email tồn tại trong hệ thống, một liên kết đặt lại mật khẩu đã được gửi." });
+        }
+
+        // GET /api/auth/validate-reset-token?token=...
+        [HttpGet("validate-reset-token")]
+        public async Task<IActionResult> ValidateResetToken([FromQuery] string token)
+        {
+            if (string.IsNullOrEmpty(token))
+                return Ok(new ValidateResetTokenResponse { IsValid = false });
+
+            var tokenHash = ComputeSha256Hash(token);
+            var resetToken = await _context.PasswordResetTokens
+                .Include(t => t.User)
+                .FirstOrDefaultAsync(t => t.TokenHash == tokenHash);
+
+            if (resetToken == null || resetToken.UsedAt != null || resetToken.ExpiresAt < DateTime.UtcNow)
+                return Ok(new ValidateResetTokenResponse { IsValid = false });
+
+            return Ok(new ValidateResetTokenResponse
+            {
+                IsValid = true,
+                Email = resetToken.User?.Email,
+                ExpiresAt = resetToken.ExpiresAt
+            });
+        }
+
+        // POST /api/auth/reset-password — body {token, newPassword, confirmPassword}
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest dto)
+        {
+            if (string.IsNullOrEmpty(dto.Token))
+                return BadRequest(new { message = "Token là bắt buộc." });
+
+            if (dto.NewPassword != dto.ConfirmPassword)
+                return BadRequest(new { message = "Mật khẩu xác nhận không khớp." });
+
+            if (dto.NewPassword.Length < 6)
+                return BadRequest(new { message = "Mật khẩu phải từ 6 ký tự trở lên." });
+
+            var tokenHash = ComputeSha256Hash(dto.Token);
+            var resetToken = await _context.PasswordResetTokens
+                .FirstOrDefaultAsync(t => t.TokenHash == tokenHash);
+
+            if (resetToken == null || resetToken.UsedAt != null || resetToken.ExpiresAt < DateTime.UtcNow)
+                return BadRequest(new { message = "Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn." });
+
+            var user = await _context.Users.FindAsync(resetToken.UserId);
+            if (user == null)
+                return BadRequest(new { message = "Tài khoản không tồn tại." });
+
+            resetToken.UsedAt = DateTime.UtcNow;
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword.Trim());
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Đặt lại mật khẩu thành công. Vui lòng đăng nhập với mật khẩu mới." });
+        }
+
+        private static string ComputeSha256Hash(string rawData)
+        {
+            var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(rawData));
+            return Convert.ToHexString(bytes).ToLowerInvariant();
+        }
+
+        // ==========================================
+        // 6. LOGIN: ĐĂNG NHẬP ĐƠN GIẢN HÓA CÓ THU THẬP QUYỀN TRUY CẬP (RBAC FLOW)
         // ==========================================
         [EnableRateLimiting("StrictLimit")]
         [HttpPost("login")]

@@ -26,8 +26,6 @@ public class AdminAccountDetailDto
     public Guid? DefaultBranchId { get; set; }
     public List<AdminRoleDto> Roles { get; set; } = new();
     public List<string> PermissionCodes { get; set; } = new();
-    public Guid? BranchId { get; set; }
-    public string? BranchName { get; set; }
 }
 
 /// <summary>

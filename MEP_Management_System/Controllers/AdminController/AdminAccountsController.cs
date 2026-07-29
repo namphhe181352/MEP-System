@@ -60,10 +60,6 @@ public class AdminAccountsController : ControllerBase
 
     private async Task<AdminAccountDetailDto> MapToDtoAsync(User user)
     {
-        var assignment = await _context.StaffAssignments
-            .Include(sa => sa.Branch)
-            .FirstOrDefaultAsync(sa => sa.UserId == user.UserId);
-
         return new AdminAccountDetailDto
         {
             UserId = user.UserId,
@@ -91,9 +87,7 @@ public class AdminAccountsController : ControllerBase
                 .Select(up => up.Permission?.PermissionCode ?? "")
                 .Where(c => !string.IsNullOrEmpty(c))
                 .Distinct()
-                .ToList(),
-            BranchId = assignment?.BranchId,
-            BranchName = assignment?.Branch?.BranchName
+                .ToList()
         };
     }
 

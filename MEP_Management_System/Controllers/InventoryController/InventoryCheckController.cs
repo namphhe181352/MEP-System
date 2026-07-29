@@ -1734,6 +1734,97 @@ public class InventoryCheckController : ControllerBase
 
     #endregion
 
+    #region Print
+
+    [HttpGet("{id:guid}/print")]
+    [HasPermission(PermissionConstants.STOCK_CHECK_VIEW)]
+    public async Task<IActionResult> Print(Guid id)
+    {
+        var branchId = _currentBranch.GetBranchId();
+        if (branchId == null)
+        {
+            return Unauthorized(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Khong tim thay thong tin chi nhanh trong Token.",
+                Errors = new() { "branchId claim is required." }
+            });
+        }
+
+        var ticket = await _context.InventoryCheckTickets
+            .Include(t => t.Branch)
+            .Include(t => t.Details).ThenInclude(d => d.Product)
+            .Include(t => t.CreatedByUser)
+            .Include(t => t.AssigneeUser)
+            .FirstOrDefaultAsync(t => t.TicketId == id && t.BranchId == branchId.Value);
+
+        if (ticket == null)
+            return NotFound(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Phieu kiem ke khong ton tai.",
+                Errors = new() { $"Khong tim thay phieu voi ID: {id}." }
+            });
+
+        var items = ticket.Details.Select(d => new
+        {
+            d.Product?.ProductCode,
+            d.Product?.ProductName,
+            d.SystemQuantity,
+            d.ActualQuantity,
+            d.Discrepancy,
+            d.IsCounted,
+            d.ReasonNote
+        }).ToList();
+
+        var html = $@"<!DOCTYPE html>
+<html>
+<head>
+<meta charset=""utf-8"">
+<title>Phieu Kiem Ke Kho - {ticket.TicketCode}</title>
+<style>
+body {{ font-family: monospace; font-size: 12px; margin: 20px; }}
+h1 {{ text-align: center; }}
+table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+th, td {{ border: 1px solid #000; padding: 5px; text-align: left; }}
+th {{ background: #f0f0f0; }}
+</style>
+</head>
+<body>
+<h1>PHIEU KIEM KE KHO</h1>
+<p><strong>Ma phieu:</strong> {ticket.TicketCode}</p>
+<p><strong>Chi nhanh:</strong> {ticket.Branch?.BranchName}</p>
+<p><strong>Ngay tao:</strong> {ticket.CreatedAt:yyyy-MM-dd HH:mm}</p>
+<p><strong>Trang thai:</strong> {ticket.Status}</p>
+<table>
+<tr><th>STT</th><th>Ma SP</th><th>Ten SP</th><th>Ton he thong</th><th>Thuc te dem</th><th>Chenh lech</th><th>Ghi chu</th></tr>";
+
+        var stt = 1;
+        foreach (var item in items)
+        {
+            var status = item.IsCounted ? "" : " (chua dem)";
+            html += $@"<tr>
+<td>{stt++}</td>
+<td>{item.ProductCode}</td>
+<td>{item.ProductName}</td>
+<td>{item.SystemQuantity}</td>
+<td>{item.ActualQuantity}{status}</td>
+<td>{item.Discrepancy}</td>
+<td>{item.ReasonNote ?? ""}</td>
+</tr>";
+        }
+
+        html += $@"</table>
+<p><strong>Ghi chu phieu:</strong> {ticket.Notes ?? ""}</p>
+<p style=""margin-top:40px"">Nguoi kiem ke: __________________ &nbsp;&nbsp;&nbsp; Ky ten: __________________</p>
+</body>
+</html>";
+
+        return Content(html, "text/html");
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private async Task<InventoryCheckResponseDto> MapToResponseDtoAsync(InventoryCheckTicket ticket)
