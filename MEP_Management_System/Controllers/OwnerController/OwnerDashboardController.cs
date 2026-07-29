@@ -90,20 +90,36 @@ public class OwnerDashboardController : ControllerBase
             .Where(c => c.BranchId == branchId.Value && c.Status == 1)
             .CountAsync();
 
-        var activeCustomerTotalDebt = await _context.Customers.AsNoTracking()
-            .Where(c => c.BranchId == branchId.Value && c.CurrentDebt.HasValue)
-            .SumAsync(c => (decimal?)c.CurrentDebt) ?? 0m;
+        var activeCustomerIds = await _context.Customers.AsNoTracking()
+            .Where(c => c.BranchId == branchId.Value && c.Status == 1)
+            .Select(c => c.CustomerId)
+            .ToListAsync();
+        var debtMap = await _customerDebtService.CalculateCurrentDebtBatchAsync(activeCustomerIds);
+        var activeCustomerTotalDebt = debtMap.Values.Sum();
 
         var overdueCustomers = await _context.Customers.AsNoTracking()
-            .Where(c => c.BranchId == branchId.Value && c.CurrentDebt.HasValue && c.DebtLimit.HasValue && c.CurrentDebt > c.DebtLimit)
+            .Where(c => c.BranchId == branchId.Value && c.Status == 1 && c.DebtLimit.HasValue && c.DebtLimit > 0)
+            .Select(c => new { c.CustomerId, c.DebtLimit })
             .ToListAsync();
+
+        var overdueDebtSum = 0m;
+        var overdueCount = 0;
+        foreach (var oc in overdueCustomers)
+        {
+            var debt = debtMap.TryGetValue(oc.CustomerId, out var d) ? d : 0m;
+            if (debt > (oc.DebtLimit ?? 0m))
+            {
+                overdueDebtSum += debt;
+                overdueCount++;
+            }
+        }
 
         var customerDebtSummary = new DashboardDebtSummaryDto
         {
             CustomerCount = activeCustomerCount,
             TotalDebt = activeCustomerTotalDebt,
-            OverdueCustomerCount = overdueCustomers.Count,
-            OverdueDebt = overdueCustomers.Sum(c => c.CurrentDebt ?? 0m)
+            OverdueCustomerCount = overdueCount,
+            OverdueDebt = overdueDebtSum
         };
 
         var topProductsByRevenue = await _context.OrderItems
@@ -160,11 +176,16 @@ public class OwnerDashboardController : ControllerBase
                 Email = g.Key.Email,
                 OrderCount = g.Count(),
                 TotalSpent = g.Sum(o => o.TotalAmount),
-                TotalDebt = g.Sum(o => (decimal?)o.Customer!.CurrentDebt) ?? 0m
+                TotalDebt = 0m
             })
             .OrderByDescending(x => x.TotalSpent)
             .Take(5)
             .ToListAsync();
+
+        foreach (var tc in topCustomers)
+        {
+            tc.TotalDebt = debtMap.TryGetValue(tc.CustomerId, out var d) ? d : 0m;
+        }
 
         var expenseByCategory = await _context.ExpenseVouchers
             .AsNoTracking()
@@ -185,7 +206,7 @@ public class OwnerDashboardController : ControllerBase
         var paymentsBreakdown = await _context.Payments
             .AsNoTracking()
             .Where(p => p.BranchId == branchId.Value && p.Status == "Confirmed"
-                        && p.CreatedAt >= last30Days && p.CreatedAt < now)
+                        && p.PaidAt.HasValue && p.PaidAt >= last30Days && p.PaidAt < now)
             .GroupBy(p => p.Method)
             .Select(g => new
             {
@@ -441,7 +462,7 @@ public class OwnerDashboardController : ControllerBase
             var paymentBreakdown = await _context.Payments
                 .AsNoTracking()
                 .Where(p => p.BranchId == branch && p.Status == "Confirmed"
-                            && p.CreatedAt >= start && p.CreatedAt < end)
+                            && p.PaidAt.HasValue && p.PaidAt >= start && p.PaidAt < end)
                 .GroupBy(p => p.Method)
                 .Select(g => new
                 {
