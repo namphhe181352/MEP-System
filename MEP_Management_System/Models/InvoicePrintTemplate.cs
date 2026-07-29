@@ -8,8 +8,12 @@ public class InvoicePrintTemplate
     public Guid? BranchId { get; set; }
     public string? HeaderText { get; set; }
     public string? FooterText { get; set; }
-    public bool ShowLogo { get; set; } = true;
+    public bool ShowLogo { get; set; } = false;
     public string? LogoUrl { get; set; }
+    public string? BranchName { get; set; }
+    public string? BranchAddress { get; set; }
+    public string? Phone { get; set; }
+    public string? TaxCode { get; set; }
     public string PaperSize { get; set; } = "K80";
     public int FontSize { get; set; } = 12;
     public string FontFamily { get; set; } = "monospace";
@@ -17,8 +21,6 @@ public class InvoicePrintTemplate
     public bool ShowCashierName { get; set; } = true;
     public bool ShowBranchInfo { get; set; } = true;
     public bool ShowPaymentMethod { get; set; } = true;
-    public bool ShowTaxInfo { get; set; } = true;
-    public decimal TaxRate { get; set; } = 8.00m;
     public string? ThankYouMessage { get; set; }
     public string CustomFieldsJson { get; set; } = "{}";
     public bool IsActive { get; set; } = true;

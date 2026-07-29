@@ -76,7 +76,9 @@ public class PrintingController : ControllerBase
         var branchId = GetBranchId();
         var receipt = await _context.Receipts
             .Include(r => r.Invoice).ThenInclude(i => i.Order).ThenInclude(o => o.Branch)
-            .FirstOrDefaultAsync(r => r.InvoiceId == invoiceId);
+            .Where(r => r.InvoiceId == invoiceId)
+            .OrderByDescending(r => r.CreatedAt)
+            .FirstOrDefaultAsync();
 
         if (receipt == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Receipt not found"));
         if (receipt.Invoice.Order.BranchId != branchId) return Forbid();
@@ -100,7 +102,17 @@ public class PrintingController : ControllerBase
         sb.AppendLine($"<p style='text-align:center'>{invoice.InvoiceCode}<br/>{invoice.CreatedAt:dd/MM/yyyy HH:mm}</p>");
 
         if (template == null || template.ShowBranchInfo)
-            sb.AppendLine($"<p>{invoice.Order?.Branch?.BranchName ?? ""}<br/>{invoice.Order?.Branch?.Address ?? ""}</p>");
+        {
+            var displayName = !string.IsNullOrEmpty(template?.BranchName) ? template.BranchName : invoice.Order?.Branch?.BranchName ?? "";
+            var displayAddress = !string.IsNullOrEmpty(template?.BranchAddress) ? template.BranchAddress : invoice.Order?.Branch?.Address ?? "";
+            var displayPhone = !string.IsNullOrEmpty(template?.Phone) ? template.Phone : invoice.Order?.Branch?.Phone;
+            var displayTax = !string.IsNullOrEmpty(template?.TaxCode) ? template.TaxCode : null;
+            sb.AppendLine($"<p>{displayName}<br/>{displayAddress}</p>");
+            var extraLine = new List<string>();
+            if (!string.IsNullOrEmpty(displayPhone)) extraLine.Add($"ĐT: {displayPhone}");
+            if (!string.IsNullOrEmpty(displayTax)) extraLine.Add($"MST: {displayTax}");
+            if (extraLine.Count > 0) sb.AppendLine($"<p>{string.Join(" • ", extraLine)}</p>");
+        }
         if (template == null || template.ShowCashierName)
             sb.AppendLine($"<p>Cashier: {invoice.Order?.User?.FullName ?? ""}</p>");
         if (template == null || template.ShowCustomerInfo)
@@ -118,13 +130,12 @@ public class PrintingController : ControllerBase
         sb.AppendLine("</table>");
         var subtotal = invoice.InvoiceItems.Sum(i => i.Quantity * i.SellPrice);
         var discount = invoice.Order?.DiscountAmount ?? 0;
-        var taxRate = template?.TaxRate ?? 8.00m;
+        var taxRate = 8.00m;
         var vat = Math.Round((subtotal - discount) * taxRate / 100m, 2);
         var total = subtotal - discount + vat;
         sb.AppendLine($"<div class='b'><div><span>Subtotal</span><span class='r'>{subtotal:N0}</span></div>");
         if (discount > 0) sb.AppendLine($"<div><span>Discount</span><span class='r' style='color:red'>-{discount:N0}</span></div>");
-        if (template == null || template.ShowTaxInfo)
-            sb.AppendLine($"<div><span>VAT ({taxRate}%)</span><span class='r'>{vat:N0}</span></div>");
+        sb.AppendLine($"<div><span>VAT ({taxRate}%)</span><span class='r'>{vat:N0}</span></div>");
         sb.AppendLine($"<div style='font-weight:bold;font-size:16px;border-top:1px solid #000;margin-top:4px;padding-top:4px'><span>TOTAL</span><span class='r'>{total:N0}</span></div>");
         sb.AppendLine("</div>");
         var thankYou = template?.ThankYouMessage ?? "Thank you!";
