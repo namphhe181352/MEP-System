@@ -151,7 +151,7 @@ public class ReportService
         var refunds = await _context.ReturnOrders
             .Where(r => r.Order.BranchId == branchId.Value
                 && r.ReturnType == "REFUND"
-                && r.Status == "COMPLETED"
+                && r.Status == "Completed"
                 && r.CreatedAt >= reportDate
                 && r.CreatedAt < nextDate)
             .ToListAsync();
