@@ -100,7 +100,7 @@ public class ReportService
         // 1. Lấy đơn hàng trong ngày
         var orders = await _context.Orders
             .Where(o => o.BranchId == branchId.Value
-                && o.Status == "COMPLETED"
+                && o.Status == "Completed"
                 && o.CreatedAt >= reportDate
                 && o.CreatedAt < nextDate)
             .ToListAsync();
@@ -144,6 +144,26 @@ public class ReportService
             CombinedCount = payments.Count(p => p.Method == "Combined")
         };
 
+        // 5. Hoàn tiền từ phiếu trả hàng (chỉ tính cho type=REFUND, bỏ qua EXCHANGE đổi ngang giá)
+        var refundCash = 0m;
+        var refundTransfer = 0m;
+        var refundCount = 0;
+        var refunds = await _context.ReturnOrders
+            .Where(r => r.Order.BranchId == branchId.Value
+                && r.ReturnType == "REFUND"
+                && r.Status == "COMPLETED"
+                && r.CreatedAt >= reportDate
+                && r.CreatedAt < nextDate)
+            .ToListAsync();
+        if (refunds.Count > 0)
+        {
+            refundCash = refunds.Where(r => r.RefundMethod == "CASH").Sum(r => r.RefundAmount);
+            refundTransfer = refunds.Where(r => r.RefundMethod == "TRANSFER").Sum(r => r.RefundAmount);
+            refundCount = refunds.Count;
+            paymentBreakdown.CashAmount -= refundCash;
+            paymentBreakdown.TransferAmount -= refundTransfer;
+        }
+
         var result = new DailyEndReportDto
         {
             ReportDate = reportDate,
@@ -154,7 +174,10 @@ public class ReportService
             AverageOrderValue = orders.Count > 0 ? orders.Sum(o => o.TotalAmount) / orders.Count : 0m,
             PaymentBreakdown = paymentBreakdown,
             InwardTicketCount = inwardTickets,
-            OutwardTicketCount = outwardTickets
+            OutwardTicketCount = outwardTickets,
+            RefundCashAmount = refundCash,
+            RefundTransferAmount = refundTransfer,
+            RefundCount = refundCount
         };
 
         return result;
