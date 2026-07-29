@@ -56,46 +56,56 @@ public class ShiftsController : ControllerBase
             return BadRequest(ApiErrorResponse.Create("MSG-101", "Tài khoản đang bị khoá/ẩn, không thể mở ca."));
         // ===== END SAFETY CHECK =====
 
-        var openShift = await _context.Shifts
+        // Per-user check (giữ logic cũ): nếu CHÍNH user này đã có ca OPEN
+        var myOpenShift = await _context.Shifts
             .FirstOrDefaultAsync(s => s.UserId == userId && s.BranchId == branchId.Value && s.Status == "OPEN");
-            
-        if (openShift != null)
+
+        if (myOpenShift != null)
         {
-            if ((DateTime.UtcNow - openShift.StartedAt).TotalHours > 24)
+            if ((DateTime.UtcNow - myOpenShift.StartedAt).TotalHours > 24)
             {
                 var completedInvoices = await _context.Invoices
-                    .Where(i => i.UserId == openShift.UserId && i.Status == "Completed" && i.CreatedAt >= openShift.StartedAt && i.CreatedAt <= DateTime.UtcNow)
+                    .Where(i => i.UserId == myOpenShift.UserId && i.Status == "Completed" && i.CreatedAt >= myOpenShift.StartedAt && i.CreatedAt <= DateTime.UtcNow)
                     .Include(i => i.Payments)
                     .ToListAsync();
 
-                openShift.TotalRevenue = completedInvoices.Sum(i => i.TotalAmount);
-                openShift.TotalOrders = completedInvoices.Count;
+                myOpenShift.TotalRevenue = completedInvoices.Sum(i => i.TotalAmount);
+                myOpenShift.TotalOrders = completedInvoices.Count;
                 var allPayments = completedInvoices.SelectMany(i => i.Payments).Where(p => p.Method == "Cash" && p.Status == "Confirmed").ToList();
-                openShift.ExpectedCash = openShift.OpeningBalance + allPayments.Sum(p => p.Amount);
-                openShift.ActualCash = openShift.ExpectedCash;
-                openShift.Variance = 0;
-                openShift.Note = "Hệ thống tự động chốt ca do đã mở quá 24h";
-                openShift.EndedAt = DateTime.UtcNow;
-                openShift.Status = "CLOSED";
-                
+                myOpenShift.ExpectedCash = myOpenShift.OpeningBalance + allPayments.Sum(p => p.Amount);
+                myOpenShift.ActualCash = myOpenShift.ExpectedCash;
+                myOpenShift.Variance = 0;
+                myOpenShift.Note = "Hệ thống tự động chốt ca do đã mở quá 24h";
+                myOpenShift.EndedAt = DateTime.UtcNow;
+                myOpenShift.Status = "CLOSED";
+
                 await _context.SaveChangesAsync();
-                
-                _ = _notifications.NotifyBranchShiftClosed(branchId.Value, openShift.ShiftId.ToString(), new
+
+                _ = _notifications.NotifyBranchShiftClosed(branchId.Value, myOpenShift.ShiftId.ToString(), new
                 {
-                    openShift.ShiftId,
-                    openShift.ShiftCode,
-                    openShift.TotalRevenue,
-                    openShift.TotalOrders,
-                    openShift.Variance,
-                    openShift.ExpectedCash,
-                    openShift.ActualCash,
-                    openShift.EndedAt
+                    myOpenShift.ShiftId,
+                    myOpenShift.ShiftCode,
+                    myOpenShift.TotalRevenue,
+                    myOpenShift.TotalOrders,
+                    myOpenShift.Variance,
+                    myOpenShift.ExpectedCash,
+                    myOpenShift.ActualCash,
+                    myOpenShift.EndedAt
                 });
             }
             else
             {
                 return Conflict(ApiErrorResponse.Create("MSG-76", "You already have an open shift"));
             }
+        }
+
+        // Per-branch check (fix mới): nếu branch đang có ca OPEN của user KHÁC, bắt buộc chốt ca đó trước
+        var branchOpenShift = await _context.Shifts
+            .FirstOrDefaultAsync(s => s.BranchId == branchId.Value && s.Status == "OPEN");
+
+        if (branchOpenShift != null)
+        {
+            return Conflict(ApiErrorResponse.Create("MSG-76", "Ca vẫn đang mở, vui lòng chốt ca"));
         }
 
         var today = DateTime.UtcNow.Date;
