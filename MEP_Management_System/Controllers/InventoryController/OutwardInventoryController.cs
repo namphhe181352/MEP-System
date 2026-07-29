@@ -902,6 +902,101 @@ namespace MEP_Management_System.Controllers.InventoryController
             return await CancelOutwardInventory(id, cancelDto);
         }
 
+        // ============================================================
+        // GET /api/outwardinventory/{id}/print
+        // Tra ve HTML phieu xuat kho
+        // ============================================================
+        [HttpGet("{id:guid}/print")]
+        [HasPermission(PermissionConstants.STOCK_VIEW)]
+        public async Task<IActionResult> Print(Guid id)
+        {
+            var staffBranchId = _currentBranch.GetBranchId();
+            if (staffBranchId == null)
+            {
+                return Unauthorized(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "JWT token khong hop le hoac thieu thong tin chi nhanh.",
+                    Errors = new() { "Authorization header required" }
+                });
+            }
+
+            var ticket = await _context.StockTickets
+                .Include(t => t.Branch)
+                .Include(t => t.StockTicketItems).ThenInclude(i => i.BranchProduct).ThenInclude(bp => bp.Product)
+                .FirstOrDefaultAsync(t => t.StockTicketId == id && t.BranchId == staffBranchId.Value &&
+                    (t.TicketType == "RETURN_SUPPLIER" || t.TicketType == "WRITE_OFF" || t.TicketType == "TRANSFER"));
+
+            if (ticket == null)
+                return NotFound(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Khong tim thay phieu xuat kho hoac ban khong co quyen xem phieu nay.",
+                    Errors = new() { $"No outward inventory with ID: {id}" }
+                });
+
+            var items = ticket.StockTicketItems?.Select(i => new
+            {
+                i.BranchProduct?.Product?.ProductCode,
+                i.BranchProduct?.Product?.ProductName,
+                Unit = i.BranchProduct?.Product?.BaseUnit,
+                Quantity = i.Discrepancy,
+                UnitPrice = i.UnitPrice
+            }).ToList() ?? new();
+
+            var ticketTypeName = ticket.TicketType switch
+            {
+                "RETURN_SUPPLIER" => "TRA HANG NHA CUNG CAP",
+                "WRITE_OFF" => "HAO HUT / MAT",
+                "TRANSFER" => "SU DUNG NOI BO",
+                _ => ticket.TicketType ?? ""
+            };
+
+            var html = $@"<!DOCTYPE html>
+<html>
+<head>
+<meta charset=""utf-8"">
+<title>Phieu Xuat Kho - {ticket.TicketCode}</title>
+<style>
+body {{ font-family: monospace; font-size: 12px; margin: 20px; }}
+h1 {{ text-align: center; }}
+table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+th, td {{ border: 1px solid #000; padding: 5px; text-align: left; }}
+th {{ background: #f0f0f0; }}
+</style>
+</head>
+<body>
+<h1>PHIEU XUAT KHO</h1>
+<p><strong>Loai phieu:</strong> {ticketTypeName}</p>
+<p><strong>Ma phieu:</strong> {ticket.TicketCode}</p>
+<p><strong>Chi nhanh:</strong> {ticket.Branch?.BranchName}</p>
+<p><strong>Ngay tao:</strong> {ticket.CreatedAt:yyyy-MM-dd HH:mm}</p>
+<p><strong>Trang thai:</strong> {ticket.Status}</p>
+<table>
+<tr><th>STT</th><th>Ma SP</th><th>Ten SP</th><th>Don vi</th><th>So luong</th><th>Don gia</th></tr>";
+
+            var stt = 1;
+            foreach (var item in items)
+            {
+                html += $@"<tr>
+<td>{stt++}</td>
+<td>{item.ProductCode}</td>
+<td>{item.ProductName}</td>
+<td>{item.Unit}</td>
+<td>{item.Quantity}</td>
+<td>{item.UnitPrice:N0}</td>
+</tr>";
+            }
+
+            html += $@"</table>
+<p><strong>Ghi chu:</strong> {ticket.Notes ?? ""}</p>
+<p style=""margin-top:40px"">Ky ten: __________________</p>
+</body>
+</html>";
+
+            return Content(html, "text/html");
+        }
+
         // ========== HELPER METHODS ==========
 
         private static string GenerateTicketCode(OutwardInventoryType type, DateTime currentTime)

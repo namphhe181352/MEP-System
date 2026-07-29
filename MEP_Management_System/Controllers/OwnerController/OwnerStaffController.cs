@@ -64,10 +64,6 @@ public class OwnerStaffController : ControllerBase
     /// </summary>
     private async Task<OwnerStaffDto> MapToDto(User user)
     {
-        var assignment = await _context.StaffAssignments
-            .Include(sa => sa.Branch)
-            .FirstOrDefaultAsync(sa => sa.UserId == user.UserId);
-
         return new OwnerStaffDto
         {
             UserId = user.UserId,
@@ -75,8 +71,6 @@ public class OwnerStaffController : ControllerBase
             Email = user.Email,
             PhoneNumber = user.PhoneNumber,
             IsActive = user.IsActive,
-            BranchId = assignment?.BranchId,
-            BranchName = assignment?.Branch?.BranchName ?? "Chưa gán chi nhánh",
             PermissionCodes = user.UserPermissions
                 .Select(up => up.Permission?.PermissionCode ?? "")
                 .Where(c => !string.IsNullOrEmpty(c))

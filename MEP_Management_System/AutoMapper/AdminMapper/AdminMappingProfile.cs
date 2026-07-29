@@ -12,9 +12,7 @@ public class AdminMappingProfile : Profile
     {
         // User -> StaffAccountDto
         CreateMap<User, StaffAccountDto>()
-            .ForMember(d => d.Roles, o => o.MapFrom(s => s.Roles.Select(r => r.RoleName).ToList()))
-            .ForMember(d => d.BranchName, o => o.MapFrom(s =>
-                s.StaffAssignments.FirstOrDefault()!.Branch!.BranchName));
+            .ForMember(d => d.Roles, o => o.MapFrom(s => s.Roles.Select(r => r.RoleName).ToList()));
 
         // User -> AdminAccountDetailDto (cho AdminAccountsController)
         CreateMap<User, AdminAccountDetailDto>()
@@ -29,15 +27,7 @@ public class AdminMappingProfile : Profile
                 .Select(up => up.Permission != null ? up.Permission.PermissionCode : "")
                 .Where(c => !string.IsNullOrEmpty(c))
                 .Distinct()
-                .ToList()))
-            .ForMember(d => d.BranchId, o => o.MapFrom(s =>
-                s.StaffAssignments != null && s.StaffAssignments.Any()
-                    ? s.StaffAssignments.First().BranchId
-                    : (Guid?)null))
-            .ForMember(d => d.BranchName, o => o.MapFrom(s =>
-                s.StaffAssignments != null && s.StaffAssignments.Any()
-                    ? s.StaffAssignments.First().Branch!.BranchName
-                    : null));
+                .ToList()));
 
         // SystemNotification -> SystemNotificationDto
         CreateMap<SystemNotification, SystemNotificationDto>()

@@ -11,6 +11,7 @@ namespace MEP_Management_System.Services.Email
     public interface IEmailService
     {
         Task SendOtpEmailAsync(string toEmail, string otpCode);
+        Task SendPasswordResetEmailAsync(string toEmail, string? fullName, string resetLink);
     }
 
     public class EmailService : IEmailService
@@ -66,6 +67,52 @@ namespace MEP_Management_System.Services.Email
                 // Log lỗi ra console nếu cấu hình sai hoặc lỗi kết nối
                 Console.WriteLine($"[EMAIL ERROR] Không thể gửi email: {ex.Message}");
                 throw new Exception("Lỗi hệ thống khi gửi email OTP. Vui lòng liên hệ hỗ trợ.");
+            }
+            finally
+            {
+                await client.DisconnectAsync(true);
+            }
+        }
+
+        public async Task SendPasswordResetEmailAsync(string toEmail, string? fullName, string resetLink)
+        {
+            var message = new MimeMessage();
+            message.From.Add(new MailboxAddress(_emailSettings.SenderName, _emailSettings.SenderEmail));
+            message.To.Add(new MailboxAddress("", toEmail));
+            message.Subject = "Dat lai mat khau - M.E.P System";
+
+            var greeting = string.IsNullOrEmpty(fullName) ? "Xin chào" : $"Xin chào {fullName}";
+            var bodyBuilder = new BodyBuilder
+            {
+                HtmlBody = $@"
+                <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;'>
+                    <h2 style='color: #ff4500; text-align: center;'>M.E.P System</h2>
+                    <p>{greeting},</p>
+                    <p>Ban yeu cau dat lai mat khau tren he thong <strong>M.E.P System</strong>.</p>
+                    <p>Ban hoac nguoi khac da yeu cau dat lai mat khau cho tai khoan nay. Neu la ban, vui long bam vao nut ben duoi de dat lai mat khau:</p>
+                    <div style='text-align: center; margin: 30px 0;'>
+                        <a href='{resetLink}' style='background-color: #ff4500; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-size: 16px; font-weight: bold;'>Dat lai mat khau</a>
+                    </div>
+                    <p>Lien ket nay se het han trong <strong>30 phut</strong>.</p>
+                    <p>Neu ban khong yeu cau dat lai mat khau, vui long bo qua email nay. Tai khoan cua ban van an toan.</p>
+                    <hr style='border: none; border-top: 1px solid #eeeeee;' />
+                    <p style='text-align: center; color: #aaaaaa; font-size: 11px;'>Day la email tu dong, vui long khong phan hoi.</p>
+                </div>"
+            };
+
+            message.Body = bodyBuilder.ToMessageBody();
+
+            using var client = new SmtpClient();
+            try
+            {
+                await client.ConnectAsync(_emailSettings.SmtpServer, _emailSettings.Port, SecureSocketOptions.StartTls);
+                await client.AuthenticateAsync(_emailSettings.SenderEmail, _emailSettings.Password);
+                await client.SendAsync(message);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[EMAIL ERROR] Khong the gui email reset mat khau: {ex.Message}");
+                throw new Exception("Loi he thong khi gui email. Vui long lien he ho tro.");
             }
             finally
             {

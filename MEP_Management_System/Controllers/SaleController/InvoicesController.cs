@@ -149,7 +149,8 @@ public class InvoicesController : ControllerBase
 
         if (request.CustomerId.HasValue)
         {
-            var customerExists = await _context.Customers.AnyAsync(c => c.CustomerId == request.CustomerId.Value);
+            var customerExists = await _context.Customers
+                .AnyAsync(c => c.CustomerId == request.CustomerId.Value && c.BranchId == branchId);
             if (!customerExists)
             {
                 return BadRequest(ApiErrorResponse.Create("MSG-01", "Không tìm thấy khách hàng"));

@@ -90,6 +90,10 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
     // === EXPENSE MODULE ===
     public virtual DbSet<ExpenseCategory> ExpenseCategories { get; set; }
     public virtual DbSet<ExpenseVoucher> ExpenseVouchers { get; set; }
+    public virtual DbSet<StockPrintTemplate> StockPrintTemplates { get; set; }
+    public virtual DbSet<StockTicketReceipt> StockTicketReceipts { get; set; }
+    public virtual DbSet<InvoicePrintTemplate> InvoicePrintTemplates { get; set; }
+    public virtual DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         if (!optionsBuilder.IsConfigured)
@@ -496,6 +500,10 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
             entity.Property(e => e.UpdatedAt)
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("updated_at");
+            entity.Property(e => e.AdvanceBalance)
+                .HasPrecision(15, 2)
+                .HasDefaultValue(0m)
+                .HasColumnName("advance_balance");
             entity.HasIndex(e => e.PhoneNumber, "customers_phone_unique").IsUnique();
         });
 
@@ -1939,10 +1947,6 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
             entity.Property(e => e.UpdatedAt)
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("updated_at");
-
-            entity.HasIndex(e => e.MinOrderValue)
-                .IsUnique()
-                .HasDatabaseName("ix_order_discount_tiers_min_order_value");
         });
 
         // ============================================================
@@ -2020,6 +2024,245 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .IsUnique()
                 .HasDatabaseName("ix_product_locations_location_name");
         });
+
+        // ============================================================
+        // STOCK PRINT TEMPLATE
+        // ============================================================
+        modelBuilder.Entity<StockPrintTemplate>(entity =>
+        {
+            entity.HasKey(e => e.TemplateId).HasName("stock_print_templates_pkey");
+            entity.ToTable("stock_print_templates");
+
+            entity.Property(e => e.TemplateId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("template_id");
+            entity.Property(e => e.BranchId)
+                .HasColumnName("branch_id");
+            entity.Property(e => e.TicketType)
+                .HasMaxLength(50)
+                .HasColumnName("ticket_type");
+            entity.Property(e => e.HeaderText)
+                .HasMaxLength(500)
+                .HasColumnName("header_text");
+            entity.Property(e => e.FooterText)
+                .HasMaxLength(500)
+                .HasColumnName("footer_text");
+            entity.Property(e => e.ShowLogo)
+                .HasDefaultValue(true)
+                .HasColumnName("show_logo");
+            entity.Property(e => e.LogoUrl)
+                .HasMaxLength(500)
+                .HasColumnName("logo_url");
+            entity.Property(e => e.PaperSize)
+                .HasMaxLength(20)
+                .HasDefaultValue("A5")
+                .HasColumnName("paper_size");
+            entity.Property(e => e.FontSize)
+                .HasDefaultValue(12)
+                .HasColumnName("font_size");
+            entity.Property(e => e.FontFamily)
+                .HasMaxLength(50)
+                .HasDefaultValue("monospace")
+                .HasColumnName("font_family");
+            entity.Property(e => e.ShowSupplier)
+                .HasDefaultValue(true)
+                .HasColumnName("show_supplier");
+            entity.Property(e => e.ShowBranchInfo)
+                .HasDefaultValue(true)
+                .HasColumnName("show_branch_info");
+            entity.Property(e => e.ShowSignature)
+                .HasDefaultValue(true)
+                .HasColumnName("show_signature");
+            entity.Property(e => e.CustomFieldsJson)
+                .HasColumnType("text")
+                .HasDefaultValue("{}")
+                .HasColumnName("custom_fields_json");
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue(true)
+                .HasColumnName("is_active");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("updated_at");
+
+            // Unique index (BranchId, TicketType) — both nullable so use IsUnique with filter
+            entity.HasIndex(e => new { e.BranchId, e.TicketType })
+                .IsUnique()
+                .HasDatabaseName("ix_stock_print_templates_branch_ticket");
+
+            entity.HasOne(e => e.Branch)
+                .WithMany()
+                .HasForeignKey(e => e.BranchId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ============================================================
+        // STOCK TICKET RECEIPT (HTML snapshot when printing stock tickets)
+        // ============================================================
+        modelBuilder.Entity<StockTicketReceipt>(entity =>
+        {
+            entity.HasKey(e => e.ReceiptId).HasName("stock_ticket_receipts_pkey");
+            entity.ToTable("stock_ticket_receipts");
+
+            entity.Property(e => e.ReceiptId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("receipt_id");
+            entity.Property(e => e.ReceiptCode)
+                .IsRequired()
+                .HasMaxLength(50)
+                .HasColumnName("receipt_code");
+            entity.Property(e => e.StockTicketId)
+                .HasColumnName("stock_ticket_id");
+            entity.Property(e => e.HtmlContent)
+                .HasColumnType("text")
+                .HasColumnName("html_content");
+            entity.Property(e => e.PrintedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("printed_at");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+
+            entity.HasIndex(e => e.ReceiptCode)
+                .IsUnique()
+                .HasDatabaseName("ix_stock_ticket_receipts_code");
+
+            entity.HasOne(e => e.StockTicket)
+                .WithMany()
+                .HasForeignKey(e => e.StockTicketId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ============================================================
+        // INVOICE PRINT TEMPLATE
+        // ============================================================
+        modelBuilder.Entity<InvoicePrintTemplate>(entity =>
+        {
+            entity.HasKey(e => e.TemplateId).HasName("invoice_print_templates_pkey");
+            entity.ToTable("invoice_print_templates");
+
+            entity.Property(e => e.TemplateId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("template_id");
+            entity.Property(e => e.BranchId)
+                .HasColumnName("branch_id");
+            entity.Property(e => e.HeaderText)
+                .HasMaxLength(500)
+                .HasColumnName("header_text");
+            entity.Property(e => e.FooterText)
+                .HasMaxLength(500)
+                .HasColumnName("footer_text");
+            entity.Property(e => e.ShowLogo)
+                .HasDefaultValue(true)
+                .HasColumnName("show_logo");
+            entity.Property(e => e.LogoUrl)
+                .HasMaxLength(500)
+                .HasColumnName("logo_url");
+            entity.Property(e => e.PaperSize)
+                .HasMaxLength(20)
+                .HasDefaultValue("K80")
+                .HasColumnName("paper_size");
+            entity.Property(e => e.FontSize)
+                .HasDefaultValue(12)
+                .HasColumnName("font_size");
+            entity.Property(e => e.FontFamily)
+                .HasMaxLength(50)
+                .HasDefaultValue("monospace")
+                .HasColumnName("font_family");
+            entity.Property(e => e.ShowCustomerInfo)
+                .HasDefaultValue(true)
+                .HasColumnName("show_customer_info");
+            entity.Property(e => e.ShowCashierName)
+                .HasDefaultValue(true)
+                .HasColumnName("show_cashier_name");
+            entity.Property(e => e.ShowBranchInfo)
+                .HasDefaultValue(true)
+                .HasColumnName("show_branch_info");
+            entity.Property(e => e.ShowPaymentMethod)
+                .HasDefaultValue(true)
+                .HasColumnName("show_payment_method");
+            entity.Property(e => e.ShowTaxInfo)
+                .HasDefaultValue(true)
+                .HasColumnName("show_tax_info");
+            entity.Property(e => e.TaxRate)
+                .HasPrecision(5, 2)
+                .HasDefaultValue(8.00m)
+                .HasColumnName("tax_rate");
+            entity.Property(e => e.ThankYouMessage)
+                .HasMaxLength(500)
+                .HasColumnName("thank_you_message");
+            entity.Property(e => e.CustomFieldsJson)
+                .HasColumnType("text")
+                .HasDefaultValue("{}")
+                .HasColumnName("custom_fields_json");
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue(true)
+                .HasColumnName("is_active");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("updated_at");
+
+            entity.HasOne(e => e.Branch)
+                .WithMany()
+                .HasForeignKey(e => e.BranchId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ============================================================
+        // PASSWORD RESET TOKEN
+        // ============================================================
+        modelBuilder.Entity<PasswordResetToken>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("password_reset_tokens_pkey");
+            entity.ToTable("password_reset_tokens");
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("id");
+            entity.Property(e => e.UserId)
+                .HasColumnName("user_id");
+            entity.Property(e => e.TokenHash)
+                .IsRequired()
+                .HasMaxLength(255)
+                .HasColumnName("token_hash");
+            entity.Property(e => e.ExpiresAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("expires_at");
+            entity.Property(e => e.UsedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("used_at");
+            entity.Property(e => e.IpAddress)
+                .HasMaxLength(50)
+                .HasColumnName("ip_address");
+            entity.Property(e => e.UserAgent)
+                .HasMaxLength(255)
+                .HasColumnName("user_agent");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+
+            entity.HasIndex(e => e.TokenHash)
+                .IsUnique()
+                .HasDatabaseName("ix_password_reset_tokens_token_hash");
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Fix OrderDiscountTier unique index: unique (BranchId, MinOrderValue)
+        modelBuilder.Entity<OrderDiscountTier>()
+            .HasIndex(e => new { e.BranchId, e.MinOrderValue })
+            .IsUnique()
+            .HasDatabaseName("ix_order_discount_tiers_branch_min_order");
     }
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder);
