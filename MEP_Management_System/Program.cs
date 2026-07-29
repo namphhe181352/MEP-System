@@ -39,7 +39,10 @@ builder.Services.AddScoped<ReportService>();
 //builder.Services.AddScoped<IProductService, ProductService>(); // Removed: using static ProductService methods directly
 //builder.Services.AddScoped<IInvoiceService, InvoiceService>(); // Removed: InvoiceService is now static
 builder.Services.AddScoped<ISupplierDebtService, SupplierDebtService>();
+builder.Services.AddScoped<CustomerDebtService>();
 builder.Services.AddScoped<InwardInventoryQueryService>();
+builder.Services.AddScoped<StockPrintTemplateService>();
+builder.Services.AddScoped<InvoicePrintTemplateService>();
 //builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.ToolDispatcher>(); // Removed: ToolDispatcher not found
 builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.SqlExecutor>();
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
@@ -198,6 +201,18 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
+}
+else
+{
+    app.UseExceptionHandler(errorApp =>
+    {
+        errorApp.Run(async context =>
+        {
+            context.Response.StatusCode = 500;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync("{\"error\":{\"code\":\"MSG-99\",\"message\":\"Đã xảy ra lỗi.\"}}");
+        });
+    });
 }
 
 app.UseSwagger();

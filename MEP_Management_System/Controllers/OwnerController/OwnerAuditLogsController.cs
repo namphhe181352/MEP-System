@@ -53,6 +53,7 @@ public class OwnerAuditLogsController : ControllerBase
         [FromQuery] string? entityType,
         [FromQuery] DateTime? fromDate,
         [FromQuery] DateTime? toDate,
+        [FromQuery] string? userName,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50)
     {
@@ -105,6 +106,9 @@ public class OwnerAuditLogsController : ControllerBase
 
         if (!string.IsNullOrEmpty(level))
             query = query.Where(l => l.Level == level.ToUpper());
+
+        if (!string.IsNullOrEmpty(userName))
+            query = query.Where(l => l.User.FullName.Contains(userName));
 
         if (!string.IsNullOrEmpty(entityType))
             query = query.Where(l => l.EntityType == entityType);
@@ -172,6 +176,43 @@ public class OwnerAuditLogsController : ControllerBase
             Success = true,
             Message = "Lấy log thành công.",
             Data = _mapper.Map<SystemLogDto>(log)
+        });
+    }
+
+    /// <summary>
+    /// Lấy danh sách user (thuộc chi nhánh của Owner) cho dropdown filter audit log.
+    /// Không filter IsActive ngoại trừ DELETED.
+    /// </summary>
+    [HttpGet("users")]
+    public async Task<IActionResult> GetAuditLogUsers()
+    {
+        var branchId = _currentBranch.GetBranchId();
+        if (!branchId.HasValue)
+            return BadRequest(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Không tìm thấy thông tin chi nhánh."
+            });
+
+        var users = await _context.StaffAssignments
+            .Where(sa => sa.BranchId == branchId.Value)
+            .Select(sa => sa.User)
+            .Where(u => u.Status != "DELETED")
+            .Select(u => new
+            {
+                u.UserId,
+                u.FullName,
+                u.Email,
+                u.Status,
+                u.IsActive
+            })
+            .ToListAsync();
+
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Message = "Danh sách user cho audit log.",
+            Data = users
         });
     }
 }

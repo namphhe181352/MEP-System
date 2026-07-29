@@ -13,7 +13,5 @@ public class StaffAccountDto
     public DateTime? SuspendedUntil { get; set; }
     public string? SubscriptionPlan { get; set; }
     public List<string> Roles { get; set; } = new();
-    public Guid? BranchId { get; set; }
-    public string? BranchName { get; set; }
     public DateTime? CreatedAt { get; set; }
 }

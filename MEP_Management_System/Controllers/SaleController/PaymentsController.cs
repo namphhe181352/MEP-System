@@ -40,6 +40,8 @@ public class PaymentsController : ControllerBase
     [HttpPost("invoices/{invoiceId:guid}/payments")]
     public async Task<ActionResult<PaymentDto>> CreatePayment(Guid invoiceId, [FromBody] CreatePaymentRequest request)
     {
+        try
+        {
         var branchId = GetBranchId();
         var invoice = await _context.Invoices
             .Include(i => i.Order).ThenInclude(o => o.Customer)
@@ -205,6 +207,12 @@ public class PaymentsController : ControllerBase
         }
 
         return BadRequest(ApiErrorResponse.Create("MSG-76", "Invalid payment method"));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PaymentsController Error]: {ex}");
+            return StatusCode(500, new { error = new { code = "MSG-99", message = "Đã xảy ra lỗi." } });
+        }
     }
 
     // GET /api/pos/payments/{paymentId}/qr

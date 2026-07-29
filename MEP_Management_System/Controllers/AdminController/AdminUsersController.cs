@@ -169,6 +169,10 @@ public class AdminUsersController : ControllerBase
                 return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-403", Message = "Không thể gán vai trò Admin." } });
             }
 
+            // Block Owner role creation via this endpoint
+            if (roles.Any(r => r.RoleName.Equals("Owner", StringComparison.OrdinalIgnoreCase)))
+                return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-403", Message = "Vui lòng dùng endpoint POST /api/admin/accounts/owners để tạo Owner." } });
+
             validRoles = roles;
         }
 

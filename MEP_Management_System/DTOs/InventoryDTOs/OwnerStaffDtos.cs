@@ -13,8 +13,6 @@ public class OwnerStaffDto
     public string Email { get; set; } = null!;
     public string? PhoneNumber { get; set; }
     public short? IsActive { get; set; }
-    public Guid? BranchId { get; set; }
-    public string? BranchName { get; set; }
     public List<string> PermissionCodes { get; set; } = new();
     public List<string> Roles { get; set; } = new();
 }

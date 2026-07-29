@@ -267,7 +267,7 @@ public class ReturnsController : ControllerBase
         catch (Exception ex)
         {
             Console.WriteLine($"[Returns API Error]: {ex}");
-            return StatusCode(500, new { message = ex.Message, stackTrace = ex.StackTrace, innerException = ex.InnerException?.Message });
+            return StatusCode(500, new { message = "Đã xảy ra lỗi khi tạo phiếu trả hàng" });
         }
     }
 

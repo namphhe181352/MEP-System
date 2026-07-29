@@ -878,6 +878,93 @@ namespace MEP_Management_System.Controllers.InventoryController
             return await CancelInwardInventory(id, cancelDto);
         }
 
+        // ============================================================
+        // GET /api/inwardinventory/{id}/print
+        // Trả về HTML phiếu nhập kho
+        // ============================================================
+        [HttpGet("{id:guid}/print")]
+        [HasPermission(PermissionConstants.STOCK_VIEW)]
+        public async Task<IActionResult> Print(Guid id)
+        {
+            var branchId = _currentBranch.GetBranchId();
+            if (branchId == null)
+            {
+                return Unauthorized(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "JWT token is missing or invalid",
+                    Errors = new() { "Authorization header required" }
+                });
+            }
+
+            var ticket = await _context.StockTickets
+                .Include(t => t.Branch)
+                .Include(t => t.StockTicketItems).ThenInclude(i => i.BranchProduct).ThenInclude(bp => bp.Product)
+                .Include(t => t.Supplier)
+                .FirstOrDefaultAsync(t => t.StockTicketId == id && t.BranchId == branchId.Value);
+
+            if (ticket == null)
+                return NotFound(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Inward inventory not found",
+                    Errors = new() { $"No inward inventory with ID: {id}" }
+                });
+
+            var items = ticket.StockTicketItems?.Select(i => new
+            {
+                i.BranchProduct?.Product?.ProductCode,
+                i.BranchProduct?.Product?.ProductName,
+                Unit = i.BranchProduct?.Product?.BaseUnit,
+                Quantity = i.Discrepancy,
+                i.BranchProduct?.CostPrice
+            }).ToList() ?? new();
+
+            var html = $@"<!DOCTYPE html>
+<html>
+<head>
+<meta charset=""utf-8"">
+<title>Phieu Nhap Kho - {ticket.TicketCode}</title>
+<style>
+body {{ font-family: monospace; font-size: 12px; margin: 20px; }}
+h1 {{ text-align: center; }}
+table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+th, td {{ border: 1px solid #000; padding: 5px; text-align: left; }}
+th {{ background: #f0f0f0; }}
+</style>
+</head>
+<body>
+<h1>PHIEU NHAP KHO</h1>
+<p><strong>Ma phieu:</strong> {ticket.TicketCode}</p>
+<p><strong>Chi nhanh:</strong> {ticket.Branch?.BranchName}</p>
+<p><strong>Nha cung cap:</strong> {ticket.Supplier?.SupplierName}</p>
+<p><strong>Ngay tao:</strong> {ticket.CreatedAt:yyyy-MM-dd HH:mm}</p>
+<p><strong>Trang thai:</strong> {ticket.Status}</p>
+<table>
+<tr><th>STT</th><th>Ma SP</th><th>Ten SP</th><th>Don vi</th><th>So luong</th><th>Don gia</th></tr>";
+
+            var stt = 1;
+            foreach (var item in items)
+            {
+                html += $@"<tr>
+<td>{stt++}</td>
+<td>{item.ProductCode}</td>
+<td>{item.ProductName}</td>
+<td>{item.Unit}</td>
+<td>{item.Quantity}</td>
+<td>{item.CostPrice:N0}</td>
+</tr>";
+            }
+
+            html += $@"</table>
+<p><strong>Ghi chu:</strong> {ticket.Notes ?? ""}</p>
+<p style=""margin-top:40px"">Ky ten: __________________</p>
+</body>
+</html>";
+
+            return Content(html, "text/html");
+        }
+
         // ========== HELPER METHODS ==========
 
         private static string GenerateTicketCode(InwardInventoryType type, DateTime currentTime)
