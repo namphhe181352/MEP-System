@@ -66,8 +66,15 @@ public class StockPrintTemplateService
         // Branch info
         if (tpl.ShowBranchInfo)
         {
-            sb.AppendLine($"<p><strong>Chi nhánh:</strong> {branch.BranchName}</p>");
-            sb.AppendLine($"<p><strong>Địa chỉ:</strong> {branch.Address}</p>");
+            var displayName = !string.IsNullOrEmpty(tpl.BranchName) ? tpl.BranchName : branch.BranchName;
+            var displayAddress = !string.IsNullOrEmpty(tpl.BranchAddress) ? tpl.BranchAddress : branch.Address;
+            var displayPhone = !string.IsNullOrEmpty(tpl.Phone) ? tpl.Phone : branch.Phone;
+            sb.AppendLine($"<p><strong>Chi nhánh:</strong> {displayName}</p>");
+            sb.AppendLine($"<p><strong>Địa chỉ:</strong> {displayAddress}</p>");
+            var extraLine = new System.Collections.Generic.List<string>();
+            if (!string.IsNullOrEmpty(displayPhone)) extraLine.Add($"ĐT: {displayPhone}");
+            if (!string.IsNullOrEmpty(tpl.TaxCode)) extraLine.Add($"MST: {tpl.TaxCode}");
+            if (extraLine.Count > 0) sb.AppendLine($"<p>{string.Join(" • ", extraLine)}</p>");
         }
 
         // Ticket info
