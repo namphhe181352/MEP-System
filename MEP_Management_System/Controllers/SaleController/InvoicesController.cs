@@ -47,6 +47,27 @@ public class InvoicesController : ControllerBase
     private Guid GetUserId() =>
         Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value ?? throw new Exception("userId not found"));
 
+    /// <summary>
+    /// Ghi log hoạt động vào bảng system_logs. Được gọi trước SaveChangesAsync của action chính
+    /// để log + entity commit trong cùng một transaction.
+    /// </summary>
+    private void LogAction(Guid targetEntityId, string action, string tableName, string entityType, string description)
+    {
+        _context.SystemLogs.Add(new SystemLog
+        {
+            LogId = Guid.NewGuid(),
+            UserId = GetUserId(),
+            Action = action,
+            TableName = tableName,
+            EntityType = entityType,
+            EntityId = targetEntityId,
+            Description = description,
+            Level = "INFO",
+            Source = "SaleInvoiceService",
+            Timestamp = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
+        });
+    }
+
     // GET /api/pos/invoices
     [HttpGet]
     public async Task<ActionResult<PageResultDto<InvoiceDto>>> GetInvoices(
@@ -208,6 +229,8 @@ public class InvoicesController : ControllerBase
 
         _context.Orders.Add(order);
         _context.Invoices.Add(invoice);
+        LogAction(order.OrderId, "CREATE_INVOICE", "orders", "Order",
+            $"Tạo hóa đơn {invCode} tại chi nhánh {branchId}");
         await _context.SaveChangesAsync();
 
         var dto = _mapper.Map<InvoiceDto>(invoice);
@@ -406,6 +429,8 @@ public class InvoicesController : ControllerBase
 
         invoice.Status = "Cancelled";
         invoice.Order.Status = "Cancelled";
+        LogAction(invoice.OrderId, "CANCEL_INVOICE", "orders", "Order",
+            $"Hủy hóa đơn {invoice.InvoiceCode}");
         await _context.SaveChangesAsync();
         return Ok(new { message = "Invoice cancelled" });
     }
@@ -505,6 +530,9 @@ public class InvoicesController : ControllerBase
                 invoice.Order.Customer.LastVisit = DateTime.UtcNow;
                 invoice.Order.Customer.UpdatedAt = DateTime.UtcNow;
             }
+
+            LogAction(invoice.OrderId, "FINALIZE_INVOICE", "orders", "Order",
+                $"Hoàn tất hóa đơn {invoice.InvoiceCode}, tổng tiền {invoice.TotalAmount:N0} VND");
 
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();

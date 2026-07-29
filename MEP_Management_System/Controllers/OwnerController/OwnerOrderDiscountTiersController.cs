@@ -39,11 +39,11 @@ public class OwnerOrderDiscountTiersController : ControllerBase
 
         // Kiểm tra trùng MinOrderValue (theo branch nếu có)
         var existingTier = await _context.OrderDiscountTiers
-            .FirstOrDefaultAsync(t => t.MinOrderValue == request.MinOrderValue
+            .AnyAsync(t => t.MinOrderValue == request.MinOrderValue
                 && t.BranchId == request.BranchId);
 
-        if (existingTier != null)
-            return BadRequest(ApiErrorResponse.Create("MSG-03", $"Ngưỡng giá trị {request.MinOrderValue:N0} đã tồn tại"));
+        if (existingTier)
+            return Conflict(ApiErrorResponse.Create("MSG-03", $"Ngưỡng giá trị {request.MinOrderValue:N0} đã tồn tại"));
 
         var tier = new OrderDiscountTier
         {
@@ -55,7 +55,19 @@ public class OwnerOrderDiscountTiersController : ControllerBase
         };
 
         _context.OrderDiscountTiers.Add(tier);
-        await _context.SaveChangesAsync();
+
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message?.Contains("23505") == true
+            || ex.InnerException?.Message?.Contains("duplicate key") == true
+            || ex.InnerException?.Message?.Contains("unique constraint") == true)
+        {
+            // Race: another request inserted the same (BranchId, MinOrderValue) between
+            // the AnyAsync check above and SaveChangesAsync. DB unique index caught it.
+            return Conflict(ApiErrorResponse.Create("MSG-03", $"Ngưỡng giá trị {request.MinOrderValue:N0} đã tồn tại"));
+        }
 
         // Load branch for response
         await _context.Entry(tier).Reference(t => t.Branch).LoadAsync();
@@ -99,12 +111,12 @@ public class OwnerOrderDiscountTiersController : ControllerBase
 
         // Kiểm tra trùng MinOrderValue (trừ chính bản thân, theo branch)
         var duplicateTier = await _context.OrderDiscountTiers
-            .FirstOrDefaultAsync(t => t.MinOrderValue == request.MinOrderValue
+            .AnyAsync(t => t.MinOrderValue == request.MinOrderValue
                 && t.BranchId == request.BranchId
                 && t.OrderDiscountTierId != id);
 
-        if (duplicateTier != null)
-            return BadRequest(ApiErrorResponse.Create("MSG-03", $"Ngưỡng giá trị {request.MinOrderValue:N0} đã tồn tại"));
+        if (duplicateTier)
+            return Conflict(ApiErrorResponse.Create("MSG-03", $"Ngưỡng giá trị {request.MinOrderValue:N0} đã tồn tại"));
 
         tier.BranchId = request.BranchId;
         tier.MinOrderValue = request.MinOrderValue;
@@ -112,7 +124,16 @@ public class OwnerOrderDiscountTiersController : ControllerBase
         tier.IsActive = request.IsActive;
         tier.UpdatedAt = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync();
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message?.Contains("23505") == true
+            || ex.InnerException?.Message?.Contains("duplicate key") == true
+            || ex.InnerException?.Message?.Contains("unique constraint") == true)
+        {
+            return Conflict(ApiErrorResponse.Create("MSG-03", $"Ngưỡng giá trị {request.MinOrderValue:N0} đã tồn tại"));
+        }
 
         var result = new OrderDiscountTierDto
         {
