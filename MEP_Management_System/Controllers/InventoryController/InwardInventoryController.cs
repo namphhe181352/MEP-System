@@ -382,6 +382,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     if (branchProduct == null)
                     {
                         Product? product = null;
+                        bool isNewProduct = false; // track if product was just created
 
                         if (!string.IsNullOrWhiteSpace(item.Id))
                         {
@@ -392,6 +393,24 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                         if (product == null && item.NewProduct != null)
                         {
+                            var newCode = item.NewProduct.ProductCode;
+                            var existing = await _context.Products
+                                .FirstOrDefaultAsync(p => p.ProductCode == newCode);
+                            if (existing != null)
+                            {
+                                // Sản phẩm cũ đã bị xóa (Status = -1) → đổi mã cũ thành rác, giải phóng mã gốc
+                                if (existing.Status == -1)
+                                {
+                                    existing.ProductCode = $"_DEL_{Guid.NewGuid():N}"[..20];
+                                    await _context.SaveChangesAsync();
+                                }
+                                else
+                                {
+                                    throw new InvalidOperationException(
+                                        $"Mã sản phẩm '{newCode}' đã tồn tại và đang hoạt động. Vui lòng dùng mã khác.");
+                                }
+                            }
+
                             // Tạo sản phẩm mới từ NewProduct (nested)
                             product = new Product
                             {
@@ -402,15 +421,44 @@ namespace MEP_Management_System.Controllers.InventoryController
                                 BrandName = item.NewProduct.BrandName,
                                 CategoryName = item.NewProduct.CategoryName,
                                 Barcode = item.NewProduct.Barcode,
+                                Status = 1,
+                                SalesChannelLinked = 0,
                                 CreatedAt = currentTime,
                                 CreatedBy = currentUserId
                             };
                             _context.Products.Add(product);
-                            await _context.SaveChangesAsync();
+                            try
+                            {
+                                await _context.SaveChangesAsync();
+                            }
+                            catch (Exception ex)
+                            {
+                                throw new InvalidOperationException(
+                                    $"Không thể tạo sản phẩm mới '{item.NewProduct.ProductCode}': {ex.InnerException?.Message ?? ex.Message}", ex);
+                            }
+                            isNewProduct = true;
                         }
 
                         if (product == null && !string.IsNullOrWhiteSpace(item.ProductCode) && !string.IsNullOrWhiteSpace(item.ProductName))
                         {
+                            var newCode = item.ProductCode;
+                            var existing = await _context.Products
+                                .FirstOrDefaultAsync(p => p.ProductCode == newCode);
+                            if (existing != null)
+                            {
+                                // Sản phẩm cũ đã bị xóa (Status = -1) → đổi mã cũ thành rác, giải phóng mã gốc
+                                if (existing.Status == -1)
+                                {
+                                    existing.ProductCode = $"_DEL_{Guid.NewGuid():N}"[..20];
+                                    await _context.SaveChangesAsync();
+                                }
+                                else
+                                {
+                                    throw new InvalidOperationException(
+                                        $"Mã sản phẩm '{newCode}' đã tồn tại và đang hoạt động. Vui lòng dùng mã khác.");
+                                }
+                            }
+
                             // Tạo sản phẩm mới từ flat fields (FE gửi trực tiếp)
                             product = new Product
                             {
@@ -421,11 +469,22 @@ namespace MEP_Management_System.Controllers.InventoryController
                                 BrandName = item.BrandName,
                                 CategoryName = item.CategoryName,
                                 Barcode = item.Barcode,
+                                Status = 1,
+                                SalesChannelLinked = 0,
                                 CreatedAt = currentTime,
                                 CreatedBy = currentUserId
                             };
                             _context.Products.Add(product);
-                            await _context.SaveChangesAsync();
+                            try
+                            {
+                                await _context.SaveChangesAsync();
+                            }
+                            catch (Exception ex)
+                            {
+                                throw new InvalidOperationException(
+                                    $"Không thể tạo sản phẩm mới '{item.ProductCode}': {ex.InnerException?.Message ?? ex.Message}", ex);
+                            }
+                            isNewProduct = true;
                         }
 
                         if (product == null)
@@ -443,8 +502,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                             ActualStock = 0,
                             ReservedStock = 0,
                             AvailableStock = 0,
-                            IsActive = 1,
-                            DirectSale = 1
+                            IsActive = isNewProduct ? (short)0 : (short)1,
+                            DirectSale = isNewProduct ? (short)0 : (short)1
                         };
 
                         _context.BranchProducts.Add(branchProduct);
