@@ -55,7 +55,9 @@ namespace MEP_Management_System.Controllers.InventoryController
             NotificationType type,
             Guid branchId,
             string message,
-            Guid triggeredByUserId)
+            Guid triggeredByUserId,
+            Guid? referenceId = null,
+            string? referenceType = null)
         {
             var notif = new Notification
             {
@@ -64,6 +66,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 RecipientUserId = null, // Broadcast
                 BranchId = branchId,
                 InventoryCheckId = null,
+                ReferenceId = referenceId,
+                ReferenceType = referenceType,
                 TriggeredByUserId = triggeredByUserId,
                 Message = message,
                 IsRead = false,
@@ -82,7 +86,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                 notif.Message,
                 notif.CreatedAt,
                 notif.IsRead,
-                notif.InventoryCheckId
+                notif.InventoryCheckId,
+                notif.ReferenceId,
+                notif.ReferenceType
             });
         }
 
@@ -124,10 +130,18 @@ namespace MEP_Management_System.Controllers.InventoryController
                         list = list.Where(st => string.Equals(st.TicketType, ticketType, StringComparison.OrdinalIgnoreCase)).ToList();
 
                     if (fromDate.HasValue)
-                        list = list.Where(st => st.CreatedAt >= fromDate.Value).ToList();
+                    {
+                        var localFrom = DateTime.SpecifyKind(fromDate.Value.Date, DateTimeKind.Unspecified);
+                        var utcFrom = TimeZoneInfo.ConvertTimeToUtc(localFrom, VietnamTime.Tz);
+                        list = list.Where(st => st.CreatedAt >= utcFrom).ToList();
+                    }
 
                     if (toDate.HasValue)
-                        list = list.Where(st => st.CreatedAt <= toDate.Value.AddDays(1)).ToList();
+                    {
+                        var localTo = DateTime.SpecifyKind(toDate.Value.Date.AddDays(1), DateTimeKind.Unspecified);
+                        var utcTo = TimeZoneInfo.ConvertTimeToUtc(localTo, VietnamTime.Tz);
+                        list = list.Where(st => st.CreatedAt < utcTo).ToList();
+                    }
 
                     var totalCount = list.Count;
                     var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
@@ -549,7 +563,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                     NotificationType.Created,
                     resolvedBranchId.Value,
                     $"{userName} vừa tạo phiếu nhập kho {stockTicket.TicketCode}.",
-                    currentUserId.Value);
+                    currentUserId.Value,
+                    stockTicket.StockTicketId,
+                    "InwardInventory");
 
                 return Ok(new ApiResponse<object>
                 {

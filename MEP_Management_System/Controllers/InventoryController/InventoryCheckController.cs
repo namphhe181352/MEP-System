@@ -67,6 +67,8 @@ public class InventoryCheckController : ControllerBase
             RecipientUserId = recipientUserId,
             BranchId = branchId,
             InventoryCheckId = inventoryCheckId,
+            ReferenceId = inventoryCheckId,
+            ReferenceType = inventoryCheckId.HasValue ? "InventoryCheck" : null,
             TriggeredByUserId = triggeredByUserId,
             Message = message,
             IsRead = false,
@@ -94,6 +96,8 @@ public class InventoryCheckController : ControllerBase
             type = type.ToString(),
             message = message,
             inventoryCheckId = inventoryCheckId,
+            referenceId = notification.ReferenceId,
+            referenceType = notification.ReferenceType,
             createdAt = notification.CreatedAt
         });
     }
@@ -1607,6 +1611,8 @@ public class InventoryCheckController : ControllerBase
                     BranchId = n.BranchId,
                     InventoryCheckId = n.InventoryCheckId,
                     InventoryCheckCode = n.InventoryCheck != null ? n.InventoryCheck.TicketCode : null,
+                    ReferenceId = n.ReferenceId,
+                    ReferenceType = n.ReferenceType,
                     TriggeredByUserId = n.TriggeredByUserId,
                     TriggeredByUserName = n.TriggeredByUser != null ? n.TriggeredByUser.Username : null,
                     Message = n.Message,
