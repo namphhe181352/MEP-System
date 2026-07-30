@@ -523,7 +523,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                         }
                     }
 
-                    totalAmount += item.Quantity * effectiveCostPrice;
+                    // Khách trả hàng không tính vào giá trị nhập
+                    if (dto.InwardType != InwardInventoryType.CustomerReturn)
+                        totalAmount += item.Quantity * effectiveCostPrice;
 
                     // Tạo ticket item với số lượng tồn hiện tại (chưa cộng thêm)
                     var ticketItem = new StockTicketItem
@@ -1109,6 +1111,9 @@ th {{ background: #f0f0f0; }}
                 ConfirmedBy = stockTicket.ConfirmedBy,
                 CancelledBy = stockTicket.CancelledBy,
                 CancelReason = stockTicket.CancelReason,
+                CostPrice = stockTicket.TicketType == "CUSTOMER_RETURN"
+                    ? 0
+                    : stockTicket.StockTicketItems?.Sum(i => i.BranchProduct?.CostPrice ?? 0) ?? 0,
                 Items = stockTicket.StockTicketItems?.Select(item => new InwardInventoryItemResponseDto
                 {
                     TicketItemId = item.TicketItemId,
@@ -1119,7 +1124,9 @@ th {{ background: #f0f0f0; }}
                     SystemQuantity = item.SystemQuantity,
                     Quantity = item.Discrepancy,
                     ActualQuantity = item.ActualQuantity,
-                    CostPrice = item.BranchProduct?.CostPrice ?? 0,
+                    CostPrice = stockTicket.TicketType == "CUSTOMER_RETURN"
+                        ? 0
+                        : item.BranchProduct?.CostPrice ?? 0,
                     UnitPrice = item.UnitPrice,
                     UnitName = item.BranchProduct?.Product?.BaseUnit
                 }).ToList() ?? new()
