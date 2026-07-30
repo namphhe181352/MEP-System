@@ -100,58 +100,67 @@ public class ReportService
         // 1. Lấy đơn hàng trong ngày
         var orders = await _context.Orders
             .Where(o => o.BranchId == branchId.Value
-                && o.Status == "Completed"
+                && (o.Status == "COMPLETED" || o.Status == "Completed")
                 && o.CreatedAt >= reportDate
                 && o.CreatedAt < nextDate)
             .ToListAsync();
 
-        // 2. Lấy thanh toán trong ngày
-        var payments = await _context.Payments
+        // 2. Lấy thanh toán trong ngày - GroupBy để tự động bắt Cash, Transfer, Combined
+        var paymentRaw = await _context.Payments
             .Where(p => p.BranchId == branchId.Value
                 && p.Status == "Confirmed"
                 && p.CreatedAt >= reportDate
                 && p.CreatedAt < nextDate)
+            .GroupBy(p => p.Method)
+            .Select(g => new { g.Key, Amount = g.Sum(p => p.Amount), Count = g.Count() })
             .ToListAsync();
 
-        // 3. Lấy phiếu nhập kho trong ngày (PURCHASE, CUSTOMER_RETURN, BALANCE_ADJUST)
+        var paymentBreakdown = new PaymentMethodBreakdown();
+        foreach (var item in paymentRaw)
+        {
+            if (item.Key == "Cash") { paymentBreakdown.CashAmount = item.Amount; paymentBreakdown.CashCount = item.Count; }
+            else if (item.Key == "Transfer") { paymentBreakdown.TransferAmount = item.Amount; paymentBreakdown.TransferCount = item.Count; }
+            else if (item.Key == "Combined") { paymentBreakdown.CombinedAmount = item.Amount; paymentBreakdown.CombinedCount = item.Count; }
+        }
+
+        // 3. Phiếu nhập kho PURCHASE trong ngày -> nợ nhà cung cấp
+        var purchaseTickets = await _context.StockTickets
+            .Where(st => st.BranchId == branchId.Value
+                && (st.Status == "COMPLETED" || st.Status == "Completed")
+                && st.TicketType == "PURCHASE"
+                && st.CreatedAt.HasValue
+                && st.CreatedAt >= reportDate
+                && st.CreatedAt < nextDate)
+            .ToListAsync();
+        paymentBreakdown.DebtAmount = purchaseTickets.Sum(st => st.TotalAmount);
+        paymentBreakdown.DebtCount = purchaseTickets.Count;
+
+        // 4. Tổng phiếu nhập kho trong ngày (PURCHASE + CUSTOMER_RETURN + BALANCE_ADJUST)
         var inwardTickets = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
-                && st.Status == "COMPLETED"
+                && (st.Status == "COMPLETED" || st.Status == "Completed")
                 && (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST")
                 && st.CreatedAt >= reportDate
                 && st.CreatedAt < nextDate)
             .CountAsync();
 
-        // 4. Lấy phiếu xuất kho trong ngày (RETURN_SUPPLIER, WRITE_OFF, TRANSFER)
+        // 5. Lấy phiếu xuất kho trong ngày (RETURN_SUPPLIER, WRITE_OFF, TRANSFER)
         var outwardTickets = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
-                && st.Status == "COMPLETED"
+                && (st.Status == "COMPLETED" || st.Status == "Completed")
                 && (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER")
                 && st.CreatedAt >= reportDate
                 && st.CreatedAt < nextDate)
             .CountAsync();
 
-        // Tính toán breakdown thanh toán
-        var paymentBreakdown = new PaymentMethodBreakdown
-        {
-            CashAmount = payments.Where(p => p.Method == "Cash").Sum(p => p.Amount),
-            CashCount = payments.Count(p => p.Method == "Cash"),
-            TransferAmount = payments.Where(p => p.Method == "Transfer").Sum(p => p.Amount),
-            TransferCount = payments.Count(p => p.Method == "Transfer"),
-            DebtAmount = 0,
-            DebtCount = 0,
-            CombinedAmount = payments.Where(p => p.Method == "Combined").Sum(p => p.Amount),
-            CombinedCount = payments.Count(p => p.Method == "Combined")
-        };
-
-        // 5. Hoàn tiền từ phiếu trả hàng (chỉ tính cho type=REFUND, bỏ qua EXCHANGE đổi ngang giá)
+        // 6. Hoàn tiền từ phiếu trả hàng (chỉ tính cho type=REFUND, bỏ qua EXCHANGE đổi ngang giá)
         var refundCash = 0m;
         var refundTransfer = 0m;
         var refundCount = 0;
         var refunds = await _context.ReturnOrders
             .Where(r => r.Order.BranchId == branchId.Value
                 && r.ReturnType == "REFUND"
-                && r.Status == "Completed"
+                && (r.Status == "COMPLETED" || r.Status == "Completed")
                 && r.CreatedAt >= reportDate
                 && r.CreatedAt < nextDate)
             .ToListAsync();
@@ -252,7 +261,7 @@ public class ReportService
         // Nhập TRƯỚC fromDate (đầu kỳ)
         var inwardBeforePeriod = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
-                && st.Status == "COMPLETED"
+                && (st.Status == "COMPLETED" || st.Status == "Completed")
                 && (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST")
                 && st.CreatedAt < fromDate)
             .SelectMany(st => st.StockTicketItems)
@@ -264,7 +273,7 @@ public class ReportService
         var salesBeforePeriod = await _context.OrderItems
             .Include(oi => oi.Order)
             .Where(oi => oi.Order.BranchId == branchId.Value
-                && oi.Order.Status == "Completed"
+                && (oi.Order.Status == "COMPLETED" || oi.Order.Status == "Completed")
                 && oi.Order.CreatedAt < fromDate)
             .GroupBy(oi => oi.BranchProductId)
             .Select(g => new { BranchProductId = g.Key, TotalOutward = g.Sum(oi => oi.Quantity) })
@@ -273,7 +282,7 @@ public class ReportService
         // Xuất kho (phiếu xuất) TRƯỚC fromDate
         var outwardTicketsBeforePeriod = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
-                && st.Status == "COMPLETED"
+                && (st.Status == "COMPLETED" || st.Status == "Completed")
                 && (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER")
                 && st.CreatedAt < fromDate)
             .SelectMany(st => st.StockTicketItems)
@@ -285,7 +294,7 @@ public class ReportService
         // Nhập trong kỳ
         var inwardInPeriod = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
-                && st.Status == "COMPLETED"
+                && (st.Status == "COMPLETED" || st.Status == "Completed")
                 && (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST")
                 && st.CreatedAt >= fromDate
                 && st.CreatedAt <= toDate)
@@ -298,7 +307,7 @@ public class ReportService
         var salesInPeriod = await _context.OrderItems
             .Include(oi => oi.Order)
             .Where(oi => oi.Order.BranchId == branchId.Value
-                && oi.Order.Status == "Completed"
+                && (oi.Order.Status == "COMPLETED" || oi.Order.Status == "Completed")
                 && oi.Order.CreatedAt >= fromDate
                 && oi.Order.CreatedAt <= toDate)
             .GroupBy(oi => oi.BranchProductId)
@@ -308,7 +317,7 @@ public class ReportService
         // Xuất kho trong kỳ
         var outwardTicketsInPeriod = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
-                && st.Status == "COMPLETED"
+                && (st.Status == "COMPLETED" || st.Status == "Completed")
                 && (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER")
                 && st.CreatedAt >= fromDate
                 && st.CreatedAt <= toDate)
