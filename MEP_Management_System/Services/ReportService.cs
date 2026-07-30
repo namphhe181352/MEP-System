@@ -354,6 +354,18 @@ public class ReportService
             .Select(g => new { BranchProductId = g.Key, TotalOutward = g.Sum(sti => sti.Discrepancy) })
             .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalOutward);
 
+        // Giá trị xuất kho thực tế theo UnitPrice từ phiếu (không dùng CostPrice hiện tại)
+        var outwardValueMap = await _context.StockTickets
+            .Where(st => st.BranchId == branchId.Value
+                && (st.Status == "COMPLETED" || st.Status == "Completed")
+                && (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER")
+                && st.CreatedAt >= fromDate
+                && st.CreatedAt <= toDate)
+            .SelectMany(st => st.StockTicketItems)
+            .GroupBy(sti => sti.BranchProductId)
+            .Select(g => new { BranchProductId = g.Key, Value = g.Sum(sti => sti.Discrepancy * (sti.UnitPrice ?? 0)) })
+            .ToDictionaryAsync(x => x.BranchProductId, x => x.Value);
+
         var items = new List<StockMovementItemDto>();
         decimal totalOpeningValue = 0, totalInwardValue = 0, totalOutwardValue = 0, totalClosingValue = 0;
 
@@ -384,7 +396,7 @@ public class ReportService
             // Giá trị: KHÔNG tính CUSTOMER_RETURN vào giá trị nhập (hàng trả lại không có giá trị mua)
             var openingValue = (inwardPurchaseBefore * bp.CostPrice) - ((salesBefore + outwardBefore) * bp.CostPrice);
             var inwardValue = inwardPurchaseIn * bp.CostPrice;
-            var outwardValue = outwardInPeriod2 * bp.CostPrice;
+            var outwardValue = (salesOut * bp.CostPrice) + outwardValueMap.GetValueOrDefault(branchProductId, 0);
             var closingValue = openingValue + inwardValue - outwardValue;
 
             items.Add(new StockMovementItemDto

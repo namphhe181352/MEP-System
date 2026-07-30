@@ -438,7 +438,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                             SystemQuantity = bp.ActualStock,
                             ActualQuantity = bp.ActualStock,
                             Discrepancy = item.Quantity,
-                            UnitPrice = item.UnitPrice
+                            UnitPrice = item.UnitPrice ?? bp.CostPrice
                         };
 
                         _context.StockTicketItems.Add(ticketItem);
