@@ -310,10 +310,16 @@ namespace MEP_Management_System.Controllers.InventoryController
             }
 
             var itemValidationErrors = new List<string>();
-            foreach (var item in dto.Items)
+            for (int i = 0; i < dto.Items.Count; i++)
             {
+                var item = dto.Items[i];
+                var hasId = !string.IsNullOrWhiteSpace(item.Id);
+                var hasNewProduct = item.NewProduct != null && !string.IsNullOrWhiteSpace(item.NewProduct.ProductName);
+                var hasFlatNewProduct = !string.IsNullOrWhiteSpace(item.ProductCode) && !string.IsNullOrWhiteSpace(item.ProductName);
+                if (!hasId && !hasNewProduct && !hasFlatNewProduct)
+                    itemValidationErrors.Add($"Dòng {i + 1}: Cần Id (mã sản phẩm) hoặc thông tin sản phẩm mới (productCode + productName).");
                 if (item.Quantity <= 0)
-                    itemValidationErrors.Add($"Quantity must be greater than 0 for Id {item.Id}.");
+                    itemValidationErrors.Add($"Dòng {i + 1}: Số lượng phải lớn hơn 0.");
             }
 
             if (itemValidationErrors.Any())
@@ -375,9 +381,53 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                     if (branchProduct == null)
                     {
-                        // Sản phẩm chưa có ở chi nhánh này -> tạo mới
-                        var product = await _context.Products.FirstOrDefaultAsync(p => 
-                            (isGuid && p.ProductId == parsedId) || (!isGuid && p.ProductCode == item.Id));
+                        Product? product = null;
+
+                        if (!string.IsNullOrWhiteSpace(item.Id))
+                        {
+                            // Tìm sản phẩm có sẵn theo Id / ProductCode
+                            product = await _context.Products.FirstOrDefaultAsync(p =>
+                                (isGuid && p.ProductId == parsedId) || (!isGuid && p.ProductCode == item.Id));
+                        }
+
+                        if (product == null && item.NewProduct != null)
+                        {
+                            // Tạo sản phẩm mới từ NewProduct (nested)
+                            product = new Product
+                            {
+                                ProductId = Guid.NewGuid(),
+                                ProductCode = item.NewProduct.ProductCode,
+                                ProductName = item.NewProduct.ProductName,
+                                BaseUnit = item.NewProduct.Unit,
+                                BrandName = item.NewProduct.BrandName,
+                                CategoryName = item.NewProduct.CategoryName,
+                                Barcode = item.NewProduct.Barcode,
+                                CreatedAt = currentTime,
+                                CreatedBy = currentUserId
+                            };
+                            _context.Products.Add(product);
+                            await _context.SaveChangesAsync();
+                        }
+
+                        if (product == null && !string.IsNullOrWhiteSpace(item.ProductCode) && !string.IsNullOrWhiteSpace(item.ProductName))
+                        {
+                            // Tạo sản phẩm mới từ flat fields (FE gửi trực tiếp)
+                            product = new Product
+                            {
+                                ProductId = Guid.NewGuid(),
+                                ProductCode = item.ProductCode,
+                                ProductName = item.ProductName,
+                                BaseUnit = item.Unit ?? "Cái",
+                                BrandName = item.BrandName,
+                                CategoryName = item.CategoryName,
+                                Barcode = item.Barcode,
+                                CreatedAt = currentTime,
+                                CreatedBy = currentUserId
+                            };
+                            _context.Products.Add(product);
+                            await _context.SaveChangesAsync();
+                        }
+
                         if (product == null)
                         {
                             throw new InvalidOperationException($"Product/BranchProduct with ID/Code '{item.Id}' was not found in system.");
