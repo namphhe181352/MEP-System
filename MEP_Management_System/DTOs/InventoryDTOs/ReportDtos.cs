@@ -30,6 +30,10 @@ public class DailyEndReportDto
     public decimal RefundCashAmount { get; set; }
     public decimal RefundTransferAmount { get; set; }
     public int RefundCount { get; set; }
+
+    // Chi phí và lợi nhuận ròng
+    public decimal TotalExpense { get; set; }
+    public decimal NetProfit { get; set; }
 }
 
 public class PaymentMethodBreakdown

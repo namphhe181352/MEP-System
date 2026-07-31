@@ -164,20 +164,34 @@ public class ReportService
             paymentBreakdown.TransferAmount -= refundTransfer;
         }
 
+        // 6. Lấy chi phí (phiếu chi tiền) trong ngày - chỉ tính CONFIRMED
+        var totalExpense = await _context.ExpenseVouchers
+            .Where(ev => ev.BranchId == branchId.Value
+                && ev.Status == "CONFIRMED"
+                && ev.CreatedAt >= reportDate
+                && ev.CreatedAt < nextDate)
+            .SumAsync(ev => ev.Amount);
+
+        // Tính lợi nhuận ròng = Doanh thu - Chi phí
+        var totalRevenue = orders.Sum(o => o.TotalAmount);
+        var netProfit = totalRevenue - totalExpense;
+
         var result = new DailyEndReportDto
         {
             ReportDate = reportDate,
             BranchId = branchId.Value,
             BranchName = branch?.BranchName,
-            TotalRevenue = orders.Sum(o => o.TotalAmount),
+            TotalRevenue = totalRevenue,
             TotalOrders = orders.Count,
-            AverageOrderValue = orders.Count > 0 ? orders.Sum(o => o.TotalAmount) / orders.Count : 0m,
+            AverageOrderValue = orders.Count > 0 ? totalRevenue / orders.Count : 0m,
             PaymentBreakdown = paymentBreakdown,
             InwardTicketCount = inwardTickets,
             OutwardTicketCount = outwardTickets,
             RefundCashAmount = refundCash,
             RefundTransferAmount = refundTransfer,
-            RefundCount = refundCount
+            RefundCount = refundCount,
+            TotalExpense = totalExpense,
+            NetProfit = netProfit
         };
 
         return result;
@@ -207,9 +221,10 @@ public class ReportService
         var toDate = request.ToDate.Date.AddDays(1).AddTicks(-1);
 
         // Lấy danh sách sản phẩm trong kho (có filter category/product)
+        // Filter IsActive != -1 để loại sản phẩm bị xóa mềm (không hiển thị mã _DEL_xxx)
         var productsQuery = _context.BranchProducts
             .Include(bp => bp.Product)
-            .Where(bp => bp.BranchId == branchId.Value);
+            .Where(bp => bp.BranchId == branchId.Value && bp.IsActive != -1);
 
         // Ưu tiên filter theo CategoryId (Guid) - chính xác hơn
         if (request.CategoryId.HasValue && request.CategoryId != Guid.Empty)
@@ -234,7 +249,7 @@ public class ReportService
             {
                 productsQuery = productsQuery.Where(bp => bp.Product != null
                     && bp.Product.CategoryName != null
-                    && bp.Product.CategoryName.Equals(requestedCategoryName, StringComparison.OrdinalIgnoreCase));
+                    && bp.Product.CategoryName.ToLower() == requestedCategoryName.ToLower());
             }
         }
 

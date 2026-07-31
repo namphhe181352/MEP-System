@@ -1563,6 +1563,8 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasColumnName("branch_id");
             entity.Property(e => e.InventoryCheckId)
                 .HasColumnName("inventory_check_id");
+            entity.Property(e => e.ReferenceId)
+                .HasColumnName("reference_id");
             entity.Property(e => e.TriggeredByUserId)
                 .HasColumnName("triggered_by_user_id");
             entity.Property(e => e.Message)

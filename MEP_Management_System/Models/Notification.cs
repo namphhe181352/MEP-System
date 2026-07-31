@@ -30,6 +30,11 @@ public class Notification
     public Guid? InventoryCheckId { get; set; }
 
     /// <summary>
+    /// ID tham chiếu linh hoạt (dùng chung cho Inward/Outward/InventoryCheck)
+    /// </summary>
+    public Guid? ReferenceId { get; set; }
+
+    /// <summary>
     /// ID người tạo ra thông báo này
     /// </summary>
     public Guid TriggeredByUserId { get; set; }
