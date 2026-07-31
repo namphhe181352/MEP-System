@@ -490,7 +490,34 @@ public class ReturnsController : ControllerBase
         return Ok(new { message = "Đã hủy phiếu đổi trả." });
     }
 
-    // GET /api/pos/returns/invoice/{invoiceId}/eligible-items
+    // GET /api/pos/returns/return-policies
+    /// <summary>
+    /// Trả về danh sách chính sách đổi/trả theo nhóm hàng của chi nhánh hiện tại.
+    /// </summary>
+    [HttpGet("return-policies")]
+    public async Task<ActionResult<List<CategoryPolicyDto>>> GetReturnPolicies()
+    {
+        var branchId = GetBranchId();
+
+        var config = await _context.SystemConfigs
+            .FirstOrDefaultAsync(c => c.BranchId == branchId && c.ConfigKey == "CATEGORY_RETURN_POLICIES");
+
+        var policies = new List<CategoryPolicyDto>();
+        if (config != null && !string.IsNullOrWhiteSpace(config.ConfigValue))
+        {
+            try
+            {
+                var deserialized = JsonSerializer.Deserialize<List<CategoryPolicyDto>>(config.ConfigValue,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (deserialized != null) policies = deserialized;
+            }
+            catch { }
+        }
+
+        return Ok(policies);
+    }
+
+    // GET /api/pos/returns/invoice/{invoiceId:guid}/eligible-items
     /// <summary>
     /// Trả về danh sách sản phẩm trong hóa đơn kèm trạng thái được phép đổi/trả.
     /// Mỗi item được đánh giá độc lập theo policy của category riêng.

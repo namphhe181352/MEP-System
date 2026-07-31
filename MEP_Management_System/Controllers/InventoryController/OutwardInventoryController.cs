@@ -55,7 +55,9 @@ namespace MEP_Management_System.Controllers.InventoryController
             NotificationType type,
             Guid branchId,
             string message,
-            Guid triggeredByUserId)
+            Guid triggeredByUserId,
+            Guid? referenceId = null,
+            string? referenceType = null)
         {
             var notif = new Notification
             {
@@ -64,6 +66,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 RecipientUserId = null, // Broadcast
                 BranchId = branchId,
                 InventoryCheckId = null,
+                ReferenceId = referenceId,
+                ReferenceType = referenceType,
                 TriggeredByUserId = triggeredByUserId,
                 Message = message,
                 IsRead = false,
@@ -82,7 +86,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                 notif.Message,
                 notif.CreatedAt,
                 notif.IsRead,
-                notif.InventoryCheckId
+                notif.InventoryCheckId,
+                notif.ReferenceId,
+                notif.ReferenceType
             });
         }
 
@@ -169,10 +175,18 @@ namespace MEP_Management_System.Controllers.InventoryController
                     query = query.Where(st => st.TicketType != null && st.TicketType.ToLower() == ticketType.Trim().ToLower());
 
                 if (fromDate.HasValue)
-                    query = query.Where(st => st.CreatedAt >= fromDate.Value);
+                {
+                    var localFrom = DateTime.SpecifyKind(fromDate.Value.Date, DateTimeKind.Unspecified);
+                    var utcFrom = TimeZoneInfo.ConvertTimeToUtc(localFrom, VietnamTime.Tz);
+                    query = query.Where(st => st.CreatedAt >= utcFrom);
+                }
 
                 if (toDate.HasValue)
-                    query = query.Where(st => st.CreatedAt <= toDate.Value.AddDays(1));
+                {
+                    var localTo = DateTime.SpecifyKind(toDate.Value.Date.AddDays(1), DateTimeKind.Unspecified);
+                    var utcTo = TimeZoneInfo.ConvertTimeToUtc(localTo, VietnamTime.Tz);
+                    query = query.Where(st => st.CreatedAt < utcTo);
+                }
 
                 query = query.OrderByDescending(st => st.CreatedAt);
 
@@ -428,7 +442,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                             SystemQuantity = bp.ActualStock,
                             ActualQuantity = bp.ActualStock,
                             Discrepancy = item.Quantity,
-                            UnitPrice = item.UnitPrice
+                            UnitPrice = item.UnitPrice ?? bp.CostPrice
                         };
 
                         _context.StockTicketItems.Add(ticketItem);
@@ -442,7 +456,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                         NotificationType.Created,
                         resolvedBranchId.Value,
                         $"{userName} vừa tạo phiếu xuất kho {stockTicket.TicketCode}.",
-                        currentUserId.Value);
+                        currentUserId.Value,
+                        stockTicket.StockTicketId,
+                        "OutwardInventory");
 
                     return Ok(new ApiResponse<object>
                     {

@@ -55,7 +55,9 @@ namespace MEP_Management_System.Controllers.InventoryController
             NotificationType type,
             Guid branchId,
             string message,
-            Guid triggeredByUserId)
+            Guid triggeredByUserId,
+            Guid? referenceId = null,
+            string? referenceType = null)
         {
             var notif = new Notification
             {
@@ -64,6 +66,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 RecipientUserId = null, // Broadcast
                 BranchId = branchId,
                 InventoryCheckId = null,
+                ReferenceId = referenceId,
+                ReferenceType = referenceType,
                 TriggeredByUserId = triggeredByUserId,
                 Message = message,
                 IsRead = false,
@@ -82,7 +86,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                 notif.Message,
                 notif.CreatedAt,
                 notif.IsRead,
-                notif.InventoryCheckId
+                notif.InventoryCheckId,
+                notif.ReferenceId,
+                notif.ReferenceType
             });
         }
 
@@ -124,10 +130,18 @@ namespace MEP_Management_System.Controllers.InventoryController
                         list = list.Where(st => string.Equals(st.TicketType, ticketType, StringComparison.OrdinalIgnoreCase)).ToList();
 
                     if (fromDate.HasValue)
-                        list = list.Where(st => st.CreatedAt >= fromDate.Value).ToList();
+                    {
+                        var localFrom = DateTime.SpecifyKind(fromDate.Value.Date, DateTimeKind.Unspecified);
+                        var utcFrom = TimeZoneInfo.ConvertTimeToUtc(localFrom, VietnamTime.Tz);
+                        list = list.Where(st => st.CreatedAt >= utcFrom).ToList();
+                    }
 
                     if (toDate.HasValue)
-                        list = list.Where(st => st.CreatedAt <= toDate.Value.AddDays(1)).ToList();
+                    {
+                        var localTo = DateTime.SpecifyKind(toDate.Value.Date.AddDays(1), DateTimeKind.Unspecified);
+                        var utcTo = TimeZoneInfo.ConvertTimeToUtc(localTo, VietnamTime.Tz);
+                        list = list.Where(st => st.CreatedAt < utcTo).ToList();
+                    }
 
                     var totalCount = list.Count;
                     var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
@@ -310,10 +324,16 @@ namespace MEP_Management_System.Controllers.InventoryController
             }
 
             var itemValidationErrors = new List<string>();
-            foreach (var item in dto.Items)
+            for (int i = 0; i < dto.Items.Count; i++)
             {
+                var item = dto.Items[i];
+                var hasId = !string.IsNullOrWhiteSpace(item.Id);
+                var hasNewProduct = item.NewProduct != null && !string.IsNullOrWhiteSpace(item.NewProduct.ProductName);
+                var hasFlatNewProduct = !string.IsNullOrWhiteSpace(item.ProductCode) && !string.IsNullOrWhiteSpace(item.ProductName);
+                if (!hasId && !hasNewProduct && !hasFlatNewProduct)
+                    itemValidationErrors.Add($"Dòng {i + 1}: Cần Id (mã sản phẩm) hoặc thông tin sản phẩm mới (productCode + productName).");
                 if (item.Quantity <= 0)
-                    itemValidationErrors.Add($"Quantity must be greater than 0 for Id {item.Id}.");
+                    itemValidationErrors.Add($"Dòng {i + 1}: Số lượng phải lớn hơn 0.");
             }
 
             if (itemValidationErrors.Any())
@@ -375,9 +395,112 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                     if (branchProduct == null)
                     {
-                        // Sản phẩm chưa có ở chi nhánh này -> tạo mới
-                        var product = await _context.Products.FirstOrDefaultAsync(p => 
-                            (isGuid && p.ProductId == parsedId) || (!isGuid && p.ProductCode == item.Id));
+                        Product? product = null;
+                        bool isNewProduct = false; // track if product was just created
+
+                        if (!string.IsNullOrWhiteSpace(item.Id))
+                        {
+                            // Tìm sản phẩm có sẵn theo Id / ProductCode
+                            product = await _context.Products.FirstOrDefaultAsync(p =>
+                                (isGuid && p.ProductId == parsedId) || (!isGuid && p.ProductCode == item.Id));
+                        }
+
+                        if (product == null && item.NewProduct != null)
+                        {
+                            var newCode = item.NewProduct.ProductCode;
+                            var existing = await _context.Products
+                                .FirstOrDefaultAsync(p => p.ProductCode == newCode);
+                            if (existing != null)
+                            {
+                                // Sản phẩm cũ đã bị xóa (Status = -1) → đổi mã cũ thành rác, giải phóng mã gốc
+                                if (existing.Status == -1)
+                                {
+                                    existing.ProductCode = $"_DEL_{Guid.NewGuid():N}"[..20];
+                                    await _context.SaveChangesAsync();
+                                }
+                                else
+                                {
+                                    throw new InvalidOperationException(
+                                        $"Mã sản phẩm '{newCode}' đã tồn tại và đang hoạt động. Vui lòng dùng mã khác.");
+                                }
+                            }
+
+                            // Tạo sản phẩm mới từ NewProduct (nested)
+                            product = new Product
+                            {
+                                ProductId = Guid.NewGuid(),
+                                ProductCode = item.NewProduct.ProductCode,
+                                ProductName = item.NewProduct.ProductName,
+                                BaseUnit = item.NewProduct.Unit,
+                                BrandName = item.NewProduct.BrandName,
+                                CategoryName = item.NewProduct.CategoryName,
+                                Barcode = item.NewProduct.Barcode,
+                                Status = 1,
+                                SalesChannelLinked = 0,
+                                CreatedAt = currentTime,
+                                CreatedBy = currentUserId
+                            };
+                            _context.Products.Add(product);
+                            try
+                            {
+                                await _context.SaveChangesAsync();
+                            }
+                            catch (Exception ex)
+                            {
+                                throw new InvalidOperationException(
+                                    $"Không thể tạo sản phẩm mới '{item.NewProduct.ProductCode}': {ex.InnerException?.Message ?? ex.Message}", ex);
+                            }
+                            isNewProduct = true;
+                        }
+
+                        if (product == null && !string.IsNullOrWhiteSpace(item.ProductCode) && !string.IsNullOrWhiteSpace(item.ProductName))
+                        {
+                            var newCode = item.ProductCode;
+                            var existing = await _context.Products
+                                .FirstOrDefaultAsync(p => p.ProductCode == newCode);
+                            if (existing != null)
+                            {
+                                // Sản phẩm cũ đã bị xóa (Status = -1) → đổi mã cũ thành rác, giải phóng mã gốc
+                                if (existing.Status == -1)
+                                {
+                                    existing.ProductCode = $"_DEL_{Guid.NewGuid():N}"[..20];
+                                    await _context.SaveChangesAsync();
+                                }
+                                else
+                                {
+                                    throw new InvalidOperationException(
+                                        $"Mã sản phẩm '{newCode}' đã tồn tại và đang hoạt động. Vui lòng dùng mã khác.");
+                                }
+                            }
+
+                            // Tạo sản phẩm mới từ flat fields (FE gửi trực tiếp)
+                            product = new Product
+                            {
+                                ProductId = Guid.NewGuid(),
+                                ProductCode = item.ProductCode,
+                                ProductName = item.ProductName,
+                                BaseUnit = item.Unit ?? "Cái",
+                                BrandName = item.BrandName,
+                                CategoryName = item.CategoryName,
+                                Barcode = item.Barcode,
+                                Status = 1,
+                                SalesChannelLinked = 0,
+                                CreatedAt = currentTime,
+                                CreatedBy = currentUserId
+                            };
+                            _context.Products.Add(product);
+                            try
+                            {
+                                await _context.SaveChangesAsync();
+                            }
+                            catch (Exception ex)
+                            {
+                                throw new InvalidOperationException(
+                                    $"Không thể tạo sản phẩm mới '{item.ProductCode}': {ex.InnerException?.Message ?? ex.Message}", ex);
+                            }
+                            isNewProduct = true;
+                        }
+
                         if (product == null)
                         {
                             throw new InvalidOperationException($"Product/BranchProduct with ID/Code '{item.Id}' was not found in system.");
@@ -393,8 +516,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                             ActualStock = 0,
                             ReservedStock = 0,
                             AvailableStock = 0,
-                            IsActive = 1,
-                            DirectSale = 1
+                            IsActive = isNewProduct ? (short)0 : (short)1,
+                            DirectSale = isNewProduct ? (short)0 : (short)1
                         };
 
                         _context.BranchProducts.Add(branchProduct);
@@ -414,7 +537,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                         }
                     }
 
-                    totalAmount += item.Quantity * effectiveCostPrice;
+                    // Khách trả hàng không tính vào giá trị nhập
+                    if (dto.InwardType != InwardInventoryType.CustomerReturn)
+                        totalAmount += item.Quantity * effectiveCostPrice;
 
                     // Tạo ticket item với số lượng tồn hiện tại (chưa cộng thêm)
                     var ticketItem = new StockTicketItem
@@ -438,7 +563,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                     NotificationType.Created,
                     resolvedBranchId.Value,
                     $"{userName} vừa tạo phiếu nhập kho {stockTicket.TicketCode}.",
-                    currentUserId.Value);
+                    currentUserId.Value,
+                    stockTicket.StockTicketId,
+                    "InwardInventory");
 
                 return Ok(new ApiResponse<object>
                 {
@@ -1000,6 +1127,9 @@ th {{ background: #f0f0f0; }}
                 ConfirmedBy = stockTicket.ConfirmedBy,
                 CancelledBy = stockTicket.CancelledBy,
                 CancelReason = stockTicket.CancelReason,
+                CostPrice = stockTicket.TicketType == "CUSTOMER_RETURN"
+                    ? 0
+                    : stockTicket.StockTicketItems?.Sum(i => i.BranchProduct?.CostPrice ?? 0) ?? 0,
                 Items = stockTicket.StockTicketItems?.Select(item => new InwardInventoryItemResponseDto
                 {
                     TicketItemId = item.TicketItemId,
@@ -1010,7 +1140,9 @@ th {{ background: #f0f0f0; }}
                     SystemQuantity = item.SystemQuantity,
                     Quantity = item.Discrepancy,
                     ActualQuantity = item.ActualQuantity,
-                    CostPrice = item.BranchProduct?.CostPrice ?? 0,
+                    CostPrice = stockTicket.TicketType == "CUSTOMER_RETURN"
+                        ? 0
+                        : item.BranchProduct?.CostPrice ?? 0,
                     UnitPrice = item.UnitPrice,
                     UnitName = item.BranchProduct?.Product?.BaseUnit
                 }).ToList() ?? new()
