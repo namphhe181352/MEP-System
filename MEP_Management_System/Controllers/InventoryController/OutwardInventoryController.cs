@@ -352,19 +352,23 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                var branchProductIds = dto.Items.Select(i => i.BranchProductId).Distinct().ToList();
+                var productIds = dto.Items.Select(i => i.BranchProductId).Distinct().ToList();
                 var branchProducts = await _context.BranchProducts
-                    .Where(bp => branchProductIds.Contains(bp.BranchProductId))
+                    .Where(bp => (productIds.Contains(bp.ProductId) || productIds.Contains(bp.BranchProductId)) && bp.BranchId == resolvedBranchId.Value)
                     .Include(bp => bp.Product)
                     .ToListAsync();
 
-                if (branchProducts.Count != branchProductIds.Count)
+                if (branchProducts.Count != productIds.Count)
                 {
+                    var foundProductIds = branchProducts.Select(bp => bp.ProductId).ToHashSet();
+                    var foundBranchProductIds = branchProducts.Select(bp => bp.BranchProductId).ToHashSet();
+                    var missingIds = productIds.Where(id => !foundProductIds.Contains(id) && !foundBranchProductIds.Contains(id)).ToList();
+                    
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
                         Message = "Yêu cầu không hợp lệ",
-                        Errors = new() { "Một hoặc nhiều sản phẩm không tồn tại trong hệ thống." }
+                        Errors = new() { $"Một hoặc nhiều sản phẩm không tồn tại trong hệ thống. (IDs: {string.Join(", ", missingIds)})" }
                     });
                 }
 
@@ -414,7 +418,7 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                     foreach (var item in dto.Items)
                     {
-                        var bp = branchProducts.First(x => x.BranchProductId == item.BranchProductId);
+                        var bp = branchProducts.First(x => x.BranchProductId == item.BranchProductId || x.ProductId == item.BranchProductId);
 
                         var ticketItem = new StockTicketItem
                         {

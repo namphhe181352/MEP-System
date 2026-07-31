@@ -177,7 +177,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 {
                     var maSanPham = worksheet.Cell(row, headers["MaSanPham"]).GetString().Trim();
                     var soLuongStr = worksheet.Cell(row, headers["SoLuong"]).GetString().Trim();
-                    var donGiaStr = worksheet.Cell(row, headers["DonGiaXuat"]).GetString().Trim();
+                    var donGiaStr = headers.ContainsKey("DonGiaXuat (tuỳ chọn)") ? worksheet.Cell(row, headers["DonGiaXuat (tuỳ chọn)"]).GetString().Trim() : 
+                                    (headers.ContainsKey("DonGiaXuat") ? worksheet.Cell(row, headers["DonGiaXuat"]).GetString().Trim() : "");
                     var lyDo = worksheet.Cell(row, headers["LyDo"]).GetString().Trim();
                     var ghiChu = headers.ContainsKey("GhiChu") ? worksheet.Cell(row, headers["GhiChu"]).GetString().Trim() : "";
 
