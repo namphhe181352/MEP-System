@@ -181,7 +181,7 @@ public class ReportService
         // 6. Lấy chi phí (phiếu chi tiền) trong ngày - chỉ tính CONFIRMED
         var totalExpense = await _context.ExpenseVouchers
             .Where(ev => ev.BranchId == branchId.Value
-                && ev.Status == "CONFIRMED"
+                && (ev.Status == "COMPLETED" || ev.Status == "Completed")
                 && ev.CreatedAt >= reportDate
                 && ev.CreatedAt < nextDate)
             .SumAsync(ev => ev.Amount);

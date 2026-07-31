@@ -10,30 +10,30 @@ namespace MEP_Management_System.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<Guid?>(
-                name: "ReferenceId",
-                table: "Notifications",
-                type: "uniqueidentifier",
-                nullable: true);
+            // migrationBuilder.AddColumn<Guid?>(
+            //     name: "reference_id",
+            //     table: "notifications",
+            //     type: "uuid",
+            //     nullable: true);
 
-            migrationBuilder.AddColumn<string>(
-                name: "ReferenceType",
-                table: "Notifications",
-                type: "nvarchar(100)",
-                maxLength: 100,
-                nullable: true);
+            // migrationBuilder.AddColumn<string>(
+            //     name: "reference_type",
+            //     table: "notifications",
+            //     type: "character varying(100)",
+            //     maxLength: 100,
+            //     nullable: true);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
-                name: "ReferenceType",
-                table: "Notifications");
+                name: "reference_type",
+                table: "notifications");
 
             migrationBuilder.DropColumn(
-                name: "ReferenceId",
-                table: "Notifications");
+                name: "reference_id",
+                table: "notifications");
         }
     }
 }
