@@ -380,10 +380,7 @@ public class ChatController : ControllerBase
 - refund_records: refund_id, refund_code, order_id, invoice_id, customer_id, user_id, refund_amount, refund_method, status, reason, created_at
 - return_orders: return_order_id, return_code, order_id, user_id, refund_amount, refund_method, status, note, created_at, return_type
 - return_items: return_item_id, return_order_id, branch_product_id, quantity, refund_amount, reason
-- promotions: promotion_id, promotion_code, name, discount_type, discount_value, min_order_amount, max_discount_amount, start_date, end_date, usage_limit, used_count, is_active
-- promotion_usages: usage_id, promotion_id, invoice_id, customer_id, user_id, discount_amount, used_at
 - suppliers: supplier_id, supplier_name, contact_phone, contact_email, address, status, contact_person, tax_code, group_name, average_rating
-- supplier_ratings: rating_id, supplier_id, purchase_order_id, quality_score, delivery_score, price_score, service_score, overall_rating, rated_at
 - purchase_orders: purchase_order_id, order_code, supplier_id, user_id, total_amount, status, approved_by, approved_at, expected_delivery_date, created_at
 - purchase_order_items: po_item_id, purchase_order_id, product_id, quantity, unit_price
 - stock_tickets: stock_ticket_id, ticket_code, branch_id, user_id, ticket_type, status, notes, created_at, supplier_id, total_amount
@@ -394,9 +391,7 @@ public class ChatController : ControllerBase
 - inventory_transfer_details: detail_id, transfer_id, product_id, transfer_quantity
 - expense_vouchers: voucher_id, voucher_code, branch_id, category_id, supplier_id, amount, reason, status, created_at
 - expense_categories: category_id, category_name, is_active
-- daily_summaries: summary_id, branch_id, summary_date, total_revenue, total_orders, total_refunds, total_cash, total_transfer, total_debt, opening_cash, closing_cash
 - shifts: shift_id, shift_code, user_id, branch_id, status, started_at, ended_at, opening_balance, expected_cash, actual_cash, variance, total_revenue, total_orders
-- loyalty_transactions: transaction_id, customer_id, points, transaction_type, reference_type, reference_id, created_at
 - staff_assignments: assignment_id, user_id, branch_id, assigned_at
 
 ## CÁCH VIẾT SQL QUERY
