@@ -946,7 +946,7 @@ public class InventoryCheckController : ControllerBase
             var userName = GetUserName();
 
             var ticket = await _context.InventoryCheckTickets
-                .Include(t => t.Details)
+                .Include(t => t.Details).ThenInclude(d => d.Product)
                 .FirstOrDefaultAsync(t => t.TicketId == id && t.BranchId == branchId.Value);
 
             if (ticket == null)
@@ -1124,7 +1124,7 @@ public class InventoryCheckController : ControllerBase
                         TableName = "InventoryCheckTickets",
                         EntityType = "InventoryCheck",
                         EntityId = ticket.TicketId,
-                        Description = $"Phiếu {ticket.TicketCode} có chênh lệch {stockChangeDuringCheck} tại sản phẩm {detail.ProductId} do giao dịch phát sinh trong lúc kiểm kê (SystemQuantity={detail.SystemQuantity}, ActualStock tại Approve={branchProduct.ActualStock}). Discrepancy kiểm kê: {discrepancy}",
+                        Description = $"Phiếu {ticket.TicketCode} có chênh lệch {stockChangeDuringCheck} tại sản phẩm {detail.Product?.ProductName ?? detail.ProductId.ToString()} ({detail.Product?.ProductCode ?? "—"}) do giao dịch phát sinh trong lúc kiểm kê (SystemQuantity={detail.SystemQuantity}, ActualStock tại Approve={branchProduct.ActualStock}). Discrepancy kiểm kê: {discrepancy}",
                         Level = "INFO",
                         Source = "InventoryCheckController",
                         Timestamp = DateTime.UtcNow

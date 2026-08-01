@@ -51,6 +51,33 @@ namespace MEP_Management_System.Controllers.InventoryController
 
         private bool IsOwner() => User.IsInRole("Owner");
 
+        private async Task TryWriteSystemLog(Guid userId, string action, string tableName,
+            string entityType, Guid entityId, string description)
+        {
+            try
+            {
+                var log = new SystemLog
+                {
+                    LogId = Guid.NewGuid(),
+                    UserId = userId,
+                    Action = action,
+                    TableName = tableName,
+                    EntityType = entityType,
+                    EntityId = entityId,
+                    Description = description,
+                    Level = "INFO",
+                    Source = "InwardInventoryController",
+                    Timestamp = DateTime.UtcNow
+                };
+                _context.SystemLogs.Add(log);
+                await _context.SaveChangesAsync();
+            }
+            catch
+            {
+                // Silent — không làm fail request chính
+            }
+        }
+
         private async Task BroadcastAndSaveNotification(
             NotificationType type,
             Guid branchId,
@@ -558,6 +585,14 @@ namespace MEP_Management_System.Controllers.InventoryController
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
+                await TryWriteSystemLog(
+                    currentUserId.Value,
+                    "CREATE_INWARD_INVENTORY",
+                    "stock_tickets",
+                    "InwardInventory",
+                    stockTicket.StockTicketId,
+                    $"Tạo phiếu nhập kho {stockTicket.TicketCode}");
+
                 var userName = User.FindFirst("name")?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? "Người dùng";
                 await BroadcastAndSaveNotification(
                     NotificationType.Created,
@@ -603,6 +638,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
+                var currentUserId = GetCurrentUserId();
                 var stockTicketQuery = _context.StockTickets
                     .Include(st => st.StockTicketItems)
                     .Where(st => st.StockTicketId == id &&
@@ -681,6 +717,14 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 await _context.SaveChangesAsync();
+
+                await TryWriteSystemLog(
+                    currentUserId!.Value,
+                    "UPDATE_INWARD_INVENTORY",
+                    "stock_tickets",
+                    "InwardInventory",
+                    stockTicket.StockTicketId,
+                    $"Cập nhật phiếu nhập kho {stockTicket.TicketCode}");
 
                 return Ok(new ApiResponse<InwardInventoryResponseDto>
                 {
@@ -811,6 +855,14 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
+
+                await TryWriteSystemLog(
+                    currentUserId!.Value,
+                    "CONFIRM_INWARD_INVENTORY",
+                    "stock_tickets",
+                    "InwardInventory",
+                    stockTicket.StockTicketId,
+                    $"Xác nhận phiếu nhập kho {stockTicket.TicketCode}");
 
                 return Ok(new ApiResponse<object>
                 {
@@ -961,6 +1013,14 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
+
+                await TryWriteSystemLog(
+                    currentUserId!.Value,
+                    "CANCEL_INWARD_INVENTORY",
+                    "stock_tickets",
+                    "InwardInventory",
+                    stockTicket.StockTicketId,
+                    $"Hủy phiếu nhập kho {stockTicket.TicketCode} - Lý do: {dto?.CancelReason ?? "—"}");
 
                 return Ok(new ApiResponse<object>
                 {
