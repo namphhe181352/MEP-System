@@ -31,9 +31,30 @@ public class InvoicePrintTemplateController : ControllerBase
     {
         var branchId = GetBranchId();
         var template = await _service.ResolveTemplateAsync(branchId);
-        if (template == null) return NotFound(new { message = "Template not found" });
-        return Ok(template);
+        return Ok(template ?? InvoiceDefault());
     }
+
+    private static InvoicePrintTemplate InvoiceDefault() => new()
+    {
+        HeaderText = "",
+        FooterText = "",
+        ShowLogo = false,
+        LogoUrl = "",
+        BranchName = "",
+        BranchAddress = "",
+        Phone = "",
+        TaxCode = "",
+        PaperSize = "K80",
+        FontSize = 12,
+        FontFamily = "monospace",
+        ShowCustomerInfo = true,
+        ShowCashierName = true,
+        ShowBranchInfo = true,
+        ShowPaymentMethod = true,
+        ThankYouMessage = "Cảm ơn quý khách!",
+        CustomFieldsJson = "{}",
+        IsActive = true
+    };
 
     // PUT /api/sales/invoice-templates
     [HttpPut]
@@ -49,6 +70,10 @@ public class InvoicePrintTemplateController : ControllerBase
             existing.FooterText = req.FooterText;
             existing.ShowLogo = req.ShowLogo;
             existing.LogoUrl = req.LogoUrl;
+            existing.BranchName = req.BranchName;
+            existing.BranchAddress = req.BranchAddress;
+            existing.Phone = req.Phone;
+            existing.TaxCode = req.TaxCode;
             existing.PaperSize = req.PaperSize ?? "K80";
             existing.FontSize = req.FontSize > 0 ? req.FontSize : 12;
             existing.FontFamily = req.FontFamily ?? "monospace";
@@ -56,8 +81,6 @@ public class InvoicePrintTemplateController : ControllerBase
             existing.ShowCashierName = req.ShowCashierName;
             existing.ShowBranchInfo = req.ShowBranchInfo;
             existing.ShowPaymentMethod = req.ShowPaymentMethod;
-            existing.ShowTaxInfo = req.ShowTaxInfo;
-            existing.TaxRate = req.TaxRate > 0 ? req.TaxRate : 8.00m;
             existing.ThankYouMessage = req.ThankYouMessage;
             existing.CustomFieldsJson = req.CustomFieldsJson ?? "{}";
             existing.IsActive = req.IsActive;
@@ -73,6 +96,10 @@ public class InvoicePrintTemplateController : ControllerBase
                 FooterText = req.FooterText,
                 ShowLogo = req.ShowLogo,
                 LogoUrl = req.LogoUrl,
+                BranchName = req.BranchName,
+                BranchAddress = req.BranchAddress,
+                Phone = req.Phone,
+                TaxCode = req.TaxCode,
                 PaperSize = req.PaperSize ?? "K80",
                 FontSize = req.FontSize > 0 ? req.FontSize : 12,
                 FontFamily = req.FontFamily ?? "monospace",
@@ -80,8 +107,6 @@ public class InvoicePrintTemplateController : ControllerBase
                 ShowCashierName = req.ShowCashierName,
                 ShowBranchInfo = req.ShowBranchInfo,
                 ShowPaymentMethod = req.ShowPaymentMethod,
-                ShowTaxInfo = req.ShowTaxInfo,
-                TaxRate = req.TaxRate > 0 ? req.TaxRate : 8.00m,
                 ThankYouMessage = req.ThankYouMessage,
                 CustomFieldsJson = req.CustomFieldsJson ?? "{}",
                 IsActive = req.IsActive,
@@ -131,7 +156,17 @@ public class InvoicePrintTemplateController : ControllerBase
         if (template != null)
         {
             if (template.ShowBranchInfo && invoice.Order?.Branch != null)
-                sb.AppendLine($"<p>{invoice.Order.Branch.BranchName}<br/>{invoice.Order.Branch.Address}</p>");
+            {
+                var displayName = !string.IsNullOrEmpty(template.BranchName) ? template.BranchName : invoice.Order.Branch.BranchName;
+                var displayAddress = !string.IsNullOrEmpty(template.BranchAddress) ? template.BranchAddress : invoice.Order.Branch.Address;
+                var displayPhone = !string.IsNullOrEmpty(template.Phone) ? template.Phone : invoice.Order.Branch.Phone;
+                var displayTax = !string.IsNullOrEmpty(template.TaxCode) ? template.TaxCode : null;
+                sb.AppendLine($"<p>{displayName}<br/>{displayAddress}</p>");
+                var extraLine = new List<string>();
+                if (!string.IsNullOrEmpty(displayPhone)) extraLine.Add($"ĐT: {displayPhone}");
+                if (!string.IsNullOrEmpty(displayTax)) extraLine.Add($"MST: {displayTax}");
+                if (extraLine.Count > 0) sb.AppendLine($"<p>{string.Join(" • ", extraLine)}</p>");
+            }
             if (template.ShowCashierName && invoice.Order?.User != null)
                 sb.AppendLine($"<p>Cashier: {invoice.Order.User.FullName}</p>");
             if (template.ShowCustomerInfo)
@@ -155,14 +190,13 @@ public class InvoicePrintTemplateController : ControllerBase
 
         var subtotal = invoice.InvoiceItems.Sum(i => i.Quantity * i.SellPrice);
         var discount = invoice.Order?.DiscountAmount ?? 0;
-        var taxRate = template?.TaxRate ?? 8.00m;
+        var taxRate = 8.00m;
         var vat = Math.Round((subtotal - discount) * taxRate / 100m, 2);
         var total = subtotal - discount + vat;
 
         sb.AppendLine($"<div class='b'><div><span>Subtotal</span><span class='r'>{subtotal:N0}</span></div>");
         if (discount > 0) sb.AppendLine($"<div><span>Discount</span><span class='r' style='color:red'>-{discount:N0}</span></div>");
-        if (template == null || template.ShowTaxInfo)
-            sb.AppendLine($"<div><span>VAT ({taxRate}%)</span><span class='r'>{vat:N0}</span></div>");
+        sb.AppendLine($"<div><span>VAT ({taxRate}%)</span><span class='r'>{vat:N0}</span></div>");
         sb.AppendLine($"<div style='font-weight:bold;font-size:16px;border-top:1px solid #000;margin-top:4px;padding-top:4px'><span>TOTAL</span><span class='r'>{total:N0}</span></div>");
         sb.AppendLine("</div>");
 
@@ -178,8 +212,12 @@ public class UpsertInvoicePrintTemplateRequest
 {
     public string? HeaderText { get; set; }
     public string? FooterText { get; set; }
-    public bool ShowLogo { get; set; } = true;
+    public bool ShowLogo { get; set; } = false;
     public string? LogoUrl { get; set; }
+    public string? BranchName { get; set; }
+    public string? BranchAddress { get; set; }
+    public string? Phone { get; set; }
+    public string? TaxCode { get; set; }
     public string? PaperSize { get; set; }
     public int FontSize { get; set; } = 12;
     public string? FontFamily { get; set; }
@@ -187,8 +225,6 @@ public class UpsertInvoicePrintTemplateRequest
     public bool ShowCashierName { get; set; } = true;
     public bool ShowBranchInfo { get; set; } = true;
     public bool ShowPaymentMethod { get; set; } = true;
-    public bool ShowTaxInfo { get; set; } = true;
-    public decimal TaxRate { get; set; } = 8.00m;
     public string? ThankYouMessage { get; set; }
     public string? CustomFieldsJson { get; set; }
     public bool IsActive { get; set; } = true;

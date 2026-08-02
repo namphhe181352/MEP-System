@@ -1600,6 +1600,13 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasForeignKey(d => d.BranchId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("notifications_branch_id_fkey");
+
+            entity.Property(e => e.ReferenceId)
+                .HasColumnName("reference_id");
+
+            entity.Property(e => e.ReferenceType)
+                .HasMaxLength(100)
+                .HasColumnName("reference_type");
         });
 
 
@@ -2050,11 +2057,23 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasMaxLength(500)
                 .HasColumnName("footer_text");
             entity.Property(e => e.ShowLogo)
-                .HasDefaultValue(true)
+                .HasDefaultValue(false)
                 .HasColumnName("show_logo");
             entity.Property(e => e.LogoUrl)
                 .HasMaxLength(500)
                 .HasColumnName("logo_url");
+            entity.Property(e => e.BranchName)
+                .HasMaxLength(200)
+                .HasColumnName("branch_name");
+            entity.Property(e => e.BranchAddress)
+                .HasMaxLength(500)
+                .HasColumnName("branch_address");
+            entity.Property(e => e.Phone)
+                .HasMaxLength(20)
+                .HasColumnName("phone");
+            entity.Property(e => e.TaxCode)
+                .HasMaxLength(50)
+                .HasColumnName("tax_code");
             entity.Property(e => e.PaperSize)
                 .HasMaxLength(20)
                 .HasDefaultValue("A5")
@@ -2158,11 +2177,23 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasMaxLength(500)
                 .HasColumnName("footer_text");
             entity.Property(e => e.ShowLogo)
-                .HasDefaultValue(true)
+                .HasDefaultValue(false)
                 .HasColumnName("show_logo");
             entity.Property(e => e.LogoUrl)
                 .HasMaxLength(500)
                 .HasColumnName("logo_url");
+            entity.Property(e => e.BranchName)
+                .HasMaxLength(200)
+                .HasColumnName("branch_name");
+            entity.Property(e => e.BranchAddress)
+                .HasMaxLength(500)
+                .HasColumnName("branch_address");
+            entity.Property(e => e.Phone)
+                .HasMaxLength(20)
+                .HasColumnName("phone");
+            entity.Property(e => e.TaxCode)
+                .HasMaxLength(50)
+                .HasColumnName("tax_code");
             entity.Property(e => e.PaperSize)
                 .HasMaxLength(20)
                 .HasDefaultValue("K80")
@@ -2186,13 +2217,6 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
             entity.Property(e => e.ShowPaymentMethod)
                 .HasDefaultValue(true)
                 .HasColumnName("show_payment_method");
-            entity.Property(e => e.ShowTaxInfo)
-                .HasDefaultValue(true)
-                .HasColumnName("show_tax_info");
-            entity.Property(e => e.TaxRate)
-                .HasPrecision(5, 2)
-                .HasDefaultValue(8.00m)
-                .HasColumnName("tax_rate");
             entity.Property(e => e.ThankYouMessage)
                 .HasMaxLength(500)
                 .HasColumnName("thank_you_message");

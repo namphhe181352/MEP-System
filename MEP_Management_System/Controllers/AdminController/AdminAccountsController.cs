@@ -188,16 +188,16 @@ public class AdminAccountsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(status))
         {
             if (status.Equals("active", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(u => u.Status == "ACTIVE" && u.IsActive == 1);
+                query = query.Where(u => (u.Status.ToUpper() == "ACTIVE" || u.Status == null) && u.IsActive == 1);
             else if (status.Equals("suspended", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(u => u.Status == "SUSPENDED" || u.IsActive == 0 && u.Status != "DELETED");
+                query = query.Where(u => u.Status.ToUpper() == "SUSPENDED" || (u.IsActive == 0 && u.Status.ToUpper() != "DELETED" && u.Status.ToUpper() != "PERMANENT_DELETED"));
             else if (status.Equals("deleted", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(u => u.Status == "DELETED");
+                query = query.Where(u => u.Status.ToUpper() == "DELETED" || u.Status.ToUpper() == "PERMANENT_DELETED");
         }
         else
         {
             // Mặc định không hiện user đã xóa mềm
-            query = query.Where(u => u.Status != "DELETED");
+            query = query.Where(u => u.Status.ToUpper() != "DELETED" && u.Status.ToUpper() != "PERMANENT_DELETED");
         }
 
         // Search
@@ -257,6 +257,51 @@ public class AdminAccountsController : ControllerBase
             });
 
         return Ok(await MapToDtoAsync(user));
+    }
+
+    /// <summary>
+    /// GET /api/admin/accounts/{id}/activities - Lịch sử hoạt động của tài khoản
+    /// </summary>
+    [HttpGet("{id:guid}/activities")]
+    public async Task<IActionResult> GetAccountActivities(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    {
+        var userExists = await _context.Users.AnyAsync(u => u.UserId == id);
+        if (!userExists)
+            return NotFound(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-404", Message = "Không tìm thấy người dùng." } });
+
+        var query = _context.SystemLogs
+            .Include(l => l.User)
+            .Where(l => l.UserId == id || l.EntityId == id);
+
+        var totalCount = await query.CountAsync();
+
+        var items = await query
+            .OrderByDescending(l => l.Timestamp)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(l => new SystemLogDto
+            {
+                LogId = l.LogId,
+                Action = l.Action,
+                TableName = l.TableName,
+                EntityType = l.EntityType,
+                Description = l.Description,
+                IpAddress = l.IpAddress,
+                UserAgent = l.UserAgent,
+                Level = l.Level,
+                Source = l.Source,
+                UserName = l.User != null ? l.User.FullName : "System",
+                Timestamp = l.Timestamp
+            })
+            .ToListAsync();
+
+        return Ok(new PageResultDto<SystemLogDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            PageNumber = page,
+            PageSize = pageSize
+        });
     }
 
     #endregion

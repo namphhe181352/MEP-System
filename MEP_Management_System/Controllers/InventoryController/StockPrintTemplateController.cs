@@ -30,9 +30,29 @@ public class StockPrintTemplateController : ControllerBase
     {
         var branchId = GetBranchId();
         var template = await _service.ResolveTemplateAsync(branchId, ticketType ?? "STOCK_CHECK");
-        if (template == null) return NotFound(new { message = "Template not found" });
-        return Ok(template);
+        return Ok(template ?? StockDefault(ticketType ?? "STOCK_CHECK"));
     }
+
+    private static StockPrintTemplate StockDefault(string ticketType) => new()
+    {
+        TicketType = ticketType,
+        HeaderText = "",
+        FooterText = "",
+        ShowLogo = false,
+        LogoUrl = "",
+        BranchName = "",
+        BranchAddress = "",
+        Phone = "",
+        TaxCode = "",
+        PaperSize = "A5",
+        FontSize = 12,
+        FontFamily = "monospace",
+        ShowSupplier = true,
+        ShowBranchInfo = true,
+        ShowSignature = true,
+        CustomFieldsJson = "{}",
+        IsActive = true
+    };
 
     // PUT /api/inventory/print-templates/stock-ticket
     [HttpPut]
@@ -48,6 +68,10 @@ public class StockPrintTemplateController : ControllerBase
             existing.FooterText = req.FooterText;
             existing.ShowLogo = req.ShowLogo;
             existing.LogoUrl = req.LogoUrl;
+            existing.BranchName = req.BranchName;
+            existing.BranchAddress = req.BranchAddress;
+            existing.Phone = req.Phone;
+            existing.TaxCode = req.TaxCode;
             existing.PaperSize = req.PaperSize ?? "A5";
             existing.FontSize = req.FontSize > 0 ? req.FontSize : 12;
             existing.FontFamily = req.FontFamily ?? "monospace";
@@ -69,6 +93,10 @@ public class StockPrintTemplateController : ControllerBase
                 FooterText = req.FooterText,
                 ShowLogo = req.ShowLogo,
                 LogoUrl = req.LogoUrl,
+                BranchName = req.BranchName,
+                BranchAddress = req.BranchAddress,
+                Phone = req.Phone,
+                TaxCode = req.TaxCode,
                 PaperSize = req.PaperSize ?? "A5",
                 FontSize = req.FontSize > 0 ? req.FontSize : 12,
                 FontFamily = req.FontFamily ?? "monospace",
@@ -127,8 +155,12 @@ public class UpsertStockPrintTemplateRequest
     public string TicketType { get; set; } = "STOCK_CHECK";
     public string? HeaderText { get; set; }
     public string? FooterText { get; set; }
-    public bool ShowLogo { get; set; } = true;
+    public bool ShowLogo { get; set; } = false;
     public string? LogoUrl { get; set; }
+    public string? BranchName { get; set; }
+    public string? BranchAddress { get; set; }
+    public string? Phone { get; set; }
+    public string? TaxCode { get; set; }
     public string? PaperSize { get; set; }
     public int FontSize { get; set; } = 12;
     public string? FontFamily { get; set; }

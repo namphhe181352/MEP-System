@@ -299,13 +299,6 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("updated_at");
 
-                    b.Property<decimal?>("AdvanceBalance")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(15, 2)
-                        .HasColumnType("numeric(15,2)")
-                        .HasDefaultValue(0m)
-                        .HasColumnName("advance_balance");
-
                     b.HasKey("CustomerId")
                         .HasName("customers_pkey");
 
@@ -859,9 +852,19 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("template_id")
                         .HasDefaultValueSql("uuid_generate_v4()");
 
+                    b.Property<string>("BranchAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("branch_address");
+
                     b.Property<Guid?>("BranchId")
                         .HasColumnType("uuid")
                         .HasColumnName("branch_id");
+
+                    b.Property<string>("BranchName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("branch_name");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone")
@@ -917,6 +920,11 @@ namespace MEP_Management_System.Migrations
                         .HasDefaultValue("K80")
                         .HasColumnName("paper_size");
 
+                    b.Property<string>("Phone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("phone");
+
                     b.Property<bool>("ShowBranchInfo")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -938,7 +946,7 @@ namespace MEP_Management_System.Migrations
                     b.Property<bool>("ShowLogo")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
-                        .HasDefaultValue(true)
+                        .HasDefaultValue(false)
                         .HasColumnName("show_logo");
 
                     b.Property<bool>("ShowPaymentMethod")
@@ -947,18 +955,10 @@ namespace MEP_Management_System.Migrations
                         .HasDefaultValue(true)
                         .HasColumnName("show_payment_method");
 
-                    b.Property<bool>("ShowTaxInfo")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true)
-                        .HasColumnName("show_tax_info");
-
-                    b.Property<decimal>("TaxRate")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(5, 2)
-                        .HasColumnType("numeric(5,2)")
-                        .HasDefaultValue(8.00m)
-                        .HasColumnName("tax_rate");
+                    b.Property<string>("TaxCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("tax_code");
 
                     b.Property<string>("ThankYouMessage")
                         .HasMaxLength(500)
@@ -1060,6 +1060,13 @@ namespace MEP_Management_System.Migrations
                     b.Property<Guid?>("RecipientUserId")
                         .HasColumnType("uuid")
                         .HasColumnName("recipient_user_id");
+
+                    b.Property<Guid?>("ReferenceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reference_id");
+
+                    b.Property<string>("ReferenceType")
+                        .HasColumnType("text");
 
                     b.Property<Guid>("TriggeredByUserId")
                         .HasColumnType("uuid")
@@ -2305,9 +2312,19 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("template_id")
                         .HasDefaultValueSql("uuid_generate_v4()");
 
+                    b.Property<string>("BranchAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("branch_address");
+
                     b.Property<Guid?>("BranchId")
                         .HasColumnType("uuid")
                         .HasColumnName("branch_id");
+
+                    b.Property<string>("BranchName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("branch_name");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone")
@@ -2363,6 +2380,11 @@ namespace MEP_Management_System.Migrations
                         .HasDefaultValue("A5")
                         .HasColumnName("paper_size");
 
+                    b.Property<string>("Phone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("phone");
+
                     b.Property<bool>("ShowBranchInfo")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -2372,7 +2394,7 @@ namespace MEP_Management_System.Migrations
                     b.Property<bool>("ShowLogo")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
-                        .HasDefaultValue(true)
+                        .HasDefaultValue(false)
                         .HasColumnName("show_logo");
 
                     b.Property<bool>("ShowSignature")
@@ -2386,6 +2408,11 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(true)
                         .HasColumnName("show_supplier");
+
+                    b.Property<string>("TaxCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("tax_code");
 
                     b.Property<string>("TicketType")
                         .HasMaxLength(50)

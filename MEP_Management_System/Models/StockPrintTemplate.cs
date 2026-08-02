@@ -9,8 +9,12 @@ public class StockPrintTemplate
     public string? TicketType { get; set; }
     public string? HeaderText { get; set; }
     public string? FooterText { get; set; }
-    public bool ShowLogo { get; set; } = true;
+    public bool ShowLogo { get; set; } = false;
     public string? LogoUrl { get; set; }
+    public string? BranchName { get; set; }
+    public string? BranchAddress { get; set; }
+    public string? Phone { get; set; }
+    public string? TaxCode { get; set; }
     public string PaperSize { get; set; } = "A5";
     public int FontSize { get; set; } = 12;
     public string FontFamily { get; set; } = "monospace";

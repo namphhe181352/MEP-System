@@ -170,6 +170,8 @@ public class NotificationDto
     public Guid BranchId { get; set; }
     public Guid? InventoryCheckId { get; set; }
     public string? InventoryCheckCode { get; set; }
+    public Guid? ReferenceId { get; set; }
+    public string? ReferenceType { get; set; }
     public Guid TriggeredByUserId { get; set; }
     public string? TriggeredByUserName { get; set; }
     public string Message { get; set; } = null!;

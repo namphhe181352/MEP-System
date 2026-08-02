@@ -5,6 +5,7 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using AutoMapper;
 using MEP_Management_System.Authorization;
+using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.DTOs.SaleDTOs;
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
@@ -714,6 +715,35 @@ public class InvoicesController : ControllerBase
             PageSize = pageSize,
             TotalCount = total
         });
+    }
+
+    // GET /api/pos/invoices/return-policies
+    /// <summary>
+    /// Trả về danh sách chính sách đổi/trả theo nhóm hàng của chi nhánh hiện tại.
+    /// Endpoint dự phòng khi /api/pos/returns/return-policies không khả dụng.
+    /// </summary>
+    [HttpGet("return-policies")]
+    public async Task<ActionResult<List<CategoryPolicyDto>>> GetReturnPolicies()
+    {
+        var branchId = GetBranchId();
+
+        var config = await _context.SystemConfigs
+            .FirstOrDefaultAsync(c => c.BranchId == branchId && c.ConfigKey == "CATEGORY_RETURN_POLICIES");
+
+        var policies = new List<CategoryPolicyDto>();
+        if (config != null && !string.IsNullOrWhiteSpace(config.ConfigValue))
+        {
+            try
+            {
+                var deserialized = System.Text.Json.JsonSerializer.Deserialize<List<CategoryPolicyDto>>(
+                    config.ConfigValue,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (deserialized != null) policies = deserialized;
+            }
+            catch { }
+        }
+
+        return Ok(policies);
     }
 }
 
