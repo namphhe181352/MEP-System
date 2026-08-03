@@ -21,18 +21,18 @@ public class SqlExecutor
     // Đây là whitelist duy nhất - mọi bảng xuất hiện trong FROM/JOIN của SQL do AI
     // sinh ra PHẢI nằm trong danh sách này, nếu không sẽ bị từ chối (fail-closed).
     private static readonly HashSet<string> AllowedTables = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "branches", "branch_products", "products", "product_attributes",
-        "product_conversion_units", "customers", "orders", "order_items",
-        "order_discount_tiers", "invoices", "invoice_items", "payments",
-        "refund_records", "return_orders", "return_items", "promotions",
-        "promotion_usages", "suppliers", "supplier_ratings", "SupplierPayments",
-        "purchase_orders", "purchase_order_items", "stock_tickets", "stock_ticket_items",
-        "inventory_check_tickets", "inventory_check_details",
-        "inventory_transfer_tickets", "inventory_transfer_details",
-        "expense_vouchers", "expense_categories", "daily_summaries", "shifts",
-        "loyalty_transactions", "staff_assignments"
-    };
+{
+    "branches", "branch_products", "products", "product_attributes",
+    "product_conversion_units", "customers", "orders", "order_items",
+    "order_discount_tiers", "invoices", "invoice_items", "payments",
+    "refund_records", "return_orders", "return_items",
+    "suppliers", "SupplierPayments",
+    "purchase_orders", "purchase_order_items", "stock_tickets", "stock_ticket_items",
+    "inventory_check_tickets", "inventory_check_details",
+    "inventory_transfer_tickets", "inventory_transfer_details",
+    "expense_vouchers", "expense_categories",
+    "shifts", "staff_assignments"
+};
 
     // Các schema/bảng hệ thống PostgreSQL tuyệt đối không cho phép động vào,
     // dù không nằm trong AllowedTables ở trên (phòng trường hợp AI cố dò schema
