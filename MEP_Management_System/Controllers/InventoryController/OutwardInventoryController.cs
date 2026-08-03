@@ -393,6 +393,51 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
+                if (string.IsNullOrWhiteSpace(dto.Reason))
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Dữ liệu không hợp lệ",
+                        Errors = new() { "Trường 'reason' là bắt buộc." }
+                    });
+                }
+
+                var normalizedReason = dto.Reason.Trim();
+                var isValidReason = dto.OutwardType switch
+                {
+                    OutwardInventoryType.ReturnToSupplier => new[]
+                    {
+                        "Xuất trả nhà cung cấp",
+                        "Trả hàng nhà cung cấp",
+                        "Xuất trả NCC"
+                    }.Any(reason => string.Equals(reason, normalizedReason, StringComparison.OrdinalIgnoreCase)),
+                    OutwardInventoryType.DamagedHaoHut => new[]
+                    {
+                        "Xuất hủy / Hao hụt",
+                        "Xuất hủy"
+                    }.Any(reason => string.Equals(reason, normalizedReason, StringComparison.OrdinalIgnoreCase)),
+                    OutwardInventoryType.InternalUse => new[]
+                    {
+                        "Xuất sử dụng nội bộ",
+                        "Xuất nội bộ / Điều chuyển"
+                    }.Any(reason => string.Equals(reason, normalizedReason, StringComparison.OrdinalIgnoreCase)),
+                    _ => false
+                };
+
+                if (!isValidReason)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Dữ liệu không hợp lệ",
+                        Errors = new()
+                        {
+                            "Lý do xuất kho không hợp lệ. Chỉ chấp nhận: Xuất trả nhà cung cấp, Xuất hủy / Hao hụt, Xuất sử dụng nội bộ."
+                        }
+                    });
+                }
+
                 var productIds = dto.Items.Select(i => i.BranchProductId).Distinct().ToList();
                 var branchProducts = await _context.BranchProducts
                     .Where(bp => (productIds.Contains(bp.ProductId) || productIds.Contains(bp.BranchProductId)) && bp.BranchId == resolvedBranchId.Value)
@@ -420,6 +465,18 @@ namespace MEP_Management_System.Controllers.InventoryController
                     if (item.Quantity <= 0)
                     {
                         validationErrors.Add($"Số lượng xuất của sản phẩm phải lớn hơn 0.");
+                    }
+
+                    var bp = branchProducts.FirstOrDefault(x => x.BranchProductId == item.BranchProductId || x.ProductId == item.BranchProductId);
+                    if (bp == null)
+                    {
+                        validationErrors.Add($"Sản phẩm '{item.BranchProductId}' không thuộc chi nhánh hiện tại.");
+                        continue;
+                    }
+
+                    if (item.Quantity > bp.ActualStock)
+                    {
+                        validationErrors.Add($"Sản phẩm {bp.Product?.ProductName ?? bp.ProductId.ToString()} không đủ tồn kho để xuất. Tồn hiện tại: {bp.ActualStock}, số lượng cần xuất: {item.Quantity}.");
                     }
                 }
 
@@ -754,11 +811,12 @@ namespace MEP_Management_System.Controllers.InventoryController
                 {
                     if (latestBranchProducts.TryGetValue(item.BranchProductId, out var bp))
                     {
-                        if (bp.AvailableStock < item.Discrepancy)
+                        var currentStock = bp.ActualStock;
+                        if (currentStock < item.Discrepancy)
                         {
                             insufficientStockItems.Add(
                                 $"{bp.Product?.ProductName ?? item.BranchProductId.ToString()} " +
-                                $"(tồn: {bp.AvailableStock}, cần xuất: {item.Discrepancy})"
+                                $"(tồn: {currentStock}, cần xuất: {item.Discrepancy})"
                             );
                         }
                     }
