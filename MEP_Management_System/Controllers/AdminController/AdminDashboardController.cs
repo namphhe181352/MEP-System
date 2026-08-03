@@ -35,17 +35,16 @@ public class AdminDashboardController : ControllerBase
         var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
         var thirtyDaysAgo = now.AddDays(-30);
 
-        // activeTenants = Owners with IsActive = 1 (via many-to-many UserRole)
+        // activeTenants = Tất cả tài khoản đang hoạt động (Owner + Staff)
         var activeTenants = await _context.Users
             .AsNoTracking()
-            .Include(u => u.Roles)
-            .Where(u => u.Roles.Any(r => r.RoleName == "Owner") && u.IsActive == 1)
+            .Where(u => u.IsActive == 1)
             .CountAsync();
 
-        // subscriptionRevenue = total COMPLETED invoice amounts in last 30 days
+        // subscriptionRevenue = Doanh thu hóa đơn đã thanh toán trong 30 ngày qua
         var subscriptionRevenue = await _context.Invoices
             .AsNoTracking()
-            .Where(i => i.Status == "COMPLETED" && i.CreatedAt >= thirtyDaysAgo)
+            .Where(i => CompletedStatuses.Contains(i.Status) && i.CreatedAt >= thirtyDaysAgo)
             .SumAsync(i => (decimal?)i.TotalAmount) ?? 0m;
 
         // b2bCommission = 1% of total TRANSFER payment orders
@@ -55,11 +54,11 @@ public class AdminDashboardController : ControllerBase
             .SumAsync(o => (decimal?)o.TotalAmount) ?? 0m;
         var b2bCommission = Math.Round(b2bCommissionRaw * 0.01m, 2);
 
-        // overdueAlerts = customers with CurrentDebt > DebtLimit
-        var overdueAlerts = await _context.Customers
+        // overdueAlerts = Số lượng hóa đơn đang nợ (PENDING)
+        var overdueAlerts = await _context.Invoices
             .AsNoTracking()
-            .Where(c => c.Status == 1 && c.DebtLimit.HasValue)
-            .CountAsync(c => c.CurrentDebt > c.DebtLimit);
+            .Where(i => i.Status == "PENDING" || i.Status == "Pending")
+            .CountAsync();
 
         return Ok(new DashboardStatsDto
         {
