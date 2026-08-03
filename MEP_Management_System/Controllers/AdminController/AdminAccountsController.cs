@@ -391,14 +391,14 @@ public class AdminAccountsController : ControllerBase
             var newBranch = new Branch
             {
                 BranchId = Guid.NewGuid(),
-                BranchName = !string.IsNullOrWhiteSpace(dto.BranchName) 
-                    ? dto.BranchName.Trim() 
+                BranchName = !string.IsNullOrWhiteSpace(dto.BranchName)
+                    ? dto.BranchName.Trim()
                     : $"{dto.FullName.Trim()} Store",
                 Phone = dto.PhoneNumber,
-                ManagerUserId = newUserId,
+                ManagerUserId = null,
                 IsActive = 1,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                CreatedAt = now,
+                UpdatedAt = now
             };
             _context.Branches.Add(newBranch);
             await _context.SaveChangesAsync(); // get BranchId
