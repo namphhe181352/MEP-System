@@ -30,7 +30,7 @@ builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
 
 // Services
 builder.Services.AddSingleton<JwtHelper>();
-builder.Services.AddScoped<INotificationSender, LogNotificationSender>();
+builder.Services.AddScoped<INotificationSender, SignalRNotificationSender>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentBranchAccessor, CurrentBranchAccessor>();
 builder.Services.AddScoped<IOrderDiscountService, OrderDiscountService>();
