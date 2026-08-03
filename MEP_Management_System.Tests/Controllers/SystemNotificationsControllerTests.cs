@@ -126,7 +126,8 @@ namespace MEP_Management_System.Tests.Controllers
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
+            var adminId = Guid.NewGuid();
+            var controller = CreateController(context, adminId);
 
             var notifId = Guid.NewGuid();
             context.SystemNotifications.Add(new SystemNotification 

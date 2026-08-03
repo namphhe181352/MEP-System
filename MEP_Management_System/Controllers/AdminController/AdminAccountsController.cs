@@ -60,6 +60,17 @@ public class AdminAccountsController : ControllerBase
 
     private async Task<AdminAccountDetailDto> MapToDtoAsync(User user)
     {
+        string? branchName = null;
+        if (user.Roles.Any(r => r.RoleName == "Owner"))
+        {
+            var branch = await _context.Branches.FirstOrDefaultAsync(b => b.ManagerUserId == user.UserId);
+            branchName = branch?.BranchName;
+        }
+        else
+        {
+            branchName = user.StaffAssignments.FirstOrDefault()?.Branch?.BranchName;
+        }
+
         return new AdminAccountDetailDto
         {
             UserId = user.UserId,
@@ -76,6 +87,7 @@ public class AdminAccountsController : ControllerBase
             SubscriptionPlan = user.SubscriptionPlan,
             CreatedBy = user.CreatedBy,
             DefaultBranchId = user.DefaultBranchId,
+            DefaultBranchName = branchName,
             Roles = user.Roles.Select(r => new AdminRoleDto
             {
                 RoleId = r.RoleId,
@@ -332,6 +344,8 @@ public class AdminAccountsController : ControllerBase
         // Lấy role Owner
         var ownerRole = await GetOrCreateRoleAsync("Owner", "Chủ cửa hàng - toàn quyền quản lý chi nhánh");
 
+        var newUserId = Guid.NewGuid();
+
         // Xử lý branch
         Guid branchId;
         Branch branch;
@@ -346,6 +360,21 @@ public class AdminAccountsController : ControllerBase
                     Error = new ErrorDetail { Code = "MSG-404", Message = "Chi nhánh không tồn tại hoặc đã bị vô hiệu hóa." }
                 });
             }
+
+            // Kiểm tra xem chi nhánh đã có Owner nào chưa (chỉ được phép có 1 Owner)
+            var hasOwner = await _context.Users.AnyAsync(u => 
+                u.DefaultBranchId == dto.BranchId.Value && 
+                u.IsActive == 1 &&
+                u.Roles.Any(r => r.RoleName == "Owner"));
+
+            if (hasOwner)
+            {
+                return BadRequest(new ErrorResponseDto
+                {
+                    Error = new ErrorDetail { Code = "MSG-409", Message = "Chi nhánh này đã có Owner. Mỗi chi nhánh chỉ được phép có 1 Owner." }
+                });
+            }
+
             branch = existingBranch;
             branchId = existingBranch.BranchId;
         }
@@ -373,6 +402,8 @@ public class AdminAccountsController : ControllerBase
                     BranchName = !string.IsNullOrWhiteSpace(dto.BranchName)
                         ? dto.BranchName.Trim()
                         : $"{dto.FullName.Trim()} Store",
+                    Phone = dto.PhoneNumber,
+                    ManagerUserId = newUserId,
                     IsActive = 1,
                     CreatedAt = now,
                     UpdatedAt = now
@@ -387,7 +418,7 @@ public class AdminAccountsController : ControllerBase
         var nowUtc = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
         var newUser = new User
         {
-            UserId = Guid.NewGuid(),
+            UserId = newUserId,
             Username = username,
             Email = dto.Email.Trim(),
             FullName = dto.FullName.Trim(),
@@ -737,6 +768,25 @@ public class AdminAccountsController : ControllerBase
             });
         }
 
+        // Kiểm tra xem nếu gán quyền Owner thì chi nhánh hiện tại của user đã có Owner chưa
+        var isAssigningOwner = roles.Any(r => r.RoleName.Equals("Owner", StringComparison.OrdinalIgnoreCase));
+        if (isAssigningOwner && user.DefaultBranchId.HasValue)
+        {
+            var hasOwner = await _context.Users.AnyAsync(u => 
+                u.UserId != user.UserId &&
+                u.DefaultBranchId == user.DefaultBranchId.Value && 
+                u.IsActive == 1 &&
+                u.Roles.Any(r => r.RoleName == "Owner"));
+
+            if (hasOwner)
+            {
+                return BadRequest(new ErrorResponseDto
+                {
+                    Error = new ErrorDetail { Code = "MSG-409", Message = "Chi nhánh của nhân viên này đã có Owner. Mỗi chi nhánh chỉ được phép có 1 Owner." }
+                });
+            }
+        }
+
         // Admin tự gỡ role của mình
         if (currentAdminId == user.UserId)
         {
@@ -875,10 +925,30 @@ public class AdminAccountsController : ControllerBase
 
         var user = await _context.Users
             .Include(u => u.StaffAssignments)
+            .Include(u => u.Roles)
             .FirstOrDefaultAsync(u => u.UserId == id);
 
         if (user == null)
             return NotFound(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-404", Message = "Không tìm thấy tài khoản." } });
+
+        // Kiểm tra xem nếu user là Owner thì branch mới đã có Owner chưa
+        var isOwner = user.Roles.Any(r => r.RoleName.Equals("Owner", StringComparison.OrdinalIgnoreCase));
+        if (isOwner)
+        {
+            var hasOwner = await _context.Users.AnyAsync(u => 
+                u.UserId != user.UserId &&
+                u.DefaultBranchId == branch.BranchId && 
+                u.IsActive == 1 &&
+                u.Roles.Any(r => r.RoleName == "Owner"));
+
+            if (hasOwner)
+            {
+                return BadRequest(new ErrorResponseDto
+                {
+                    Error = new ErrorDetail { Code = "MSG-409", Message = "Chi nhánh mới đã có Owner. Mỗi chi nhánh chỉ được phép có 1 Owner." }
+                });
+            }
+        }
 
         var existing = user.StaffAssignments.FirstOrDefault();
         if (existing != null)

@@ -14,6 +14,8 @@ namespace MEP_Management_System.DTOs.AdminDTOs
         public short? IsActive { get; set; }
         public string? Status { get; set; }
         public DateTime? CreatedAt { get; set; }
+        public Guid? BranchId { get; set; }
+        public string? BranchName { get; set; }
         public List<AdminRoleDto> Roles { get; set; } = new List<AdminRoleDto>();
     }
 

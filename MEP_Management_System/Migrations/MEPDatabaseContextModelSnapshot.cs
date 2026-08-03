@@ -320,6 +320,9 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("category_id")
                         .HasDefaultValueSql("uuid_generate_v4()");
 
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("CategoryName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -342,6 +345,8 @@ namespace MEP_Management_System.Migrations
 
                     b.HasKey("CategoryId")
                         .HasName("expense_categories_pkey");
+
+                    b.HasIndex("BranchId");
 
                     b.HasIndex("CategoryName")
                         .IsUnique()
@@ -1066,7 +1071,9 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("reference_id");
 
                     b.Property<string>("ReferenceType")
-                        .HasColumnType("text");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("reference_type");
 
                     b.Property<Guid>("TriggeredByUserId")
                         .HasColumnType("uuid")
@@ -2639,6 +2646,9 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("bank_name");
 
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("ContactEmail")
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)")
@@ -2715,6 +2725,8 @@ namespace MEP_Management_System.Migrations
 
                     b.HasKey("SupplierId")
                         .HasName("suppliers_pkey");
+
+                    b.HasIndex("BranchId");
 
                     b.HasIndex("CreatedBy");
 
@@ -2891,6 +2903,10 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("notification_id")
                         .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_id");
 
                     b.Property<string>("Content")
                         .IsRequired()
@@ -3157,11 +3173,17 @@ namespace MEP_Management_System.Migrations
 
             modelBuilder.Entity("MEP_Management_System.Models.ExpenseCategory", b =>
                 {
+                    b.HasOne("MEP_Management_System.Models.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId");
+
                     b.HasOne("MEP_Management_System.Models.User", "CreatedByUser")
                         .WithMany()
                         .HasForeignKey("CreatedBy")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("expense_categories_created_by_fkey");
+
+                    b.Navigation("Branch");
 
                     b.Navigation("CreatedByUser");
                 });
@@ -3833,6 +3855,10 @@ namespace MEP_Management_System.Migrations
 
             modelBuilder.Entity("MEP_Management_System.Models.Supplier", b =>
                 {
+                    b.HasOne("MEP_Management_System.Models.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId");
+
                     b.HasOne("MEP_Management_System.Models.User", "CreatedByUser")
                         .WithMany()
                         .HasForeignKey("CreatedBy")
@@ -3844,6 +3870,8 @@ namespace MEP_Management_System.Migrations
                         .HasForeignKey("UpdatedBy")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("suppliers_updated_by_fkey");
+
+                    b.Navigation("Branch");
 
                     b.Navigation("CreatedByUser");
 
