@@ -94,5 +94,10 @@ public enum NotificationType
     /// <summary>
     /// Thông báo khi phiếu được tạo mới
     /// </summary>
-    Created = 5
+    Created = 5,
+
+    /// <summary>
+    /// Thông báo hệ thống (Announcement)
+    /// </summary>
+    Announcement = 6
 }

@@ -9,6 +9,7 @@ public partial class SystemNotification
     public string Title { get; set; } = null!;
     public string Content { get; set; } = null!;
     public string Target { get; set; } = null!; // "ALL" / "OWNER" / "STAFF" / "COMMUNITY"
+    public Guid? BranchId { get; set; }
     public bool IsUrgent { get; set; } // BR-48: Override Do-Not-Disturb
     public DateTime? ScheduledAt { get; set; }
     public DateTime? SentAt { get; set; }

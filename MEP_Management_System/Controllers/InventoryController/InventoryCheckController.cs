@@ -1579,8 +1579,8 @@ public class InventoryCheckController : ControllerBase
             var query = _context.Notifications
                 .Include(n => n.TriggeredByUser)
                 .Include(n => n.InventoryCheck)
-                .Where(n => n.BranchId == branchId.Value &&
-                           (n.RecipientUserId == userId || n.RecipientUserId == null))
+                .Where(n => (n.RecipientUserId == userId) || 
+                            (n.RecipientUserId == null && n.BranchId == branchId.Value))
                 .AsQueryable();
 
             if (unreadOnly)
@@ -1590,10 +1590,9 @@ public class InventoryCheckController : ControllerBase
 
             var totalCount = await query.CountAsync();
             var unreadCount = await _context.Notifications
-                .Where(n => n.BranchId == branchId.Value &&
-                           (n.RecipientUserId == userId || n.RecipientUserId == null) &&
-                           !n.IsRead)
-                .CountAsync();
+                .Where(n => (n.RecipientUserId == userId) || 
+                            (n.RecipientUserId == null && n.BranchId == branchId.Value))
+                .CountAsync(n => !n.IsRead);
 
             var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
 

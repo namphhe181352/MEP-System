@@ -72,6 +72,7 @@ public class SystemNotificationsController : ControllerBase
             Title = dto.Title,
             Content = dto.Content,
             Target = dto.Target.ToUpper(),
+            BranchId = dto.BranchId,
             IsUrgent = dto.IsUrgent,
             ScheduledAt = dto.ScheduledAt.HasValue
                 ? DateTime.SpecifyKind(dto.ScheduledAt.Value, DateTimeKind.Unspecified)
@@ -101,6 +102,7 @@ public class SystemNotificationsController : ControllerBase
         if (dto.Content != null) notification.Content = dto.Content;
         if (dto.Target != null) notification.Target = dto.Target.ToUpper();
         if (dto.IsUrgent.HasValue) notification.IsUrgent = dto.IsUrgent.Value;
+        if (dto.BranchId != null) notification.BranchId = dto.BranchId;
         if (dto.ScheduledAt.HasValue)
         {
             notification.ScheduledAt = DateTime.SpecifyKind(dto.ScheduledAt.Value, DateTimeKind.Unspecified);
@@ -123,6 +125,40 @@ public class SystemNotificationsController : ControllerBase
         var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
         notification.Status = "SENT";
         notification.SentAt = now;
+
+        var query = _context.Users.Where(u => u.IsActive == (short)1);
+        if (notification.Target == "OWNER")
+        {
+            query = query.Where(u => u.Roles.Any(r => r.RoleName == "Owner"));
+        }
+        else if (notification.Target == "STAFF")
+        {
+            query = query.Where(u => u.Roles.Any(r => r.RoleName == "Sales Staff" || r.RoleName == "Inventory Staff" || r.RoleName == "SalesStaff" || r.RoleName == "InventoryStaff" || r.RoleName == "Staff"));
+        }
+
+        if (notification.BranchId.HasValue && notification.BranchId.Value != Guid.Empty)
+        {
+            query = query.Where(u => u.StaffAssignments.Any(sa => sa.BranchId == notification.BranchId.Value));
+        }
+
+        var userIds = await query.Select(u => u.UserId).ToListAsync();
+        var adminId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        var defaultBranchId = notification.BranchId ?? await _context.Branches.Where(b => b.IsActive == (short)1).Select(b => b.BranchId).FirstOrDefaultAsync();
+        var fallbackBranchId = defaultBranchId != Guid.Empty ? defaultBranchId : Guid.NewGuid(); // Prevent exception if no branches exist
+
+        var userNotifications = userIds.Select(userId => new Notification
+        {
+            NotificationId = Guid.NewGuid(),
+            Type = NotificationType.Announcement,
+            RecipientUserId = userId,
+            BranchId = fallbackBranchId,
+            Message = $"[{(notification.IsUrgent ? "KHẨN " : "")}{notification.Title}] {notification.Content}",
+            IsRead = false,
+            TriggeredByUserId = adminId,
+            CreatedAt = now
+        }).ToList();
+
+        _context.Notifications.AddRange(userNotifications);
         await _context.SaveChangesAsync();
 
         await _sender.SendAsync(notification.Target, notification.Title, notification.Content, notification.IsUrgent);
