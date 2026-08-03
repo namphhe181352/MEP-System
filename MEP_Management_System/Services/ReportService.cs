@@ -878,7 +878,7 @@ public class ReportService
             throw new UnauthorizedAccessException("Không xác định được chi nhánh từ user hiện tại.");
         }
 
-        var supplier = await _context.Suppliers.FirstOrDefaultAsync(s => s.SupplierId == request.SupplierId);
+        var supplier = await _context.Suppliers.FirstOrDefaultAsync(s => s.SupplierId == request.SupplierId && s.BranchId == branchId);
         if (supplier == null)
         {
             throw new KeyNotFoundException($"Không tìm thấy NCC với ID: {request.SupplierId}");
@@ -896,7 +896,7 @@ public class ReportService
 
         // Lay du lieu stock tickets
         var stQuery0 = _context.StockTickets
-            .Where(st => st.SupplierId == request.SupplierId && st.TicketType == "PURCHASE");
+            .Where(st => st.SupplierId == request.SupplierId && st.BranchId == branchId && st.TicketType == "PURCHASE");
         if (request.PurchaseFromDate.HasValue)
             stQuery0 = stQuery0.Where(st => (st.CompletedAt ?? st.CreatedAt) >= request.PurchaseFromDate.Value);
         if (request.PurchaseToDate.HasValue)
