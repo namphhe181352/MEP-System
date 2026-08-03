@@ -362,8 +362,8 @@ public class AdminAccountsController : ControllerBase
             }
 
             // Kiểm tra xem chi nhánh đã có Owner nào chưa (chỉ được phép có 1 Owner)
-            var hasOwner = await _context.Users.AnyAsync(u => 
-                u.DefaultBranchId == dto.BranchId.Value && 
+            var hasOwner = await _context.Users.AnyAsync(u =>
+                u.DefaultBranchId == dto.BranchId.Value &&
                 u.IsActive == 1 &&
                 u.Roles.Any(r => r.RoleName == "Owner"));
 
@@ -403,7 +403,7 @@ public class AdminAccountsController : ControllerBase
                         ? dto.BranchName.Trim()
                         : $"{dto.FullName.Trim()} Store",
                     Phone = dto.PhoneNumber,
-                    ManagerUserId = newUserId,
+                    ManagerUserId = null,
                     IsActive = 1,
                     CreatedAt = now,
                     UpdatedAt = now
@@ -772,9 +772,9 @@ public class AdminAccountsController : ControllerBase
         var isAssigningOwner = roles.Any(r => r.RoleName.Equals("Owner", StringComparison.OrdinalIgnoreCase));
         if (isAssigningOwner && user.DefaultBranchId.HasValue)
         {
-            var hasOwner = await _context.Users.AnyAsync(u => 
+            var hasOwner = await _context.Users.AnyAsync(u =>
                 u.UserId != user.UserId &&
-                u.DefaultBranchId == user.DefaultBranchId.Value && 
+                u.DefaultBranchId == user.DefaultBranchId.Value &&
                 u.IsActive == 1 &&
                 u.Roles.Any(r => r.RoleName == "Owner"));
 
@@ -935,9 +935,9 @@ public class AdminAccountsController : ControllerBase
         var isOwner = user.Roles.Any(r => r.RoleName.Equals("Owner", StringComparison.OrdinalIgnoreCase));
         if (isOwner)
         {
-            var hasOwner = await _context.Users.AnyAsync(u => 
+            var hasOwner = await _context.Users.AnyAsync(u =>
                 u.UserId != user.UserId &&
-                u.DefaultBranchId == branch.BranchId && 
+                u.DefaultBranchId == branch.BranchId &&
                 u.IsActive == 1 &&
                 u.Roles.Any(r => r.RoleName == "Owner"));
 
