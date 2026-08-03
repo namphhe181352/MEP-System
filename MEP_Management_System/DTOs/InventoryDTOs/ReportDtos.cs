@@ -64,6 +64,7 @@ public class StockMovementReportDto
     public decimal TotalOpeningValue { get; set; }
     public decimal TotalInwardValue { get; set; }
     public decimal TotalOutwardValue { get; set; }
+    public decimal TotalAdjustmentValue { get; set; }
     public decimal TotalClosingValue { get; set; }
 }
 
@@ -79,12 +80,14 @@ public class StockMovementItemDto
     public decimal OpeningStock { get; set; }
     public decimal InwardQuantity { get; set; }
     public decimal OutwardQuantity { get; set; }
+    public decimal AdjustmentQuantity { get; set; }
     public decimal ClosingStock { get; set; }
 
     // Giá trị (theo giá vốn)
     public decimal OpeningValue { get; set; }
     public decimal InwardValue { get; set; }
     public decimal OutwardValue { get; set; }
+    public decimal AdjustmentValue { get; set; }
     public decimal ClosingValue { get; set; }
 }
 
@@ -108,6 +111,8 @@ public class RevenueByTimeReportDto
     // Tổng cộng
     public decimal TotalRevenue { get; set; }
     public int TotalOrders { get; set; }
+    public decimal TotalGrossProfit { get; set; }
+    public decimal AverageProfitMargin { get; set; }
     public decimal AverageOrderValue { get; set; }
 }
 
@@ -124,8 +129,9 @@ public class RevenueTimeItemDto
     public string TimeKey { get; set; } = null!;
     public decimal Revenue { get; set; }
     public int Orders { get; set; }
-    public decimal AverageValue { get; set; }
-    public decimal GrowthPercent { get; set; } // So với kỳ trước
+    public decimal TotalCost { get; set; }
+    public decimal GrossProfit { get; set; }
+    public decimal ProfitMargin { get; set; }
 }
 
 #endregion

@@ -1095,7 +1095,7 @@ public class InventoryCheckController : ControllerBase
                         UserId = userId.Value,
                         TicketType = discrepancy > 0 ? "BALANCE_ADJUST" : "WRITE_OFF",
                         Status = "COMPLETED",
-                        Notes = $"Sinh tự động từ phiếu kiểm kê #{ticket.TicketCode}",
+                        Notes = $"INVENTORY_ADJUSTMENT | Sinh tự động từ phiếu kiểm kê #{ticket.TicketCode}",
                         CreatedAt = DateTime.UtcNow
                     };
 
@@ -1140,7 +1140,9 @@ public class InventoryCheckController : ControllerBase
             ticket.Status = InventoryCheckTicketStatus.Completed;
             ticket.ApprovedByUserId = userId;
             ticket.ApprovedAt = DateTime.UtcNow;
-            ticket.LinkedStockTicketId = linkedStockTicketIds.FirstOrDefault();
+            ticket.LinkedStockTicketId = linkedStockTicketIds.Count > 0
+                ? linkedStockTicketIds.FirstOrDefault()
+                : null;
 
             await _context.SaveChangesAsync();
 
@@ -1583,7 +1585,7 @@ public class InventoryCheckController : ControllerBase
             var query = _context.Notifications
                 .Include(n => n.TriggeredByUser)
                 .Include(n => n.InventoryCheck)
-                .Where(n => (n.RecipientUserId == userId) || 
+                .Where(n => (n.RecipientUserId == userId) ||
                             (n.RecipientUserId == null && n.BranchId == branchId.Value))
                 .AsQueryable();
 
@@ -1594,7 +1596,7 @@ public class InventoryCheckController : ControllerBase
 
             var totalCount = await query.CountAsync();
             var unreadCount = await _context.Notifications
-                .Where(n => (n.RecipientUserId == userId) || 
+                .Where(n => (n.RecipientUserId == userId) ||
                             (n.RecipientUserId == null && n.BranchId == branchId.Value))
                 .CountAsync(n => !n.IsRead);
 
@@ -1953,7 +1955,12 @@ th {{ background: #f0f0f0; }}
     private async Task<string> GenerateStockTicketCodeAsync()
     {
         const string prefix = "ADJ";
-        const int maxRetries = 5;
+        const int maxRetries = 10;
+
+        var localTicketCodes = _context.ChangeTracker.Entries<StockTicket>()
+            .Where(e => e.Entity.TicketCode != null && e.Entity.TicketCode.StartsWith(prefix))
+            .Select(e => e.Entity.TicketCode!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         for (int attempt = 0; attempt < maxRetries; attempt++)
         {
@@ -1975,15 +1982,17 @@ th {{ background: #f0f0f0; }}
                     }
                 }
 
-                var newCode = $"{prefix}-{DateTime.UtcNow:yyyyMMdd}-{nextSequence:D4}";
+                var candidate = $"{prefix}-{DateTime.UtcNow:yyyyMMdd}-{nextSequence:D4}";
+                var finalCandidate = candidate;
 
-                var exists = await _context.StockTickets
-                    .AnyAsync(t => t.TicketCode == newCode);
-
-                if (!exists)
+                while (localTicketCodes.Contains(finalCandidate) || await _context.StockTickets.AnyAsync(t => t.TicketCode == finalCandidate))
                 {
-                    return newCode;
+                    nextSequence++;
+                    finalCandidate = $"{prefix}-{DateTime.UtcNow:yyyyMMdd}-{nextSequence:D4}";
                 }
+
+                localTicketCodes.Add(finalCandidate);
+                return finalCandidate;
             }
             catch (DbUpdateException)
             {
@@ -1991,7 +2000,7 @@ th {{ background: #f0f0f0; }}
             }
         }
 
-        return $"{prefix}-{Guid.NewGuid().ToString("N")[..8].ToUpper()}";
+        return $"{prefix}-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpper()}";
     }
 
     #endregion
