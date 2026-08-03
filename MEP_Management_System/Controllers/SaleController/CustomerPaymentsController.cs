@@ -31,6 +31,30 @@ public class CustomerPaymentsController : ControllerBase
         return Guid.TryParse(val, out var id) ? id : throw new System.Exception("userId not found");
     }
 
+    private async Task TryWriteSystemLog(Guid userId, string action, string tableName,
+        string entityType, Guid entityId, string description)
+    {
+        try
+        {
+            var log = new SystemLog
+            {
+                LogId = Guid.NewGuid(),
+                UserId = userId,
+                Action = action,
+                TableName = tableName,
+                EntityType = entityType,
+                EntityId = entityId,
+                Description = description,
+                Level = "INFO",
+                Source = "CustomerPaymentsController",
+                Timestamp = DateTime.UtcNow
+            };
+            _context.SystemLogs.Add(log);
+            await _context.SaveChangesAsync();
+        }
+        catch { /* Silent */ }
+    }
+
     // GetUserId is available for future use when Payment.UserId is added
 
     /// <summary>
@@ -86,6 +110,14 @@ public class CustomerPaymentsController : ControllerBase
         }
 
         await _context.SaveChangesAsync();
+
+        await TryWriteSystemLog(
+            GetUserId(),
+            "RECORD_CUSTOMER_PAYMENT",
+            "payments",
+            "CustomerPayment",
+            payment.PaymentId,
+            $"Ghi nhận thanh toán KH {customer.CustomerName} - Số tiền: {payment.Amount:N0}đ - PTTT: {payment.Method}");
 
         var updatedDebt = await _customerDebtService.CalculateCurrentDebtAsync(customerId);
 

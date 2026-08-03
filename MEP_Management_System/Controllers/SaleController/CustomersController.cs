@@ -36,6 +36,30 @@ public class CustomersController : ControllerBase
     private Guid GetUserId() =>
         Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value ?? throw new Exception("userId not found"));
 
+    private async Task TryWriteSystemLog(Guid userId, string action, string tableName,
+        string entityType, Guid entityId, string description)
+    {
+        try
+        {
+            var log = new SystemLog
+            {
+                LogId = Guid.NewGuid(),
+                UserId = userId,
+                Action = action,
+                TableName = tableName,
+                EntityType = entityType,
+                EntityId = entityId,
+                Description = description,
+                Level = "INFO",
+                Source = "CustomersController",
+                Timestamp = DateTime.UtcNow
+            };
+            _context.SystemLogs.Add(log);
+            await _context.SaveChangesAsync();
+        }
+        catch { /* Silent */ }
+    }
+
     // GET /api/pos/customers
     [HttpGet]
     public async Task<ActionResult<PageResultDto<CustomerDto>>> GetCustomers(
@@ -113,6 +137,14 @@ public class CustomersController : ControllerBase
         _context.Customers.Add(customer);
         await _context.SaveChangesAsync();
 
+        await TryWriteSystemLog(
+            GetUserId(),
+            "CREATE_CUSTOMER",
+            "customers",
+            "Customer",
+            customer.CustomerId,
+            $"Tạo khách hàng {customer.CustomerName} - SĐT: {customer.PhoneNumber ?? "—"}");
+
         return CreatedAtAction(nameof(GetCustomer), new { id = customer.CustomerId }, _mapper.Map<CustomerDto>(customer));
     }
 
@@ -134,6 +166,14 @@ public class CustomersController : ControllerBase
 
         _mapper.Map(request, customer);
         await _context.SaveChangesAsync();
+
+        await TryWriteSystemLog(
+            GetUserId(),
+            "UPDATE_CUSTOMER",
+            "customers",
+            "Customer",
+            customer.CustomerId,
+            $"Cập nhật khách hàng {customer.CustomerName} - SĐT: {customer.PhoneNumber ?? "—"}");
 
         return Ok(_mapper.Map<CustomerDto>(customer));
     }

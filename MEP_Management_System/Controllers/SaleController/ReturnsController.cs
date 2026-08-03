@@ -37,6 +37,30 @@ public class ReturnsController : ControllerBase
         return Guid.Parse(userIdStr ?? throw new Exception("userId not found in token"));
     }
 
+    private async Task TryWriteSystemLog(Guid userId, string action, string tableName,
+        string entityType, Guid entityId, string description)
+    {
+        try
+        {
+            var log = new SystemLog
+            {
+                LogId = Guid.NewGuid(),
+                UserId = userId,
+                Action = action,
+                TableName = tableName,
+                EntityType = entityType,
+                EntityId = entityId,
+                Description = description,
+                Level = "INFO",
+                Source = "ReturnsController",
+                Timestamp = DateTime.UtcNow
+            };
+            _context.SystemLogs.Add(log);
+            await _context.SaveChangesAsync();
+        }
+        catch { /* Silent */ }
+    }
+
     private async Task<string> GenCodeAsync(string prefix)
     {
         var today = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
@@ -261,6 +285,14 @@ public class ReturnsController : ControllerBase
             _context.ReturnOrders.Add(entity);
             await _context.SaveChangesAsync();
 
+            await TryWriteSystemLog(
+                GetUserId(),
+                "CREATE_RETURN_ORDER",
+                "return_orders",
+                "ReturnOrder",
+                entity.ReturnOrderId,
+                $"Tạo phiếu đổi trả {entity.ReturnCode} - {entity.RefundMethod ?? "—"}");
+
             var dto = _mapper.Map<ReturnOrderDto>(entity);
             return CreatedAtAction(nameof(GetReturn), new { id = entity.ReturnOrderId }, dto);
         }
@@ -466,6 +498,14 @@ public class ReturnsController : ControllerBase
 
         await _context.SaveChangesAsync();
 
+        await TryWriteSystemLog(
+            GetUserId(),
+            "FINALIZE_RETURN_ORDER",
+            "return_orders",
+            "ReturnOrder",
+            ret.ReturnOrderId,
+            $"Hoàn tất đổi trả {ret.ReturnCode} - Hoàn tiền: {ret.RefundAmount:N0}đ");
+
         var dto = _mapper.Map<ReturnOrderDto>(ret);
         return Ok(dto);
     }
@@ -487,10 +527,45 @@ public class ReturnsController : ControllerBase
         ret.Status = "Cancelled";
         await _context.SaveChangesAsync();
 
+        await TryWriteSystemLog(
+            GetUserId(),
+            "CANCEL_RETURN_ORDER",
+            "return_orders",
+            "ReturnOrder",
+            ret.ReturnOrderId,
+            $"Hủy phiếu đổi trả {ret.ReturnCode}");
+
         return Ok(new { message = "Đã hủy phiếu đổi trả." });
     }
 
-    // GET /api/pos/returns/invoice/{invoiceId}/eligible-items
+    // GET /api/pos/returns/return-policies
+    /// <summary>
+    /// Trả về danh sách chính sách đổi/trả theo nhóm hàng của chi nhánh hiện tại.
+    /// </summary>
+    [HttpGet("return-policies")]
+    public async Task<ActionResult<List<CategoryPolicyDto>>> GetReturnPolicies()
+    {
+        var branchId = GetBranchId();
+
+        var config = await _context.SystemConfigs
+            .FirstOrDefaultAsync(c => c.BranchId == branchId && c.ConfigKey == "CATEGORY_RETURN_POLICIES");
+
+        var policies = new List<CategoryPolicyDto>();
+        if (config != null && !string.IsNullOrWhiteSpace(config.ConfigValue))
+        {
+            try
+            {
+                var deserialized = JsonSerializer.Deserialize<List<CategoryPolicyDto>>(config.ConfigValue,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (deserialized != null) policies = deserialized;
+            }
+            catch { }
+        }
+
+        return Ok(policies);
+    }
+
+    // GET /api/pos/returns/invoice/{invoiceId:guid}/eligible-items
     /// <summary>
     /// Trả về danh sách sản phẩm trong hóa đơn kèm trạng thái được phép đổi/trả.
     /// Mỗi item được đánh giá độc lập theo policy của category riêng.

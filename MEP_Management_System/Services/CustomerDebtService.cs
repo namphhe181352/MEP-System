@@ -6,6 +6,8 @@ namespace MEP_Management_System.Services;
 
 public class CustomerDebtService
 {
+    private static readonly string[] CompletedStatuses = { "COMPLETED", "Completed", "PAID", "Paid", "DONE", "Done" };
+
     private readonly MEPDatabaseContext _context;
 
     public CustomerDebtService(MEPDatabaseContext context)
@@ -16,7 +18,7 @@ public class CustomerDebtService
     public async Task<CustomerDebtSummary> CalculateCurrentDebtAsync(Guid customerId)
     {
         var totalInvoiced = await _context.Invoices
-            .Where(i => i.Order.CustomerId == customerId && i.Status == "COMPLETED")
+            .Where(i => i.Order.CustomerId == customerId && CompletedStatuses.Contains(i.Status))
             .SumAsync(i => (decimal?)i.TotalAmount) ?? 0m;
 
         var totalPaid = await _context.Payments
@@ -24,7 +26,7 @@ public class CustomerDebtService
             .SumAsync(p => (decimal?)(p.Amount - (p.ChangeAmount ?? 0))) ?? 0m;
 
         var totalRefunded = await _context.RefundRecords
-            .Where(r => r.CustomerId == customerId && r.Status == "COMPLETED")
+            .Where(r => r.CustomerId == customerId && CompletedStatuses.Contains(r.Status))
             .SumAsync(r => (decimal?)r.RefundAmount) ?? 0m;
 
         var raw = totalInvoiced - totalPaid - totalRefunded;
@@ -46,7 +48,7 @@ public class CustomerDebtService
         if (idList.Count == 0) return new Dictionary<Guid, decimal>();
 
         var invoiced = await _context.Invoices
-            .Where(i => i.Order.CustomerId.HasValue && idList.Contains(i.Order.CustomerId.Value) && i.Status == "COMPLETED")
+            .Where(i => i.Order.CustomerId.HasValue && idList.Contains(i.Order.CustomerId.Value) && CompletedStatuses.Contains(i.Status))
             .GroupBy(i => i.Order.CustomerId!.Value)
             .Select(g => new { CustomerId = g.Key, Total = g.Sum(i => (decimal?)i.TotalAmount) ?? 0m })
             .ToDictionaryAsync(x => x.CustomerId, x => x.Total);
@@ -59,7 +61,7 @@ public class CustomerDebtService
             .ToDictionaryAsync(x => x.CustomerId, x => x.Total);
 
         var refunded = await _context.RefundRecords
-            .Where(r => idList.Contains(r.CustomerId) && r.Status == "COMPLETED")
+            .Where(r => idList.Contains(r.CustomerId) && CompletedStatuses.Contains(r.Status))
             .GroupBy(r => r.CustomerId)
             .Select(g => new { CustomerId = g.Key, Total = g.Sum(r => (decimal?)r.RefundAmount) ?? 0m })
             .ToDictionaryAsync(x => x.CustomerId, x => x.Total);

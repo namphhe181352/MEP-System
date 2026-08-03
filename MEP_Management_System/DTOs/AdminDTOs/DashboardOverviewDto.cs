@@ -73,10 +73,13 @@ public class DashboardOverviewDto
     public int PendingExpenseCount { get; set; }
     public decimal PendingExpenseAmount { get; set; }
     public int PendingOrderCount { get; set; }
+    public decimal PendingOrderAmount { get; set; }
     public decimal TotalSupplierDebt { get; set; }
+    public decimal SupplierDebtPaidLast30Days { get; set; }
     public decimal RepaymentCoverageRatio { get; set; }
 
     public List<DashboardTrendPointDto> RevenueTrendLast12Months { get; set; } = new();
+    public List<DashboardTrendPointDto> RevenueTrendLast30Days { get; set; } = new();
     public List<DashboardTrendPointDto> ExpenseTrendLast12Months { get; set; } = new();
     public List<DashboardTrendPointDto> RefundTrendLast12Months { get; set; } = new();
     public List<DashboardTrendPointDto> CustomerGrowthTrendLast12Months { get; set; } = new();
