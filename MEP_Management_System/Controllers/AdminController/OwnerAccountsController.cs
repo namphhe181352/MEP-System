@@ -290,17 +290,7 @@ public class OwnerAccountsController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(dto.Email))
         {
-            if (!dto.Email.Trim().EndsWith("@system.local", StringComparison.OrdinalIgnoreCase))
-            {
-                return BadRequest(new ErrorResponseDto
-                {
-                    Error = new ErrorDetail
-                    {
-                        Code = "MSG-BR44",
-                        Message = "Email nhân viên phải có domain @system.local."
-                    }
-                });
-            }
+
             if (await _context.Users.AnyAsync(u => u.Email.ToLower() == dto.Email.Trim().ToLower() && u.UserId != id))
             {
                 return BadRequest(new ErrorResponseDto
