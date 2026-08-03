@@ -54,6 +54,46 @@ namespace MEP_Management_System.Controllers
 
             return Ok(new { success = true, message = "Default branch changed", defaultBranchId = branchId });
         }
+
+        /// <summary>
+        /// Lấy danh sách thông báo hệ thống dành cho người dùng hiện tại
+        /// GET /api/users/me/system-notifications
+        /// </summary>
+        [HttpGet("me/system-notifications")]
+        public async Task<IActionResult> GetSystemNotifications([FromQuery] int days = 7)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+                return Unauthorized(new { message = "User not authenticated" });
+
+            var roles = User.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value.ToUpper()).ToList();
+            var isOwner = roles.Contains("OWNER");
+            var isStaff = roles.Contains("STAFF") || roles.Contains("SALESSTAFF") || roles.Contains("INVENTORYSTAFF");
+
+            var validTargets = new List<string> { "ALL" };
+            if (isOwner) validTargets.Add("OWNER");
+            if (isStaff) validTargets.Add("STAFF");
+
+            var cutoff = DateTime.UtcNow.AddDays(-days);
+
+            var notifications = await _context.SystemNotifications
+                .Where(n => n.Status == "SENT" && n.SentAt != null && n.SentAt >= cutoff)
+                .Where(n => validTargets.Contains(n.Target.ToUpper()))
+                .OrderByDescending(n => n.SentAt)
+                .Select(n => new
+                {
+                    notificationId = n.NotificationId,
+                    title = n.Title,
+                    content = n.Content,
+                    isUrgent = n.IsUrgent,
+                    target = n.Target,
+                    sentAt = n.SentAt,
+                    type = "System"
+                })
+                .ToListAsync();
+
+            return Ok(new { success = true, data = notifications });
+        }
     }
 }
 

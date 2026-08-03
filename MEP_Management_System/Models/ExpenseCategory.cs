@@ -17,6 +17,8 @@ public partial class ExpenseCategory
     /// <summary>1=Active, 0=Inactive.</summary>
     public short IsActive { get; set; } = 1;
 
+    public Guid? BranchId { get; set; }
+
     /// <summary>Người tạo nhóm chi phí.</summary>
     public Guid? CreatedBy { get; set; }
 
@@ -24,6 +26,8 @@ public partial class ExpenseCategory
     public DateTime? CreatedAt { get; set; }
 
     // ======= Navigation =======
+    public virtual Branch? Branch { get; set; }
+    
     public virtual User? CreatedByUser { get; set; }
 
     public virtual ICollection<ExpenseVoucher> ExpenseVouchers { get; set; } = new List<ExpenseVoucher>();

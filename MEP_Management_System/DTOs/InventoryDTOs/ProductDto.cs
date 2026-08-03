@@ -16,27 +16,10 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string ProductName { get; set; } = null!;
         public string? Barcode { get; set; }
         public string Unit { get; set; } = null!;
-
-        /// <summary>
-        /// Taxonomy ID for Brand (new approach). If set, use this instead of BrandName string.
-        /// </summary>
         public Guid? BrandTaxonomyId { get; set; }
-
-        /// <summary>
-        /// Taxonomy ID for Category (new approach). If set, use this instead of CategoryName string.
-        /// </summary>
         public Guid? CategoryTaxonomyId { get; set; }
-
-        /// <summary>
-        /// Legacy field: Brand name as string.
-        /// Use BrandTaxonomyId for new products.
-        /// </summary>
         public string? BrandName { get; set; }
 
-        /// <summary>
-        /// Legacy field: Category name as string.
-        /// Use CategoryTaxonomyId for new products.
-        /// </summary>
         public string? CategoryName { get; set; }
         public Guid? SupplierId { get; set; }
         public string? SupplierName { get; set; }
@@ -123,20 +106,35 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
 
     public class UpdateProductDto
     {
+        public string ProductCode { get; set; } = null!;
         public string ProductName { get; set; } = null!;
         public string? Barcode { get; set; }
+        public string Unit { get; set; } = null!;
         public string? Specification { get; set; }
         public string? ItemType { get; set; }
         public string? BrandName { get; set; }
         public string? CategoryName { get; set; }
         public Guid? SupplierId { get; set; }
+        public decimal CostPrice { get; set; }
+        public decimal SalePrice { get; set; }
+        public decimal ActualStock { get; set; }
+        public decimal ReservedStock { get; set; }
+        public decimal AvailableStock { get; set; }
+        public decimal? MinimumStock { get; set; }
+        public decimal? MaximumStock { get; set; }
+        public string? ShelfLocation { get; set; }
+        public List<string> ShelfLocations { get; set; } = new();
         public decimal? Weight { get; set; }
         public string? WeightUnit { get; set; }
         public decimal? Width { get; set; }
         public decimal? Length { get; set; }
         public decimal? Height { get; set; }
         public string? SizeUnit { get; set; }
-        public List<ProductMediaDto> Medias { get; set; } = new();
+        public string? ImageUrl { get; set; }
+        public List<string> Images { get; set; } = new();
+        public bool DirectSale { get; set; }
+        public List<ProductAttributeDto> Attributes { get; set; } = new();
+        public List<ProductConversionUnitDto> ConversionUnits { get; set; } = new();
     }
 
     public class ProductParameters

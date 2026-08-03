@@ -679,11 +679,16 @@ namespace MEP_Management_System.Controllers
         /// </summary>
         [HttpGet("categories")]
         [HasPermission(PermissionConstants.EXPENSE_VIEW)]
-        public async Task<IActionResult> GetExpenseCategories()
+        public async Task<IActionResult> GetExpenseCategories([FromQuery] Guid? branchId = null)
         {
             try
             {
+                var branchIdResolved = await ResolveBranchId(branchId);
+                if (branchIdResolved == null)
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Không xác định được chi nhánh." });
+
                 var categories = await _context.ExpenseCategories
+                    .Where(c => c.BranchId == branchIdResolved)
                     .Include(c => c.ExpenseVouchers)
                     .OrderBy(c => c.CategoryName)
                     .ToListAsync();
@@ -734,6 +739,10 @@ namespace MEP_Management_System.Controllers
                     });
                 }
 
+                var branchIdResolved = await ResolveBranchId();
+                if (branchIdResolved == null)
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Không xác định được chi nhánh." });
+
                 if (string.IsNullOrWhiteSpace(dto.CategoryName))
                 {
                     return BadRequest(new ApiResponse<object>
@@ -743,11 +752,9 @@ namespace MEP_Management_System.Controllers
                     });
                 }
 
-                var trimmedName = dto.CategoryName.Trim();
-
-                // Kiểm tra trùng tên
+                // Kiểm tra tên trùng
                 var existing = await _context.ExpenseCategories
-                    .FirstOrDefaultAsync(c => c.CategoryName.ToLower() == trimmedName.ToLower());
+                    .FirstOrDefaultAsync(c => c.CategoryName.ToLower() == dto.CategoryName.Trim().ToLower() && c.BranchId == branchIdResolved);
 
                 if (existing != null)
                 {
@@ -755,19 +762,18 @@ namespace MEP_Management_System.Controllers
                     {
                         Success = false,
                         Message = "Tên nhóm chi phí đã tồn tại.",
-                        Errors = new() { $"Danh mục '{trimmedName}' đã tồn tại." }
+                        Errors = new() { "Vui lòng chọn tên khác." }
                     });
                 }
-
-                var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
                 var category = new ExpenseCategory
                 {
                     CategoryId = Guid.NewGuid(),
-                    CategoryName = trimmedName,
+                    CategoryName = dto.CategoryName.Trim(),
                     IsActive = 1,
+                    BranchId = branchIdResolved,
                     CreatedBy = currentUserId,
-                    CreatedAt = currentTime
+                    CreatedAt = DateTime.UtcNow
                 };
 
                 _context.ExpenseCategories.Add(category);
@@ -836,9 +842,13 @@ namespace MEP_Management_System.Controllers
 
                 var trimmedName = dto.CategoryName.Trim();
 
+                var branchIdResolved = await ResolveBranchId();
+                if (branchIdResolved == null)
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Không xác định được chi nhánh." });
+
                 var category = await _context.ExpenseCategories
                     .Include(c => c.ExpenseVouchers)
-                    .FirstOrDefaultAsync(c => c.CategoryId == id);
+                    .FirstOrDefaultAsync(c => c.CategoryId == id && c.BranchId == branchIdResolved);
 
                 if (category == null)
                 {
@@ -851,7 +861,7 @@ namespace MEP_Management_System.Controllers
 
                 // Kiểm tra trùng tên (trừ chính nó)
                 var duplicate = await _context.ExpenseCategories
-                    .FirstOrDefaultAsync(c => c.CategoryId != id &&
+                    .FirstOrDefaultAsync(c => c.CategoryId != id && c.BranchId == branchIdResolved &&
                         c.CategoryName.ToLower() == trimmedName.ToLower());
 
                 if (duplicate != null)
@@ -921,9 +931,13 @@ namespace MEP_Management_System.Controllers
                     });
                 }
 
+                var branchIdResolved = await ResolveBranchId();
+                if (branchIdResolved == null)
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Không xác định được chi nhánh." });
+
                 var category = await _context.ExpenseCategories
                     .Include(c => c.ExpenseVouchers)
-                    .FirstOrDefaultAsync(c => c.CategoryId == id);
+                    .FirstOrDefaultAsync(c => c.CategoryId == id && c.BranchId == branchIdResolved);
 
                 if (category == null)
                 {

@@ -675,8 +675,7 @@ public class OwnerStaffController : ControllerBase
                 IsVerified = true,
                 Status = "ACTIVE",
                 CreatedAt = now,
-                CreatedBy = ownerId.Value,
-                DefaultBranchId = ownerBranchId
+                CreatedBy = ownerId.Value
             };
 
             _context.Users.Add(user);
@@ -706,6 +705,12 @@ public class OwnerStaffController : ControllerBase
             }
 
             await _context.SaveChangesAsync();
+
+            // Dùng raw SQL để update DefaultBranchId vì EF không map đúng
+            await _context.Database.ExecuteSqlRawAsync(
+                "UPDATE users SET \"DefaultBranchId\" = {0} WHERE user_id = {1}",
+                ownerBranchId, user.UserId);
+
             await transaction.CommitAsync();
 
             var createdUser = await _context.Users

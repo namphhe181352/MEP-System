@@ -26,7 +26,8 @@ namespace MEP_Management_System.Tests.Controllers
 
         private AdminDashboardController CreateController(MEPDatabaseContext context)
         {
-            return new AdminDashboardController(context);
+            var customerDebtService = new MEP_Management_System.Services.CustomerDebtService(context);
+            return new AdminDashboardController(context, customerDebtService);
         }
 
         [Fact]
@@ -47,7 +48,7 @@ namespace MEP_Management_System.Tests.Controllers
             context.Orders.Add(new Order { OrderId = orderId, OrderCode = "O1", BranchId = branchId, PaymentMethod = "TRANSFER", TotalAmount = 100000, Status = "COMPLETED" });
             context.Invoices.Add(new Invoice { InvoiceId = Guid.NewGuid(), InvoiceCode = "I1", OrderId = orderId, Status = "COMPLETED", TotalAmount = 50000, CreatedAt = DateTime.UtcNow });
             
-            context.Customers.Add(new Customer { CustomerId = Guid.NewGuid(), BranchId = branchId, CurrentDebt = 20000, DebtLimit = 10000, CustomerName = "Test" });
+            context.Customers.Add(new Customer { CustomerId = Guid.NewGuid(), BranchId = branchId, Status = 1, CurrentDebt = 20000, DebtLimit = 10000, CustomerName = "Test" });
 
             await context.SaveChangesAsync();
 

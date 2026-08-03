@@ -24,6 +24,7 @@ public class AdminAccountDetailDto
     public string? SubscriptionPlan { get; set; }
     public Guid? CreatedBy { get; set; }
     public Guid? DefaultBranchId { get; set; }
+    public string? DefaultBranchName { get; set; }
     public List<AdminRoleDto> Roles { get; set; } = new();
     public List<string> PermissionCodes { get; set; } = new();
 }

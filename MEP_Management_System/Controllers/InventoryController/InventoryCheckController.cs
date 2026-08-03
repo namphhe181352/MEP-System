@@ -1040,19 +1040,7 @@ public class InventoryCheckController : ControllerBase
                 .Where(bp => bp.BranchId == branchId.Value && productIds.Contains(bp.ProductId))
                 .ToDictionaryAsync(bp => bp.ProductId);
 
-            // Generate StockTicket for adjustments
-            var stockTicket = new StockTicket
-            {
-                StockTicketId = Guid.NewGuid(),
-                TicketCode = await GenerateStockTicketCodeAsync(),
-                BranchId = branchId.Value,
-                UserId = userId.Value,
-                TicketType = "ADJUSTMENT",
-                Status = "COMPLETED",
-                Notes = $"Điều chỉnh tồn kho từ phiếu kiểm kê {ticket.TicketCode} (Phiên đếm #{ticket.RecountNumber + 1})",
-                CreatedAt = DateTime.UtcNow
-            };
-            _context.StockTickets.Add(stockTicket);
+            var linkedStockTicketIds = new List<Guid>();
 
             foreach (var detail in ticket.Details)
             {
@@ -1099,16 +1087,32 @@ public class InventoryCheckController : ControllerBase
                 // Ghi nhận điều chỉnh vào StockTicket nếu có chênh lệch
                 if (discrepancy != 0)
                 {
-                    var stockTicketItem = new StockTicketItem
+                    var directionTicket = new StockTicket
+                    {
+                        StockTicketId = Guid.NewGuid(),
+                        TicketCode = await GenerateStockTicketCodeAsync(),
+                        BranchId = branchId.Value,
+                        UserId = userId.Value,
+                        TicketType = discrepancy > 0 ? "BALANCE_ADJUST" : "WRITE_OFF",
+                        Status = "COMPLETED",
+                        Notes = $"Sinh tự động từ phiếu kiểm kê #{ticket.TicketCode}",
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    var directionItem = new StockTicketItem
                     {
                         TicketItemId = Guid.NewGuid(),
-                        StockTicketId = stockTicket.StockTicketId,
+                        StockTicketId = directionTicket.StockTicketId,
                         BranchProductId = branchProduct.BranchProductId,
                         SystemQuantity = detail.SystemQuantity,
                         ActualQuantity = detail.ActualQuantity,
-                        Discrepancy = discrepancy // Phần chênh lệch do kiểm kê
+                        Discrepancy = Math.Abs(discrepancy),
+                        UnitPrice = branchProduct.CostPrice
                     };
-                    _context.StockTicketItems.Add(stockTicketItem);
+
+                    _context.StockTickets.Add(directionTicket);
+                    _context.StockTicketItems.Add(directionItem);
+                    linkedStockTicketIds.Add(directionTicket.StockTicketId);
                 }
 
                 // Log khi phát hiện có giao dịch bán/nhập xen vào trong lúc kiểm kê
@@ -1136,7 +1140,7 @@ public class InventoryCheckController : ControllerBase
             ticket.Status = InventoryCheckTicketStatus.Completed;
             ticket.ApprovedByUserId = userId;
             ticket.ApprovedAt = DateTime.UtcNow;
-            ticket.LinkedStockTicketId = stockTicket.StockTicketId;
+            ticket.LinkedStockTicketId = linkedStockTicketIds.FirstOrDefault();
 
             await _context.SaveChangesAsync();
 
@@ -1579,8 +1583,8 @@ public class InventoryCheckController : ControllerBase
             var query = _context.Notifications
                 .Include(n => n.TriggeredByUser)
                 .Include(n => n.InventoryCheck)
-                .Where(n => n.BranchId == branchId.Value &&
-                           (n.RecipientUserId == userId || n.RecipientUserId == null))
+                .Where(n => (n.RecipientUserId == userId) || 
+                            (n.RecipientUserId == null && n.BranchId == branchId.Value))
                 .AsQueryable();
 
             if (unreadOnly)
@@ -1590,10 +1594,9 @@ public class InventoryCheckController : ControllerBase
 
             var totalCount = await query.CountAsync();
             var unreadCount = await _context.Notifications
-                .Where(n => n.BranchId == branchId.Value &&
-                           (n.RecipientUserId == userId || n.RecipientUserId == null) &&
-                           !n.IsRead)
-                .CountAsync();
+                .Where(n => (n.RecipientUserId == userId) || 
+                            (n.RecipientUserId == null && n.BranchId == branchId.Value))
+                .CountAsync(n => !n.IsRead);
 
             var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
 
