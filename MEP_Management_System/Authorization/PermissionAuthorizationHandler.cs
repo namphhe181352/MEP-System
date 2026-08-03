@@ -25,7 +25,12 @@ public class PermissionAuthorizationHandler : AuthorizationHandler<PermissionReq
         AuthorizationHandlerContext context,
         PermissionRequirement requirement)
     {
-        if (context.User.IsInRole(PermissionConstants.OWNER_ROLE))
+        // Case-insensitive Owner bypass: hỗ trợ cả "Owner" và "owner" từ DB/JWT
+        var isOwner = context.User.Claims
+            .Where(c => c.Type == ClaimTypes.Role || c.Type == "role")
+            .Any(c => string.Equals(c.Value, PermissionConstants.OWNER_ROLE, System.StringComparison.OrdinalIgnoreCase));
+
+        if (isOwner)
         {
             // Owner được full quyền toàn bộ hệ thống Cửa hàng, NHƯNG tuyệt đối KHÔNG có quyền Admin (Trang quản trị cấp cao).
             if (!requirement.PermissionCode.StartsWith("ADMIN_"))

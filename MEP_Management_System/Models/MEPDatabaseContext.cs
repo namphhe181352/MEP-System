@@ -1563,6 +1563,8 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasColumnName("branch_id");
             entity.Property(e => e.InventoryCheckId)
                 .HasColumnName("inventory_check_id");
+            entity.Property(e => e.ReferenceId)
+                .HasColumnName("reference_id");
             entity.Property(e => e.TriggeredByUserId)
                 .HasColumnName("triggered_by_user_id");
             entity.Property(e => e.Message)
@@ -1598,6 +1600,13 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasForeignKey(d => d.BranchId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("notifications_branch_id_fkey");
+
+            entity.Property(e => e.ReferenceId)
+                .HasColumnName("reference_id");
+
+            entity.Property(e => e.ReferenceType)
+                .HasMaxLength(100)
+                .HasColumnName("reference_type");
         });
 
 

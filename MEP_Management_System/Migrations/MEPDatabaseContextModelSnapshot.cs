@@ -1061,6 +1061,13 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("recipient_user_id");
 
+                    b.Property<Guid?>("ReferenceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reference_id");
+
+                    b.Property<string>("ReferenceType")
+                        .HasColumnType("text");
+
                     b.Property<Guid>("TriggeredByUserId")
                         .HasColumnType("uuid")
                         .HasColumnName("triggered_by_user_id");

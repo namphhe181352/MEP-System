@@ -17,6 +17,7 @@ public class AdminDashboardController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
     private readonly CustomerDebtService _customerDebtService;
+    private static readonly string[] CompletedStatuses = { "COMPLETED", "Completed", "PAID", "Paid", "DONE", "Done" };
 
     public AdminDashboardController(MEPDatabaseContext context, CustomerDebtService customerDebtService)
     {
@@ -79,38 +80,34 @@ public class AdminDashboardController : ControllerBase
         var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
         var thirtyDaysAgo = now.AddDays(-30);
         var last7Days = now.AddDays(-7);
+        var last24Hours = now.AddDays(-1);
+        var today = now.Date;
+        var yearStart = new DateTime(now.Year, 1, 1);
+        var twelveMonthsAgo = new DateTime(now.Year, now.Month, 1).AddMonths(-11);
 
-        var branchId = await _context.Branches.Where(b => b.IsActive == 1).Select(b => (Guid?)b.BranchId).FirstOrDefaultAsync();
-        if (branchId == null) return NotFound("No active branch found.");
-
-        var totalOrdersLast30Days = await _context.Orders.CountAsync(o => o.BranchId == branchId && (o.Status == "COMPLETED" || o.Status == "Completed") && o.CreatedAt >= thirtyDaysAgo);
-        
-        var totalRevenueLast30Days = await _context.Invoices
-            .Where(i => i.Order.BranchId == branchId && (i.Status == "COMPLETED" || i.Status == "Completed") && i.CreatedAt >= thirtyDaysAgo)
-            .SumAsync(i => (decimal?)i.TotalAmount) ?? 0m;
-            
-        var totalOrdersLast7Days = await _context.Orders.CountAsync(o => o.BranchId == branchId && (o.Status == "COMPLETED" || o.Status == "Completed") && o.CreatedAt >= last7Days);
-        var totalRevenueLast7Days = await _context.Invoices
-            .Where(i => i.Order.BranchId == branchId && (i.Status == "COMPLETED" || i.Status == "Completed") && i.CreatedAt >= last7Days)
-            .SumAsync(i => (decimal?)i.TotalAmount) ?? 0m;
-        
-        var paymentBreakdownRaw = await _context.Payments
+        var branch = await _context.Branches
             .AsNoTracking()
-            .Where(p => p.BranchId == branchId && p.Status == "Confirmed" && p.CreatedAt >= thirtyDaysAgo)
-            .GroupBy(p => p.Method)
-            .Select(g => new { g.Key, Amount = g.Sum(p => p.Amount), Count = g.Count() })
-            .ToListAsync();
-        var paymentBreakdown = new DashboardPaymentBreakdownDto();
-        foreach (var item in paymentBreakdownRaw) {
-            if (item.Key == "Cash") { paymentBreakdown.CashAmount = item.Amount; paymentBreakdown.CashCount = item.Count; }
-            else if (item.Key == "Transfer") { paymentBreakdown.TransferAmount = item.Amount; paymentBreakdown.TransferCount = item.Count; }
-            else if (item.Key == "Combined") { paymentBreakdown.CombinedAmount = item.Amount; paymentBreakdown.CombinedCount = item.Count; }
-            else if (item.Key == "Debt") { paymentBreakdown.DebtAmount = item.Amount; paymentBreakdown.DebtCount = item.Count; }
-        }
+            .Include(b => b.ManagerUser)
+            .FirstOrDefaultAsync(b => b.IsActive == 1);
+        if (branch == null) return NotFound("No active branch found.");
+        var branchId = branch.BranchId;
 
+        // --- Metrics by time range ---
+        var (rev30, ord30, aov30, exp30, ref30, cogs30, prof30, gm30, pb30) = await GetMetrics(branchId, thirtyDaysAgo, now);
+        var (rev7, ord7, aov7, exp7, ref7, cogs7, prof7, gm7, pb7) = await GetMetrics(branchId, last7Days, now);
+        var (rev24, ord24, aov24, exp24, ref24, cogs24, prof24, gm24, pb24) = await GetMetrics(branchId, last24Hours, now);
+        var (revYtd, ordYtd, _, expYtd, refYtd, cogsYtd, profYtd, gmYtd, _) = await GetMetrics(branchId, yearStart, now);
+        var (revToday, ordToday, _, _, _, _, _, _, _) = await GetMetrics(branchId, today, now);
+
+        // --- Today ---
+        var newCustomersToday = await _context.Customers.CountAsync(c => c.BranchId == branchId && c.CreatedAt >= today);
+        var newCustomersLast7Days = await _context.Customers.CountAsync(c => c.BranchId == branchId && c.CreatedAt >= last7Days);
+        var newCustomersLast30Days = await _context.Customers.CountAsync(c => c.BranchId == branchId && c.CreatedAt >= thirtyDaysAgo);
+
+        // --- Top branches (all active, not just one) ---
         var topBranches = await _context.Branches
             .AsNoTracking()
-            .Where(b => b.BranchId == branchId)
+            .Where(b => b.IsActive == 1)
             .Select(b => new DashboardBranchRevenueDto
             {
                 BranchId = b.BranchId,
@@ -122,79 +119,66 @@ public class AdminDashboardController : ControllerBase
             .Take(5)
             .ToListAsync();
 
-        var today = now.Date;
-        var totalOrdersToday = await _context.Orders.CountAsync(o => o.BranchId == branchId && (o.Status == "COMPLETED" || o.Status == "Completed") && o.CreatedAt >= today);
-        var totalRevenueToday = await _context.Invoices.Where(i => i.Order.BranchId == branchId && (i.Status == "COMPLETED" || i.Status == "Completed") && i.CreatedAt >= today).SumAsync(i => (decimal?)i.TotalAmount) ?? 0m;
-        var newCustomersToday = await _context.Customers.CountAsync(c => c.BranchId == branchId && c.CreatedAt >= today);
-
-        var cogsLast30Days = await _context.OrderItems
-            .Where(oi => oi.Order.BranchId == branchId && (oi.Order.Status == "COMPLETED" || oi.Order.Status == "Completed") && oi.Order.CreatedAt >= thirtyDaysAgo)
-            .SumAsync(oi => (decimal?)oi.Quantity * oi.BranchProduct.CostPrice) ?? 0m;
-            
-        var cogsLast7Days = await _context.OrderItems
-            .Where(oi => oi.Order.BranchId == branchId && (oi.Order.Status == "COMPLETED" || oi.Order.Status == "Completed") && oi.Order.CreatedAt >= last7Days)
-            .SumAsync(oi => (decimal?)oi.Quantity * oi.BranchProduct.CostPrice) ?? 0m;
-            
-        var expenseLast30Days = await _context.ExpenseVouchers
-            .Where(ev => ev.BranchId == branchId && (ev.Status == "COMPLETED" || ev.Status == "Completed") && ev.CreatedAt >= thirtyDaysAgo)
-            .SumAsync(ev => (decimal?)ev.Amount) ?? 0m;
-            
-        var expenseLast7Days = await _context.ExpenseVouchers
-            .Where(ev => ev.BranchId == branchId && (ev.Status == "COMPLETED" || ev.Status == "Completed") && ev.CreatedAt >= last7Days)
-            .SumAsync(ev => (decimal?)ev.Amount) ?? 0m;
-            
-        var refundLast30Days = await _context.ReturnOrders
-            .Where(ro => ro.Order.BranchId == branchId && (ro.Status == "COMPLETED" || ro.Status == "Completed") && ro.CreatedAt >= thirtyDaysAgo)
-            .SumAsync(ro => (decimal?)ro.RefundAmount) ?? 0m;
-            
-        var refundLast7Days = await _context.ReturnOrders
-            .Where(ro => ro.Order.BranchId == branchId && (ro.Status == "COMPLETED" || ro.Status == "Completed") && ro.CreatedAt >= last7Days)
-            .SumAsync(ro => (decimal?)ro.RefundAmount) ?? 0m;
-
-        var profitLast30Days = totalRevenueLast30Days - cogsLast30Days - expenseLast30Days - refundLast30Days;
-        var profitLast7Days = totalRevenueLast7Days - cogsLast7Days - expenseLast7Days - refundLast7Days;
-        var grossMargin = totalRevenueLast30Days != 0 ? Math.Round((totalRevenueLast30Days - cogsLast30Days) / totalRevenueLast30Days * 100m, 2) : 0m;
-
-        var topProductsRaw = await _context.OrderItems
+        // --- Top products by revenue ---
+        var topProductsRaw = await _context.InvoiceItems
             .AsNoTracking()
-            .Where(oi => oi.Order.BranchId == branchId && (oi.Order.Status == "COMPLETED" || oi.Order.Status == "Completed") && oi.Order.CreatedAt >= thirtyDaysAgo)
-            .GroupBy(oi => new { oi.BranchProduct.ProductId, oi.BranchProduct.Product.ProductName, oi.BranchProduct.Product.CategoryName })
+            .Where(ii => ii.Invoice.Order.BranchId == branchId && CompletedStatuses.Contains(ii.Invoice.Status) && ii.Invoice.CreatedAt >= thirtyDaysAgo)
+            .GroupBy(ii => new { ii.BranchProduct.ProductId, ii.BranchProduct.Product.ProductName, ii.BranchProduct.Product.ProductCode, ii.BranchProduct.Product.CategoryName })
             .Select(g => new DashboardProductPerformanceDto
             {
                 ProductId = g.Key.ProductId,
+                ProductCode = g.Key.ProductCode,
                 ProductName = g.Key.ProductName,
-                CategoryName = g.Key.CategoryName,
+                CategoryName = g.Key.CategoryName ?? string.Empty,
                 QuantitySold = g.Sum(x => x.Quantity),
                 Revenue = g.Sum(x => x.Quantity * x.SellPrice),
                 Cost = g.Sum(x => x.Quantity * x.BranchProduct.CostPrice)
             })
             .ToListAsync();
-        var topProducts = topProductsRaw.Select(x => { x.Profit = x.Revenue - x.Cost; return x; }).OrderByDescending(x => x.Revenue).Take(5).ToList();
-            
+
+        topProductsRaw = topProductsRaw.Select(x => {
+            x.Profit = x.Revenue - x.Cost;
+            x.ProfitMarginPercent = x.Revenue != 0 ? Math.Round(x.Profit / x.Revenue * 100m, 2) : 0m;
+            return x;
+        }).ToList();
+
+        var topProductsByRevenue = topProductsRaw.OrderByDescending(x => x.Revenue).Take(5).ToList();
+        var topProductsByProfit = topProductsRaw.OrderByDescending(x => x.Profit).Take(5).ToList();
+
+        // --- Top customers ---
         var topCustomers = await _context.Orders
             .AsNoTracking()
             .Where(o => o.BranchId == branchId && o.CustomerId != null && (o.Status == "COMPLETED" || o.Status == "Completed") && o.CreatedAt >= thirtyDaysAgo)
-            .GroupBy(o => new { o.CustomerId, o.Customer.CustomerName, o.Customer.PhoneNumber })
+            .GroupBy(o => new { o.CustomerId, o.Customer.CustomerName, o.Customer.PhoneNumber, o.Customer.Email })
             .Select(g => new DashboardCustomerPerformanceDto
             {
                 CustomerId = g.Key.CustomerId.Value,
                 CustomerName = g.Key.CustomerName,
                 PhoneNumber = g.Key.PhoneNumber,
+                Email = g.Key.Email,
                 OrderCount = g.Count(),
-                TotalSpent = g.Sum(o => o.TotalAmount),
-                TotalDebt = g.Sum(o => (decimal?)o.Customer.CurrentDebt) ?? 0m
+                TotalSpent = g.Sum(o => o.TotalAmount)
             })
             .OrderByDescending(x => x.TotalSpent)
             .Take(5)
             .ToListAsync();
 
-        var lowStock = await _context.BranchProducts
+        // Set TotalDebt from CustomerDebtService
+        var topCustomerIds = topCustomers.Select(c => c.CustomerId).ToList();
+        var debtMap = await _customerDebtService.CalculateCurrentDebtBatchAsync(topCustomerIds);
+        foreach (var tc in topCustomers)
+            tc.TotalDebt = debtMap.TryGetValue(tc.CustomerId, out var d) ? d : 0m;
+
+        // --- Low stock ---
+        var lowStockProducts = await _context.BranchProducts
             .AsNoTracking()
             .Where(bp => bp.BranchId == branchId && bp.IsActive == 1 && bp.MinimumStock.HasValue && bp.AvailableStock <= bp.MinimumStock)
             .Select(bp => new DashboardLowStockProductDto
             {
                 ProductId = bp.ProductId,
+                ProductCode = bp.Product.ProductCode,
                 ProductName = bp.Product.ProductName,
+                CategoryName = bp.Product.CategoryName ?? string.Empty,
                 AvailableStock = bp.AvailableStock,
                 MinimumStock = bp.MinimumStock ?? 0,
                 Shortage = Math.Max(0, (bp.MinimumStock ?? 0) - bp.AvailableStock)
@@ -202,40 +186,13 @@ public class AdminDashboardController : ControllerBase
             .Take(10)
             .ToListAsync();
 
-        var twelveMonthsAgo = new DateTime(now.Year, now.Month, 1).AddMonths(-11);
+        // --- Trends 12 months ---
+        var revenueTrend = await BuildTrendAsync(branchId, "Invoices", "TotalAmount", twelveMonthsAgo, now);
+        var expenseTrend = await BuildTrendAsync(branchId, "ExpenseVouchers", "Amount", twelveMonthsAgo, now);
+        var refundTrend = await BuildRefundTrendAsync(branchId, twelveMonthsAgo, now);
+        var customerGrowthTrend = await BuildCustomerGrowthTrendAsync(branchId, twelveMonthsAgo, now);
 
-        var invoiceTrends = await _context.Invoices
-            .AsNoTracking()
-            .Where(i => i.Order.BranchId == branchId && (i.Status == "COMPLETED" || i.Status == "Completed") && i.CreatedAt >= twelveMonthsAgo)
-            .Select(i => new { i.CreatedAt, i.TotalAmount })
-            .ToListAsync();
-
-        var revGrouped = invoiceTrends
-            .Where(x => x.CreatedAt.HasValue)
-            .GroupBy(x => new { x.CreatedAt.Value.Year, x.CreatedAt.Value.Month })
-            .ToDictionary(g => new { g.Key.Year, g.Key.Month }, g => g.Sum(x => x.TotalAmount));
-
-        var expenseTrendsList = await _context.ExpenseVouchers
-            .AsNoTracking()
-            .Where(ev => ev.BranchId == branchId && (ev.Status == "COMPLETED" || ev.Status == "Completed") && ev.CreatedAt >= twelveMonthsAgo)
-            .Select(ev => new { ev.CreatedAt, ev.Amount })
-            .ToListAsync();
-
-        var expGrouped = expenseTrendsList
-            .Where(x => x.CreatedAt.HasValue)
-            .GroupBy(x => new { x.CreatedAt.Value.Year, x.CreatedAt.Value.Month })
-            .ToDictionary(g => new { g.Key.Year, g.Key.Month }, g => g.Sum(x => x.Amount));
-
-        var revenueTrend = Enumerable.Range(0, 12).Select(offset => twelveMonthsAgo.AddMonths(offset)).Select(date => {
-            revGrouped.TryGetValue(new { date.Year, date.Month }, out var amount);
-            return new DashboardTrendPointDto { Period = date.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture), Amount = amount, Count = 0 };
-        }).ToList();
-
-        var expenseTrend = Enumerable.Range(0, 12).Select(offset => twelveMonthsAgo.AddMonths(offset)).Select(date => {
-            expGrouped.TryGetValue(new { date.Year, date.Month }, out var amount);
-            return new DashboardTrendPointDto { Period = date.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture), Amount = amount, Count = 0 };
-        }).ToList();
-        
+        // --- Expense by category ---
         var expenseByCategory = await _context.ExpenseVouchers
             .AsNoTracking()
             .Where(ev => ev.BranchId == branchId && (ev.Status == "COMPLETED" || ev.Status == "Completed") && ev.CreatedAt >= thirtyDaysAgo)
@@ -250,49 +207,286 @@ public class AdminDashboardController : ControllerBase
             .Take(10)
             .ToListAsync();
 
+        // --- Top categories by revenue ---
+        var topCategories = await _context.InvoiceItems
+            .AsNoTracking()
+            .Where(ii => ii.Invoice.Order.BranchId == branchId && CompletedStatuses.Contains(ii.Invoice.Status) && ii.Invoice.CreatedAt >= thirtyDaysAgo)
+            .GroupBy(ii => ii.BranchProduct.Product.CategoryName)
+            .Select(g => new DashboardCategoryPerformanceDto
+            {
+                CategoryName = g.Key ?? string.Empty,
+                QuantitySold = g.Sum(x => x.Quantity),
+                Revenue = g.Sum(x => x.Quantity * x.SellPrice),
+                Cost = g.Sum(x => x.Quantity * x.BranchProduct.CostPrice)
+            })
+            .ToListAsync();
+
+        topCategories = topCategories.Select(x => { x.Profit = x.Revenue - x.Cost; return x; })
+            .OrderByDescending(x => x.Revenue).Take(5).ToList();
+
+        // --- Customer debt summary ---
+        var activeCustomerIds = await _context.Customers.AsNoTracking()
+            .Where(c => c.BranchId == branchId && c.Status == 1)
+            .Select(c => c.CustomerId)
+            .ToListAsync();
+        var allDebtMap = await _customerDebtService.CalculateCurrentDebtBatchAsync(activeCustomerIds);
+        var activeCustomerTotalDebt = allDebtMap.Values.Sum();
+
+        var overdueCustomers = await _context.Customers.AsNoTracking()
+            .Where(c => c.BranchId == branchId && c.Status == 1 && c.DebtLimit.HasValue && c.DebtLimit > 0)
+            .Select(c => new { c.CustomerId, c.DebtLimit })
+            .ToListAsync();
+        decimal overdueDebtSum = 0m;
+        int overdueCount = 0;
+        foreach (var oc in overdueCustomers)
+        {
+            var debt = allDebtMap.TryGetValue(oc.CustomerId, out var dd) ? dd : 0m;
+            if (debt > (oc.DebtLimit ?? 0m)) { overdueDebtSum += debt; overdueCount++; }
+        }
+
+        var customerDebtSummary = new DashboardDebtSummaryDto
+        {
+            CustomerCount = activeCustomerIds.Count(id => allDebtMap.TryGetValue(id, out var d) && d > 0),
+            TotalDebt = activeCustomerTotalDebt,
+            OverdueCustomerCount = overdueCount,
+            OverdueDebt = overdueDebtSum
+        };
+
+        // --- Recent system events ---
+        var recentEvents = await _context.SystemLogs
+            .AsNoTracking()
+            .Include(l => l.User)
+            .OrderByDescending(l => l.Timestamp)
+            .Take(20)
+            .Select(l => new SystemEventDto
+            {
+                LogId = l.LogId,
+                Action = l.Action,
+                Description = l.Description,
+                TableName = l.TableName,
+                Level = l.Level,
+                Source = l.Source,
+                UserName = l.User != null ? l.User.FullName : null,
+                IpAddress = l.IpAddress,
+                Timestamp = l.Timestamp
+            })
+            .ToListAsync();
+
+        // --- Supplier debt ---
+        var totalSupplierDebt = 0m; // TODO: calculate from purchase orders vs payments
+
         var overview = new DashboardOverviewDto
         {
             GeneratedAt = now,
-            TotalOrdersToday = totalOrdersToday,
-            TotalRevenueToday = totalRevenueToday,
+            BranchId = branch.BranchId,
+            BranchName = branch.BranchName ?? string.Empty,
+            BranchAddress = branch.Address,
+            BranchManagerName = branch.ManagerUser?.FullName,
+
+            // Today
+            TotalRevenueToday = revToday,
+            TotalOrdersToday = ordToday,
             NewCustomersToday = newCustomersToday,
-            TotalOrdersLast30Days = totalOrdersLast30Days,
-            TotalRevenueLast30Days = totalRevenueLast30Days,
-            TotalCostOfGoodsSoldLast30Days = cogsLast30Days,
-            TotalExpenseLast30Days = expenseLast30Days,
-            TotalProfitLast30Days = profitLast30Days,
-            GrossMarginPercentLast30Days = grossMargin,
-            PaymentBreakdownLast30Days = paymentBreakdown,
-            TopBranchesByRevenue = topBranches,
-            TopProductsByRevenue = topProducts,
-            TopCustomers = topCustomers,
-            LowStockProducts = lowStock,
-            RevenueTrendLast12Months = revenueTrend,
-            ExpenseTrendLast12Months = expenseTrend,
+
+            // 30 days
+            TotalRevenueLast30Days = rev30,
+            TotalOrdersLast30Days = ord30,
+            TotalCostOfGoodsSoldLast30Days = cogs30,
+            TotalExpenseLast30Days = exp30,
+            TotalRefundAmountLast30Days = ref30,
+            TotalProfitLast30Days = prof30,
+            GrossMarginPercentLast30Days = gm30,
+            AverageOrderValueLast30Days = aov30,
+            AverageDailyRevenueLast30Days = Math.Round(rev30 / 30m, 2),
+            NewCustomersLast30Days = newCustomersLast30Days,
+            PaymentBreakdownLast30Days = pb30,
+
+            // 7 days
+            TotalRevenueLast7Days = rev7,
+            TotalOrdersLast7Days = ord7,
+            TotalCostOfGoodsSoldLast7Days = cogs7,
+            TotalExpenseLast7Days = exp7,
+            TotalRefundAmountLast7Days = ref7,
+            TotalProfitLast7Days = prof7,
+            GrossMarginPercentLast7Days = gm7,
+            AverageOrderValueLast7Days = aov7,
+            AverageDailyRevenueLast7Days = Math.Round(rev7 / 7m, 2),
+            NewCustomersLast7Days = newCustomersLast7Days,
+            PaymentBreakdownLast7Days = pb7,
+
+            // 24 hours
+            TotalRevenueLast24Hours = rev24,
+            TotalOrdersLast24Hours = ord24,
+            TotalCostOfGoodsSoldLast24Hours = cogs24,
+            TotalRefundAmountLast24Hours = ref24,
+            TotalProfitLast24Hours = prof24,
+            GrossMarginPercentLast24Hours = gm24,
+            AverageOrderValueLast24Hours = aov24,
+            PaymentBreakdownLast24Hours = pb24,
+
+            // YTD
+            TotalRevenueYearToDate = revYtd,
+            TotalOrdersYearToDate = ordYtd,
+            TotalCostOfGoodsSoldYearToDate = cogsYtd,
+            TotalExpenseYearToDate = expYtd,
+            TotalRefundAmountYearToDate = refYtd,
+            TotalProfitYearToDate = profYtd,
+            GrossMarginPercentYearToDate = gmYtd,
+
+            // Counts
             ActiveBranches = await _context.Branches.CountAsync(b => b.IsActive == 1),
             ActiveProducts = await _context.BranchProducts.CountAsync(bp => bp.BranchId == branchId && bp.IsActive == 1),
-            ActiveCustomerCount = await _context.Customers.CountAsync(c => c.BranchId == branchId && c.Status == 1),
-            CustomerDebtSummary = new DashboardDebtSummaryDto
-            {
-                CustomerCount = await _context.Customers.CountAsync(c => c.BranchId == branchId && c.CurrentDebt > 0),
-                TotalDebt = await _context.Customers.Where(c => c.BranchId == branchId).SumAsync(c => (decimal?)c.CurrentDebt) ?? 0m,
-                OverdueCustomerCount = await _context.Customers.CountAsync(c => c.BranchId == branchId && c.CurrentDebt > c.DebtLimit),
-                OverdueDebt = await _context.Customers.Where(c => c.BranchId == branchId && c.CurrentDebt > c.DebtLimit).SumAsync(c => (decimal?)c.CurrentDebt) ?? 0m
-            },
-            AverageDailyRevenueLast30Days = totalRevenueLast30Days / 30m,
-            AverageOrderValueLast30Days = totalOrdersLast30Days > 0 ? totalRevenueLast30Days / totalOrdersLast30Days : 0,
-            NewCustomersLast30Days = await _context.Customers.CountAsync(c => c.BranchId == branchId && c.CreatedAt >= thirtyDaysAgo),
-            PendingOrderCount = await _context.Orders.CountAsync(o => o.BranchId == branchId && o.Status == "Pending" && o.CreatedAt >= thirtyDaysAgo),
-            PendingExpenseCount = await _context.ExpenseVouchers.CountAsync(ev => ev.BranchId == branchId && ev.Status == "Pending" && ev.CreatedAt >= thirtyDaysAgo),
-            PendingExpenseAmount = await _context.ExpenseVouchers.Where(ev => ev.BranchId == branchId && ev.Status == "Pending" && ev.CreatedAt >= thirtyDaysAgo).SumAsync(ev => (decimal?)ev.Amount) ?? 0m,
-            AverageDailyRevenueLast7Days = Math.Round(totalRevenueLast7Days / 7m, 2),
-            TotalRevenueLast7Days = totalRevenueLast7Days,
-            TotalProfitLast7Days = profitLast7Days,
-            TotalExpenseLast7Days = expenseLast7Days,
-            ExpenseByCategory = expenseByCategory
+            LowStockProductCount = lowStockProducts.Count,
+            ActiveCustomerCount = activeCustomerIds.Count,
+            ActiveCustomerTotalDebt = activeCustomerTotalDebt,
+            OverdueCustomerCount = overdueCount,
+            OverdueCustomerTotalDebt = overdueDebtSum,
+            PendingOrderCount = await _context.Orders.CountAsync(o => o.BranchId == branchId && o.Status == "PENDING" && o.CreatedAt >= thirtyDaysAgo),
+            PendingOrderAmount = await _context.Orders.Where(o => o.BranchId == branchId && o.Status == "PENDING" && o.CreatedAt >= thirtyDaysAgo).SumAsync(o => (decimal?)o.TotalAmount) ?? 0m,
+            PendingExpenseCount = await _context.ExpenseVouchers.CountAsync(ev => ev.BranchId == branchId && ev.Status == "PENDING" && ev.CreatedAt >= thirtyDaysAgo),
+            PendingExpenseAmount = await _context.ExpenseVouchers.Where(ev => ev.BranchId == branchId && ev.Status == "PENDING" && ev.CreatedAt >= thirtyDaysAgo).SumAsync(ev => (decimal?)ev.Amount) ?? 0m,
+            TotalSupplierDebt = totalSupplierDebt,
+            SupplierDebtPaidLast30Days = await _context.SupplierPayments.Where(sp => sp.CreatedAt >= thirtyDaysAgo && sp.IsDeleted == 0).SumAsync(sp => (decimal?)sp.Amount) ?? 0m,
+            RepaymentCoverageRatio = totalSupplierDebt > 0 ? Math.Round(activeCustomerTotalDebt / totalSupplierDebt * 100m, 2) : 0m,
+
+            // Trends
+            RevenueTrendLast12Months = revenueTrend,
+            RevenueTrendLast30Days = new(),
+            ExpenseTrendLast12Months = expenseTrend,
+            RefundTrendLast12Months = refundTrend,
+            CustomerGrowthTrendLast12Months = customerGrowthTrend,
+
+            // Top lists
+            TopProductsByRevenue = topProductsByRevenue,
+            TopProductsByProfit = topProductsByProfit,
+            TopCustomers = topCustomers,
+            TopCategoriesByRevenue = topCategories,
+            LowStockProducts = lowStockProducts,
+            ExpenseByCategory = expenseByCategory,
+            TopBranchesByRevenue = topBranches,
+            RecentSystemEvents = recentEvents,
+
+            CustomerDebtSummary = customerDebtSummary
         };
 
         return Ok(overview);
+    }
+
+    private async Task<(decimal revenue, int orderCount, decimal aov, decimal expense, decimal refund, decimal cogs, decimal profit, decimal grossMargin, DashboardPaymentBreakdownDto pb)> GetMetrics(Guid branchId, DateTime start, DateTime end)
+    {
+        var revenue = await _context.Invoices
+            .AsNoTracking()
+            .Where(i => i.Order.BranchId == branchId && (i.Status == "COMPLETED" || i.Status == "Completed") && i.CreatedAt >= start && i.CreatedAt < end)
+            .SumAsync(i => (decimal?)i.TotalAmount) ?? 0m;
+
+        var orders = await _context.Orders
+            .AsNoTracking()
+            .CountAsync(o => o.BranchId == branchId && (o.Status == "COMPLETED" || o.Status == "Completed") && o.CreatedAt >= start && o.CreatedAt < end);
+
+        var expense = await _context.ExpenseVouchers
+            .AsNoTracking()
+            .Where(ev => ev.BranchId == branchId && (ev.Status == "COMPLETED" || ev.Status == "Completed") && ev.CreatedAt >= start && ev.CreatedAt < end)
+            .SumAsync(ev => (decimal?)ev.Amount) ?? 0m;
+
+        var refund = await _context.ReturnOrders
+            .AsNoTracking()
+            .Where(ro => ro.Order.BranchId == branchId && (ro.Status == "COMPLETED" || ro.Status == "Completed") && ro.CreatedAt >= start && ro.CreatedAt < end)
+            .SumAsync(ro => (decimal?)ro.RefundAmount) ?? 0m;
+
+        var cogs = await _context.InvoiceItems
+            .AsNoTracking()
+            .Where(ii => ii.Invoice.Order.BranchId == branchId && CompletedStatuses.Contains(ii.Invoice.Status) && ii.Invoice.CreatedAt >= start && ii.Invoice.CreatedAt < end)
+            .SumAsync(ii => (decimal?)ii.Quantity * ii.BranchProduct.CostPrice) ?? 0m;
+
+        var paymentRaw = await _context.Payments
+            .AsNoTracking()
+            .Where(p => p.BranchId == branchId && p.Status == "Confirmed" && p.CreatedAt >= start && p.CreatedAt < end)
+            .GroupBy(p => p.Method)
+            .Select(g => new { g.Key, Amount = g.Sum(p => p.Amount), Count = g.Count() })
+            .ToListAsync();
+
+        var pb = new DashboardPaymentBreakdownDto();
+        foreach (var item in paymentRaw)
+        {
+            if (item.Key == "Cash") { pb.CashAmount = item.Amount; pb.CashCount = item.Count; }
+            else if (item.Key == "Transfer") { pb.TransferAmount = item.Amount; pb.TransferCount = item.Count; }
+            else if (item.Key == "Combined") { pb.CombinedAmount = item.Amount; pb.CombinedCount = item.Count; }
+            else if (item.Key == "Debt") { pb.DebtAmount = item.Amount; pb.DebtCount = item.Count; }
+        }
+
+        var profit = revenue - cogs - expense - refund;
+        var grossMargin = revenue != 0 ? Math.Round((revenue - cogs) / revenue * 100m, 2) : 0m;
+        var aov = orders > 0 ? Math.Round(revenue / orders, 2) : 0m;
+
+        return (revenue, orders, aov, expense, refund, cogs, profit, grossMargin, pb);
+    }
+
+    private static List<DashboardTrendPointDto> PadTrend(DateTime from, Func<int, int, decimal> getAmount)
+    {
+        return Enumerable.Range(0, 12).Select(offset => from.AddMonths(offset)).Select(date =>
+        {
+            var amount = getAmount(date.Year, date.Month);
+            return new DashboardTrendPointDto { Period = date.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture), Amount = amount, Count = 0 };
+        }).ToList();
+    }
+
+    private async Task<List<DashboardTrendPointDto>> BuildTrendAsync(Guid branchId, string table, string amountCol, DateTime from, DateTime to)
+    {
+        if (table == "Invoices")
+        {
+            var data = await _context.Invoices.AsNoTracking()
+                .Where(i => i.Order.BranchId == branchId && (i.Status == "COMPLETED" || i.Status == "Completed") && i.CreatedAt >= from && i.CreatedAt < to)
+                .Select(i => new { i.CreatedAt, i.TotalAmount })
+                .ToListAsync();
+            var grouped = data.Where(x => x.CreatedAt.HasValue).GroupBy(x => new { x.CreatedAt!.Value.Year, x.CreatedAt!.Value.Month })
+                .ToDictionary(g => new { g.Key.Year, g.Key.Month }, g => g.Sum(x => x.TotalAmount));
+            return PadTrend(from, (y, m) => grouped.TryGetValue(new { Year = y, Month = m }, out var v) ? v : 0m);
+        }
+        else
+        {
+            var data = await _context.ExpenseVouchers.AsNoTracking()
+                .Where(ev => ev.BranchId == branchId && (ev.Status == "COMPLETED" || ev.Status == "Completed") && ev.CreatedAt >= from && ev.CreatedAt < to)
+                .Select(ev => new { ev.CreatedAt, Amount = ev.Amount })
+                .ToListAsync();
+            var grouped = data.Where(x => x.CreatedAt.HasValue).GroupBy(x => new { x.CreatedAt!.Value.Year, x.CreatedAt!.Value.Month })
+                .ToDictionary(g => new { g.Key.Year, g.Key.Month }, g => g.Sum(x => x.Amount));
+            return PadTrend(from, (y, m) => grouped.TryGetValue(new { Year = y, Month = m }, out var v) ? v : 0m);
+        }
+    }
+
+    private async Task<List<DashboardTrendPointDto>> BuildRefundTrendAsync(Guid branchId, DateTime from, DateTime to)
+    {
+        var data = await _context.ReturnOrders.AsNoTracking()
+            .Where(ro => ro.Order.BranchId == branchId && (ro.Status == "COMPLETED" || ro.Status == "Completed") && ro.CreatedAt >= from && ro.CreatedAt < to)
+            .Select(ro => new { ro.CreatedAt, ro.RefundAmount })
+            .ToListAsync();
+        var grouped = data.Where(x => x.CreatedAt.HasValue).GroupBy(x => new { x.CreatedAt!.Value.Year, x.CreatedAt!.Value.Month })
+            .ToDictionary(g => new { g.Key.Year, g.Key.Month }, g => g.Sum(x => x.RefundAmount));
+        return PadTrend(from, (y, m) => grouped.TryGetValue(new { Year = y, Month = m }, out var v) ? v : 0m);
+    }
+
+    private async Task<List<DashboardTrendPointDto>> BuildCustomerGrowthTrendAsync(Guid branchId, DateTime from, DateTime to)
+    {
+        var data = await _context.Customers.AsNoTracking()
+            .Where(c => c.BranchId == branchId && c.Status == 1 && c.CreatedAt >= from && c.CreatedAt < to)
+            .GroupBy(c => new { c.CreatedAt!.Value.Year, c.CreatedAt!.Value.Month })
+            .Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
+            .ToListAsync();
+        return Enumerable.Range(0, 12).Select(offset => from.AddMonths(offset)).Select(date =>
+        {
+            var count = data.FirstOrDefault(c => c.Year == date.Year && c.Month == date.Month)?.Count ?? 0;
+            return new DashboardTrendPointDto { Period = date.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture), Amount = count, Count = count };
+        }).ToList();
+    }
+
+    private static List<DashboardTrendPointDto> PadTrend(DateTime from, Dictionary<object, decimal> grouped)
+    {
+        return Enumerable.Range(0, 12).Select(offset => from.AddMonths(offset)).Select(date =>
+        {
+            var key = new { date.Year, date.Month };
+            grouped.TryGetValue(key, out var amount);
+            return new DashboardTrendPointDto { Period = date.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture), Amount = amount, Count = 0 };
+        }).ToList();
     }
 
 

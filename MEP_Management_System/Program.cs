@@ -160,7 +160,10 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:3000")
+        policy.WithOrigins(
+                "http://localhost:3000",
+                "https://mep-retail-management-system.vercel.app"
+            )
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -298,6 +301,7 @@ using (var scope = app.Services.CreateScope())
         Console.WriteLine($"[Startup] Alter media_url thất bại: {ex.Message}");
     }
 }
+
 
 app.Run();
 

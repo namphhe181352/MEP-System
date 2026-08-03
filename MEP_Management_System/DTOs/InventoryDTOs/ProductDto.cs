@@ -370,8 +370,28 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         /// <summary>
         /// ID linh hoạt: Có thể là BranchProductId, ProductId (Guid)
         /// hoặc ProductCode (string, ví dụ: SP-001) từ Frontend.
+        /// Để trống nếu là sản phẩm mới (điền productCode + productName trực tiếp).
         /// </summary>
-        public string Id { get; set; } = null!;
+        public string? Id { get; set; }
+
+        /// <summary>Thông tin sản phẩm mới nếu chưa có trong hệ thống (dạng nested).</summary>
+        public NewProductInQuickInwardDto? NewProduct { get; set; }
+
+        // --- Các field sản phẩm mới flat (FE gửi trực tiếp, không nested) ---
+        /// <summary>Mã sản phẩm mới (nếu tạo inline).</summary>
+        public string? ProductCode { get; set; }
+        /// <summary>Tên sản phẩm mới (nếu tạo inline).</summary>
+        public string? ProductName { get; set; }
+        /// <summary>Đơn vị tính của sản phẩm mới.</summary>
+        public string? Unit { get; set; }
+        /// <summary>Thương hiệu (legacy).</summary>
+        public string? BrandName { get; set; }
+        /// <summary>Danh mục (legacy).</summary>
+        public string? CategoryName { get; set; }
+        /// <summary>Mã vạch.</summary>
+        public string? Barcode { get; set; }
+        /// <summary>Giá bán của sản phẩm mới.</summary>
+        public decimal SalePrice { get; set; }
 
         public decimal Quantity { get; set; }
 
