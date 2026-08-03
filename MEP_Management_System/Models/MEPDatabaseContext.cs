@@ -1518,6 +1518,8 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
             entity.Property(e => e.Target)
                 .HasMaxLength(50)
                 .HasColumnName("target");
+            entity.Property(e => e.BranchId)
+                .HasColumnName("branch_id");
             entity.Property(e => e.IsUrgent)
                 .HasDefaultValue(false)
                 .HasColumnName("is_urgent");

@@ -84,24 +84,17 @@ public class AdminDashboardController : ControllerBase
         var yearStart = new DateTime(now.Year, 1, 1);
         var twelveMonthsAgo = new DateTime(now.Year, now.Month, 1).AddMonths(-11);
 
-        var branch = await _context.Branches
-            .AsNoTracking()
-            .Include(b => b.ManagerUser)
-            .FirstOrDefaultAsync(b => b.IsActive == 1);
-        if (branch == null) return NotFound("No active branch found.");
-        var branchId = branch.BranchId;
-
         // --- Metrics by time range ---
-        var (rev30, ord30, aov30, exp30, ref30, cogs30, prof30, gm30, pb30) = await GetMetrics(branchId, thirtyDaysAgo, now);
-        var (rev7, ord7, aov7, exp7, ref7, cogs7, prof7, gm7, pb7) = await GetMetrics(branchId, last7Days, now);
-        var (rev24, ord24, aov24, exp24, ref24, cogs24, prof24, gm24, pb24) = await GetMetrics(branchId, last24Hours, now);
-        var (revYtd, ordYtd, _, expYtd, refYtd, cogsYtd, profYtd, gmYtd, _) = await GetMetrics(branchId, yearStart, now);
-        var (revToday, ordToday, _, _, _, _, _, _, _) = await GetMetrics(branchId, today, now);
+        var (rev30, ord30, aov30, exp30, ref30, cogs30, prof30, gm30, pb30) = await GetMetrics(thirtyDaysAgo, now);
+        var (rev7, ord7, aov7, exp7, ref7, cogs7, prof7, gm7, pb7) = await GetMetrics(last7Days, now);
+        var (rev24, ord24, aov24, exp24, ref24, cogs24, prof24, gm24, pb24) = await GetMetrics(last24Hours, now);
+        var (revYtd, ordYtd, _, expYtd, refYtd, cogsYtd, profYtd, gmYtd, _) = await GetMetrics(yearStart, now);
+        var (revToday, ordToday, _, _, _, _, _, _, _) = await GetMetrics(today, now);
 
         // --- Today ---
-        var newCustomersToday = await _context.Customers.CountAsync(c => c.BranchId == branchId && c.CreatedAt >= today);
-        var newCustomersLast7Days = await _context.Customers.CountAsync(c => c.BranchId == branchId && c.CreatedAt >= last7Days);
-        var newCustomersLast30Days = await _context.Customers.CountAsync(c => c.BranchId == branchId && c.CreatedAt >= thirtyDaysAgo);
+        var newCustomersToday = await _context.Customers.CountAsync(c => c.CreatedAt >= today);
+        var newCustomersLast7Days = await _context.Customers.CountAsync(c => c.CreatedAt >= last7Days);
+        var newCustomersLast30Days = await _context.Customers.CountAsync(c => c.CreatedAt >= thirtyDaysAgo);
 
         // --- Top branches (all active, not just one) ---
         var topBranches = await _context.Branches
@@ -121,7 +114,7 @@ public class AdminDashboardController : ControllerBase
         // --- Top products by revenue ---
         var topProductsRaw = await _context.InvoiceItems
             .AsNoTracking()
-            .Where(ii => ii.Invoice.Order.BranchId == branchId && CompletedStatuses.Contains(ii.Invoice.Status) && ii.Invoice.CreatedAt >= thirtyDaysAgo)
+            .Where(ii => CompletedStatuses.Contains(ii.Invoice.Status) && ii.Invoice.CreatedAt >= thirtyDaysAgo)
             .GroupBy(ii => new { ii.BranchProduct.ProductId, ii.BranchProduct.Product.ProductName, ii.BranchProduct.Product.ProductCode, ii.BranchProduct.Product.CategoryName })
             .Select(g => new DashboardProductPerformanceDto
             {
@@ -147,7 +140,7 @@ public class AdminDashboardController : ControllerBase
         // --- Top customers ---
         var topCustomers = await _context.Orders
             .AsNoTracking()
-            .Where(o => o.BranchId == branchId && o.CustomerId != null && (o.Status == "COMPLETED" || o.Status == "Completed") && o.CreatedAt >= thirtyDaysAgo)
+            .Where(o => o.CustomerId != null && (o.Status == "COMPLETED" || o.Status == "Completed") && o.CreatedAt >= thirtyDaysAgo)
             .GroupBy(o => new { o.CustomerId, o.Customer.CustomerName, o.Customer.PhoneNumber, o.Customer.Email })
             .Select(g => new DashboardCustomerPerformanceDto
             {
@@ -171,7 +164,7 @@ public class AdminDashboardController : ControllerBase
         // --- Low stock ---
         var lowStockProducts = await _context.BranchProducts
             .AsNoTracking()
-            .Where(bp => bp.BranchId == branchId && bp.IsActive == 1 && bp.MinimumStock.HasValue && bp.AvailableStock <= bp.MinimumStock)
+            .Where(bp => bp.IsActive == 1 && bp.MinimumStock.HasValue && bp.AvailableStock <= bp.MinimumStock)
             .Select(bp => new DashboardLowStockProductDto
             {
                 ProductId = bp.ProductId,
@@ -186,15 +179,15 @@ public class AdminDashboardController : ControllerBase
             .ToListAsync();
 
         // --- Trends 12 months ---
-        var revenueTrend = await BuildTrendAsync(branchId, "Invoices", "TotalAmount", twelveMonthsAgo, now);
-        var expenseTrend = await BuildTrendAsync(branchId, "ExpenseVouchers", "Amount", twelveMonthsAgo, now);
-        var refundTrend = await BuildRefundTrendAsync(branchId, twelveMonthsAgo, now);
-        var customerGrowthTrend = await BuildCustomerGrowthTrendAsync(branchId, twelveMonthsAgo, now);
+        var revenueTrend = await BuildTrendAsync("Invoices", "TotalAmount", twelveMonthsAgo, now);
+        var expenseTrend = await BuildTrendAsync("ExpenseVouchers", "Amount", twelveMonthsAgo, now);
+        var refundTrend = await BuildRefundTrendAsync(twelveMonthsAgo, now);
+        var customerGrowthTrend = await BuildCustomerGrowthTrendAsync(twelveMonthsAgo, now);
 
         // --- Expense by category ---
         var expenseByCategory = await _context.ExpenseVouchers
             .AsNoTracking()
-            .Where(ev => ev.BranchId == branchId && (ev.Status == "COMPLETED" || ev.Status == "Completed") && ev.CreatedAt >= thirtyDaysAgo)
+            .Where(ev => (ev.Status == "COMPLETED" || ev.Status == "Completed") && ev.CreatedAt >= thirtyDaysAgo)
             .GroupBy(ev => ev.Category.CategoryName)
             .Select(g => new DashboardExpenseCategoryDto
             {
@@ -209,7 +202,7 @@ public class AdminDashboardController : ControllerBase
         // --- Top categories by revenue ---
         var topCategories = await _context.InvoiceItems
             .AsNoTracking()
-            .Where(ii => ii.Invoice.Order.BranchId == branchId && CompletedStatuses.Contains(ii.Invoice.Status) && ii.Invoice.CreatedAt >= thirtyDaysAgo)
+            .Where(ii => CompletedStatuses.Contains(ii.Invoice.Status) && ii.Invoice.CreatedAt >= thirtyDaysAgo)
             .GroupBy(ii => ii.BranchProduct.Product.CategoryName)
             .Select(g => new DashboardCategoryPerformanceDto
             {
@@ -225,14 +218,14 @@ public class AdminDashboardController : ControllerBase
 
         // --- Customer debt summary ---
         var activeCustomerIds = await _context.Customers.AsNoTracking()
-            .Where(c => c.BranchId == branchId && c.Status == 1)
+            .Where(c => c.Status == 1)
             .Select(c => c.CustomerId)
             .ToListAsync();
         var allDebtMap = await _customerDebtService.CalculateCurrentDebtBatchAsync(activeCustomerIds);
         var activeCustomerTotalDebt = allDebtMap.Values.Sum();
 
         var overdueCustomers = await _context.Customers.AsNoTracking()
-            .Where(c => c.BranchId == branchId && c.Status == 1 && c.DebtLimit.HasValue && c.DebtLimit > 0)
+            .Where(c => c.Status == 1 && c.DebtLimit.HasValue && c.DebtLimit > 0)
             .Select(c => new { c.CustomerId, c.DebtLimit })
             .ToListAsync();
         decimal overdueDebtSum = 0m;
@@ -277,10 +270,10 @@ public class AdminDashboardController : ControllerBase
         var overview = new DashboardOverviewDto
         {
             GeneratedAt = now,
-            BranchId = branch.BranchId,
-            BranchName = branch.BranchName ?? string.Empty,
-            BranchAddress = branch.Address,
-            BranchManagerName = branch.ManagerUser?.FullName,
+            BranchId = Guid.Empty,
+            BranchName = "Tất cả chi nhánh",
+            BranchAddress = "",
+            BranchManagerName = "",
 
             // Today
             TotalRevenueToday = revToday,
@@ -334,16 +327,16 @@ public class AdminDashboardController : ControllerBase
 
             // Counts
             ActiveBranches = await _context.Branches.CountAsync(b => b.IsActive == 1),
-            ActiveProducts = await _context.BranchProducts.CountAsync(bp => bp.BranchId == branchId && bp.IsActive == 1),
+            ActiveProducts = await _context.Products.CountAsync(p => p.Status == 1),
             LowStockProductCount = lowStockProducts.Count,
             ActiveCustomerCount = activeCustomerIds.Count,
             ActiveCustomerTotalDebt = activeCustomerTotalDebt,
             OverdueCustomerCount = overdueCount,
             OverdueCustomerTotalDebt = overdueDebtSum,
-            PendingOrderCount = await _context.Orders.CountAsync(o => o.BranchId == branchId && o.Status == "PENDING" && o.CreatedAt >= thirtyDaysAgo),
-            PendingOrderAmount = await _context.Orders.Where(o => o.BranchId == branchId && o.Status == "PENDING" && o.CreatedAt >= thirtyDaysAgo).SumAsync(o => (decimal?)o.TotalAmount) ?? 0m,
-            PendingExpenseCount = await _context.ExpenseVouchers.CountAsync(ev => ev.BranchId == branchId && ev.Status == "PENDING" && ev.CreatedAt >= thirtyDaysAgo),
-            PendingExpenseAmount = await _context.ExpenseVouchers.Where(ev => ev.BranchId == branchId && ev.Status == "PENDING" && ev.CreatedAt >= thirtyDaysAgo).SumAsync(ev => (decimal?)ev.Amount) ?? 0m,
+            PendingOrderCount = await _context.Orders.CountAsync(o => o.Status == "PENDING" && o.CreatedAt >= thirtyDaysAgo),
+            PendingOrderAmount = await _context.Orders.Where(o => o.Status == "PENDING" && o.CreatedAt >= thirtyDaysAgo).SumAsync(o => (decimal?)o.TotalAmount) ?? 0m,
+            PendingExpenseCount = await _context.ExpenseVouchers.CountAsync(ev => ev.Status == "PENDING" && ev.CreatedAt >= thirtyDaysAgo),
+            PendingExpenseAmount = await _context.ExpenseVouchers.Where(ev => ev.Status == "PENDING" && ev.CreatedAt >= thirtyDaysAgo).SumAsync(ev => (decimal?)ev.Amount) ?? 0m,
             TotalSupplierDebt = totalSupplierDebt,
             SupplierDebtPaidLast30Days = await _context.SupplierPayments.Where(sp => sp.CreatedAt >= thirtyDaysAgo && sp.IsDeleted == 0).SumAsync(sp => (decimal?)sp.Amount) ?? 0m,
             RepaymentCoverageRatio = totalSupplierDebt > 0 ? Math.Round(activeCustomerTotalDebt / totalSupplierDebt * 100m, 2) : 0m,
@@ -371,35 +364,35 @@ public class AdminDashboardController : ControllerBase
         return Ok(overview);
     }
 
-    private async Task<(decimal revenue, int orderCount, decimal aov, decimal expense, decimal refund, decimal cogs, decimal profit, decimal grossMargin, DashboardPaymentBreakdownDto pb)> GetMetrics(Guid branchId, DateTime start, DateTime end)
+    private async Task<(decimal revenue, int orderCount, decimal aov, decimal expense, decimal refund, decimal cogs, decimal profit, decimal grossMargin, DashboardPaymentBreakdownDto pb)> GetMetrics(DateTime start, DateTime end)
     {
         var revenue = await _context.Invoices
             .AsNoTracking()
-            .Where(i => i.Order.BranchId == branchId && (i.Status == "COMPLETED" || i.Status == "Completed") && i.CreatedAt >= start && i.CreatedAt < end)
+            .Where(i => (i.Status == "COMPLETED" || i.Status == "Completed") && i.CreatedAt >= start && i.CreatedAt < end)
             .SumAsync(i => (decimal?)i.TotalAmount) ?? 0m;
 
         var orders = await _context.Orders
             .AsNoTracking()
-            .CountAsync(o => o.BranchId == branchId && (o.Status == "COMPLETED" || o.Status == "Completed") && o.CreatedAt >= start && o.CreatedAt < end);
+            .CountAsync(o => (o.Status == "COMPLETED" || o.Status == "Completed") && o.CreatedAt >= start && o.CreatedAt < end);
 
         var expense = await _context.ExpenseVouchers
             .AsNoTracking()
-            .Where(ev => ev.BranchId == branchId && (ev.Status == "COMPLETED" || ev.Status == "Completed") && ev.CreatedAt >= start && ev.CreatedAt < end)
+            .Where(ev => (ev.Status == "COMPLETED" || ev.Status == "Completed") && ev.CreatedAt >= start && ev.CreatedAt < end)
             .SumAsync(ev => (decimal?)ev.Amount) ?? 0m;
 
         var refund = await _context.ReturnOrders
             .AsNoTracking()
-            .Where(ro => ro.Order.BranchId == branchId && (ro.Status == "COMPLETED" || ro.Status == "Completed") && ro.CreatedAt >= start && ro.CreatedAt < end)
+            .Where(ro => (ro.Status == "COMPLETED" || ro.Status == "Completed") && ro.CreatedAt >= start && ro.CreatedAt < end)
             .SumAsync(ro => (decimal?)ro.RefundAmount) ?? 0m;
 
         var cogs = await _context.InvoiceItems
             .AsNoTracking()
-            .Where(ii => ii.Invoice.Order.BranchId == branchId && CompletedStatuses.Contains(ii.Invoice.Status) && ii.Invoice.CreatedAt >= start && ii.Invoice.CreatedAt < end)
+            .Where(ii => CompletedStatuses.Contains(ii.Invoice.Status) && ii.Invoice.CreatedAt >= start && ii.Invoice.CreatedAt < end)
             .SumAsync(ii => (decimal?)ii.Quantity * ii.BranchProduct.CostPrice) ?? 0m;
 
         var paymentRaw = await _context.Payments
             .AsNoTracking()
-            .Where(p => p.BranchId == branchId && p.Status == "Confirmed" && p.CreatedAt >= start && p.CreatedAt < end)
+            .Where(p => p.Status == "Confirmed" && p.CreatedAt >= start && p.CreatedAt < end)
             .GroupBy(p => p.Method)
             .Select(g => new { g.Key, Amount = g.Sum(p => p.Amount), Count = g.Count() })
             .ToListAsync();
@@ -429,12 +422,12 @@ public class AdminDashboardController : ControllerBase
         }).ToList();
     }
 
-    private async Task<List<DashboardTrendPointDto>> BuildTrendAsync(Guid branchId, string table, string amountCol, DateTime from, DateTime to)
+    private async Task<List<DashboardTrendPointDto>> BuildTrendAsync(string table, string amountCol, DateTime from, DateTime to)
     {
         if (table == "Invoices")
         {
             var data = await _context.Invoices.AsNoTracking()
-                .Where(i => i.Order.BranchId == branchId && (i.Status == "COMPLETED" || i.Status == "Completed") && i.CreatedAt >= from && i.CreatedAt < to)
+                .Where(i => (i.Status == "COMPLETED" || i.Status == "Completed") && i.CreatedAt >= from && i.CreatedAt < to)
                 .Select(i => new { i.CreatedAt, i.TotalAmount })
                 .ToListAsync();
             var grouped = data.Where(x => x.CreatedAt.HasValue).GroupBy(x => new { x.CreatedAt!.Value.Year, x.CreatedAt!.Value.Month })
@@ -444,7 +437,7 @@ public class AdminDashboardController : ControllerBase
         else
         {
             var data = await _context.ExpenseVouchers.AsNoTracking()
-                .Where(ev => ev.BranchId == branchId && (ev.Status == "COMPLETED" || ev.Status == "Completed") && ev.CreatedAt >= from && ev.CreatedAt < to)
+                .Where(ev => (ev.Status == "COMPLETED" || ev.Status == "Completed") && ev.CreatedAt >= from && ev.CreatedAt < to)
                 .Select(ev => new { ev.CreatedAt, Amount = ev.Amount })
                 .ToListAsync();
             var grouped = data.Where(x => x.CreatedAt.HasValue).GroupBy(x => new { x.CreatedAt!.Value.Year, x.CreatedAt!.Value.Month })
@@ -453,10 +446,10 @@ public class AdminDashboardController : ControllerBase
         }
     }
 
-    private async Task<List<DashboardTrendPointDto>> BuildRefundTrendAsync(Guid branchId, DateTime from, DateTime to)
+    private async Task<List<DashboardTrendPointDto>> BuildRefundTrendAsync(DateTime from, DateTime to)
     {
         var data = await _context.ReturnOrders.AsNoTracking()
-            .Where(ro => ro.Order.BranchId == branchId && (ro.Status == "COMPLETED" || ro.Status == "Completed") && ro.CreatedAt >= from && ro.CreatedAt < to)
+            .Where(ro => (ro.Status == "COMPLETED" || ro.Status == "Completed") && ro.CreatedAt >= from && ro.CreatedAt < to)
             .Select(ro => new { ro.CreatedAt, ro.RefundAmount })
             .ToListAsync();
         var grouped = data.Where(x => x.CreatedAt.HasValue).GroupBy(x => new { x.CreatedAt!.Value.Year, x.CreatedAt!.Value.Month })
@@ -464,10 +457,10 @@ public class AdminDashboardController : ControllerBase
         return PadTrend(from, (y, m) => grouped.TryGetValue(new { Year = y, Month = m }, out var v) ? v : 0m);
     }
 
-    private async Task<List<DashboardTrendPointDto>> BuildCustomerGrowthTrendAsync(Guid branchId, DateTime from, DateTime to)
+    private async Task<List<DashboardTrendPointDto>> BuildCustomerGrowthTrendAsync(DateTime from, DateTime to)
     {
         var data = await _context.Customers.AsNoTracking()
-            .Where(c => c.BranchId == branchId && c.Status == 1 && c.CreatedAt >= from && c.CreatedAt < to)
+            .Where(c => c.Status == 1 && c.CreatedAt >= from && c.CreatedAt < to)
             .GroupBy(c => new { c.CreatedAt!.Value.Year, c.CreatedAt!.Value.Month })
             .Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
             .ToListAsync();

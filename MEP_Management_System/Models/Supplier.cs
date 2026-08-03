@@ -40,6 +40,8 @@ public partial class Supplier
 
     /// <summary>Trạng thái NCC: 1=Active, 0=Inactive. Mặc định 1.</summary>
     public short? Status { get; set; }
+    public Guid? BranchId { get; set; }
+    
     public Guid? CreatedBy { get; set; }
 
     public Guid? UpdatedBy { get; set; }
@@ -49,6 +51,7 @@ public partial class Supplier
     public DateTime? UpdatedAt { get; set; }
 
     // ======= Navigation =======
+    public virtual Branch? Branch { get; set; }
     public virtual ICollection<Product> Products { get; set; } = new List<Product>();
 
     public virtual ICollection<PurchaseOrder> PurchaseOrders { get; set; } = new List<PurchaseOrder>();
