@@ -6,4 +6,5 @@ public class DashboardStatsDto
     public decimal SubscriptionRevenue { get; set; }
     public decimal B2bCommission { get; set; }
     public int OverdueAlerts { get; set; }
+    public decimal OverdueDebtAmount { get; set; }
 }

@@ -54,18 +54,32 @@ public class AdminDashboardController : ControllerBase
             .SumAsync(o => (decimal?)o.TotalAmount) ?? 0m;
         var b2bCommission = Math.Round(b2bCommissionRaw * 0.01m, 2);
 
-        // overdueAlerts = Số lượng hóa đơn đang nợ (PENDING)
-        var overdueAlerts = await _context.Invoices
+        // overdueAlerts = Số lượng khách hàng vượt hạn mức công nợ
+        var customersWithLimit = await _context.Customers
             .AsNoTracking()
-            .Where(i => i.Status == "PENDING" || i.Status == "Pending")
-            .CountAsync();
+            .Where(c => c.Status == 1 && c.DebtLimit != null)
+            .ToListAsync();
+
+        var overdueAlerts = 0;
+        var overdueDebtAmount = 0m;
+        var debts = await _customerDebtService.CalculateCurrentDebtBatchAsync(customersWithLimit.Select(c => c.CustomerId));
+        
+        foreach (var c in customersWithLimit)
+        {
+            if (debts.TryGetValue(c.CustomerId, out var debt) && debt > c.DebtLimit)
+            {
+                overdueAlerts++;
+                overdueDebtAmount += debt;
+            }
+        }
 
         return Ok(new DashboardStatsDto
         {
             ActiveTenants = activeTenants,
             SubscriptionRevenue = subscriptionRevenue,
             B2bCommission = b2bCommission,
-            OverdueAlerts = overdueAlerts
+            OverdueAlerts = overdueAlerts,
+            OverdueDebtAmount = overdueDebtAmount
         });
     }
 
