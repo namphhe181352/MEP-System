@@ -54,6 +54,39 @@ public class MepNotificationService
         await _mepHub.Clients.All.SendAsync("SystemNotification", announcement);
     }
 
+    // ─── Admin / Branch Management ────────────────────────────────────────────
+
+    /// <summary>
+    /// Notifies a branch owner when admin performs a management action on their branch
+    /// (update / soft delete / restore / hard delete).
+    /// </summary>
+    /// <param name="ownerId">Manager (owner) user id; null = broadcast to admin group only</param>
+    /// <param name="branchId">Branch affected</param>
+    /// <param name="action">e.g. UPDATE_BRANCH, SOFT_DELETE_BRANCH, RESTORE_BRANCH, HARD_DELETE_BRANCH</param>
+    /// <param name="branchName">Snapshot of branch name (still available even after hard delete)</param>
+    /// <param name="message">Human-readable Vietnamese message</param>
+    public async Task NotifyBranchChange(Guid? ownerId, Guid branchId, string action, string branchName, string message)
+    {
+        var payload = new
+        {
+            BranchId = branchId,
+            BranchName = branchName,
+            Action = action,
+            Message = message,
+            Timestamp = DateTime.UtcNow
+        };
+
+        // Always echo to admin group so admins can see what they just did
+        await _mepHub.Clients.Group("admin").SendAsync("BranchChange", payload);
+
+        // Send to the specific owner if available
+        if (ownerId.HasValue && ownerId.Value != Guid.Empty)
+        {
+            await _mepHub.Clients.Group($"user_{ownerId.Value}")
+                .SendAsync("BranchChange", payload);
+        }
+    }
+
     // ─── POS / Invoice ────────────────────────────────────────────────────────
 
     /// <summary>
