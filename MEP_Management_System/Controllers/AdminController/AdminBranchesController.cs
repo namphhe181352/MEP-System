@@ -68,7 +68,7 @@ namespace MEP_Management_System.Controllers.AdminController
             if (!string.IsNullOrWhiteSpace(search))
             {
                 var t = search.Trim().ToLower();
-                query = query.Where(b => b.BranchName.ToLower().Contains(t) || 
+                query = query.Where(b => b.BranchName.ToLower().Contains(t) ||
                                          (b.BranchCode != null && b.BranchCode.ToLower().Contains(t)));
             }
 
@@ -104,14 +104,39 @@ namespace MEP_Management_System.Controllers.AdminController
         [HttpPost]
         public async Task<IActionResult> CreateBranch([FromBody] CreateAdminBranchRequest dto)
         {
-            if (string.IsNullOrWhiteSpace(dto.BranchName))
-                return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Tên chi nhánh là bắt buộc." } });
+            if (!ModelState.IsValid)
+                return ValidationProblem(ModelState);
 
-            if (!string.IsNullOrWhiteSpace(dto.BranchCode))
+            var branchCode = dto.BranchCode?.Trim();
+            var phone = dto.Phone?.Trim();
+            var address = dto.Address?.Trim();
+
+            if (!string.IsNullOrWhiteSpace(branchCode))
             {
-                var codeExists = await _context.Branches.AnyAsync(b => b.BranchCode == dto.BranchCode.Trim());
+                var codeExists = await _context.Branches.AnyAsync(b => b.BranchCode != null && b.BranchCode.ToLower() == branchCode.ToLower());
                 if (codeExists)
                     return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Mã chi nhánh đã tồn tại." } });
+            }
+
+            if (!string.IsNullOrWhiteSpace(phone))
+            {
+                var phoneExists = await _context.Branches.AnyAsync(b => b.Phone != null && b.Phone.ToLower() == phone.ToLower());
+                if (phoneExists)
+                    return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Số điện thoại đã tồn tại trong hệ thống." } });
+            }
+
+            if (!string.IsNullOrWhiteSpace(address))
+            {
+                var addressExists = await _context.Branches.AnyAsync(b => b.Address != null && b.Address.ToLower() == address.ToLower());
+                if (addressExists)
+                    return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Địa chỉ đã tồn tại trong hệ thống." } });
+            }
+
+            if (dto.ManagerUserId.HasValue)
+            {
+                var ownerBranchExists = await _context.Branches.AnyAsync(b => b.ManagerUserId == dto.ManagerUserId.Value);
+                if (ownerBranchExists)
+                    return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Chủ cửa hàng này đã được gán cho một cửa hàng khác." } });
             }
 
             var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
@@ -176,30 +201,67 @@ namespace MEP_Management_System.Controllers.AdminController
         [HttpPut("{id:guid}")]
         public async Task<IActionResult> UpdateBranch(Guid id, [FromBody] UpdateAdminBranchRequest dto)
         {
+            if (!ModelState.IsValid)
+                return ValidationProblem(ModelState);
+
             var branch = await _context.Branches.FirstOrDefaultAsync(b => b.BranchId == id);
             if (branch == null)
                 return NotFound(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-404", Message = "Chi nhánh không tồn tại." } });
 
             if (!string.IsNullOrWhiteSpace(dto.BranchName)) branch.BranchName = dto.BranchName.Trim();
-            
+
             if (!string.IsNullOrWhiteSpace(dto.BranchCode))
             {
                 var trimmedCode = dto.BranchCode.Trim();
                 if (trimmedCode != branch.BranchCode)
                 {
-                    var exists = await _context.Branches.AnyAsync(b => b.BranchCode == trimmedCode);
+                    var exists = await _context.Branches.AnyAsync(b => b.BranchId != id && b.BranchCode != null && b.BranchCode.ToLower() == trimmedCode.ToLower());
                     if (exists) return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Mã chi nhánh đã tồn tại." } });
                     branch.BranchCode = trimmedCode;
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(dto.Phone)) branch.Phone = dto.Phone.Trim();
-            if (!string.IsNullOrWhiteSpace(dto.City)) branch.City = dto.City.Trim();
-            if (!string.IsNullOrWhiteSpace(dto.Address)) branch.Address = dto.Address.Trim();
-            if (!string.IsNullOrWhiteSpace(dto.Type)) branch.Type = dto.Type.Trim();
-            if (dto.ManagerUserId.HasValue) branch.ManagerUserId = dto.ManagerUserId.Value;
+            if (!string.IsNullOrWhiteSpace(dto.Phone))
+            {
+                var normalizedPhone = dto.Phone.Trim();
+                var phoneExists = await _context.Branches.AnyAsync(b => b.BranchId != id && b.Phone != null && b.Phone.ToLower() == normalizedPhone.ToLower());
+                if (phoneExists)
+                    return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Số điện thoại đã tồn tại trong hệ thống." } });
+
+                branch.Phone = normalizedPhone;
+            }
+
+            if (!string.IsNullOrWhiteSpace(dto.City))
+            {
+                branch.City = dto.City.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(dto.Address))
+            {
+                var normalizedAddress = dto.Address.Trim();
+                var addressExists = await _context.Branches.AnyAsync(b => b.BranchId != id && b.Address != null && b.Address.ToLower() == normalizedAddress.ToLower());
+                if (addressExists)
+                    return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Địa chỉ đã tồn tại trong hệ thống." } });
+
+                branch.Address = normalizedAddress;
+            }
+
+            if (!string.IsNullOrWhiteSpace(dto.Type))
+            {
+                branch.Type = dto.Type.Trim();
+            }
+
+            if (dto.ManagerUserId.HasValue)
+            {
+                var ownerBranchExists = await _context.Branches.AnyAsync(b => b.BranchId != id && b.ManagerUserId == dto.ManagerUserId.Value);
+                if (ownerBranchExists)
+                    return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Chủ cửa hàng này đã được gán cho một cửa hàng khác." } });
+
+                branch.ManagerUserId = dto.ManagerUserId.Value;
+            }
+
             if (dto.IsActive.HasValue) branch.IsActive = dto.IsActive.Value;
-            
+
             branch.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
             await LogAction(branch.BranchId, "UPDATE_BRANCH", "branches", "Branch", $"Cập nhật chi nhánh: {branch.BranchName}");
@@ -211,12 +273,35 @@ namespace MEP_Management_System.Controllers.AdminController
         [HttpDelete("{id:guid}")]
         public async Task<IActionResult> DeleteBranch(Guid id)
         {
-            var branch = await _context.Branches.FirstOrDefaultAsync(b => b.BranchId == id);
+            var branch = await _context.Branches
+                .AsNoTracking()
+                .FirstOrDefaultAsync(b => b.BranchId == id);
+
             if (branch == null)
                 return NotFound(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-404", Message = "Chi nhánh không tồn tại." } });
 
-            branch.IsActive = 0;
-            branch.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+            if (branch.IsActive == 0)
+                return Ok(new { message = "Chi nhánh đã được xóa trước đó." });
+
+            var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+
+            var updatedRows = await _context.Branches
+                .Where(b => b.BranchId == id)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(b => b.IsActive, (short)0)
+                    .SetProperty(b => b.UpdatedAt, now));
+
+            if (updatedRows == 0)
+            {
+                return Conflict(new ErrorResponseDto
+                {
+                    Error = new ErrorDetail
+                    {
+                        Code = "MSG-409",
+                        Message = "Chi nhánh đang được xử lý bởi một yêu cầu khác. Vui lòng thử lại."
+                    }
+                });
+            }
 
             await LogAction(branch.BranchId, "DELETE_BRANCH", "branches", "Branch", $"Xóa (soft) chi nhánh: {branch.BranchName}");
             await _context.SaveChangesAsync();
