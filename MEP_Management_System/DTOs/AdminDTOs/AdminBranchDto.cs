@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace MEP_Management_System.DTOs.AdminDTOs
 {
@@ -21,23 +22,55 @@ namespace MEP_Management_System.DTOs.AdminDTOs
 
     public class CreateAdminBranchRequest
     {
+        [Required(ErrorMessage = "Tên cửa hàng là bắt buộc.")]
+        [StringLength(100, ErrorMessage = "Tên cửa hàng không được vượt quá 100 ký tự.")]
         public string BranchName { get; set; } = null!;
+
+        [StringLength(20, ErrorMessage = "Mã chi nhánh không được vượt quá 20 ký tự.")]
         public string? BranchCode { get; set; }
+
+        [Required(ErrorMessage = "Số điện thoại là bắt buộc.")]
+        [RegularExpression(@"^(03|05|07|08|09)\d{8}$", ErrorMessage = "Số điện thoại phải là số Việt Nam hợp lệ (10 số, bắt đầu bằng 03/05/07/08/09).")]
         public string? Phone { get; set; }
+
+        [Required(ErrorMessage = "Thành phố là bắt buộc.")]
+        [StringLength(100, ErrorMessage = "Thành phố không được vượt quá 100 ký tự.")]
         public string? City { get; set; }
+
+        [Required(ErrorMessage = "Địa chỉ là bắt buộc.")]
+        [MinLength(5, ErrorMessage = "Địa chỉ phải có ít nhất 5 ký tự.")]
+        [StringLength(255, ErrorMessage = "Địa chỉ không được vượt quá 255 ký tự.")]
         public string? Address { get; set; }
+
+        [Required(ErrorMessage = "Loại cửa hàng là bắt buộc.")]
+        [StringLength(50, ErrorMessage = "Loại cửa hàng không được vượt quá 50 ký tự.")]
         public string? Type { get; set; }
+
+        [Required(ErrorMessage = "Chủ cửa hàng là bắt buộc.")]
         public Guid? ManagerUserId { get; set; }
     }
 
     public class UpdateAdminBranchRequest
     {
+        [StringLength(100, ErrorMessage = "Tên cửa hàng không được vượt quá 100 ký tự.")]
         public string? BranchName { get; set; }
+
+        [StringLength(20, ErrorMessage = "Mã chi nhánh không được vượt quá 20 ký tự.")]
         public string? BranchCode { get; set; }
+
+        [RegularExpression(@"^(03|05|07|08|09)\d{8}$", ErrorMessage = "Số điện thoại phải là số Việt Nam hợp lệ (10 số, bắt đầu bằng 03/05/07/08/09).")]
         public string? Phone { get; set; }
+
+        [StringLength(100, ErrorMessage = "Thành phố không được vượt quá 100 ký tự.")]
         public string? City { get; set; }
+
+        [MinLength(5, ErrorMessage = "Địa chỉ phải có ít nhất 5 ký tự.")]
+        [StringLength(255, ErrorMessage = "Địa chỉ không được vượt quá 255 ký tự.")]
         public string? Address { get; set; }
+
+        [StringLength(50, ErrorMessage = "Loại cửa hàng không được vượt quá 50 ký tự.")]
         public string? Type { get; set; }
+
         public Guid? ManagerUserId { get; set; }
         public short? IsActive { get; set; }
     }
