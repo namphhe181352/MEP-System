@@ -132,6 +132,14 @@ namespace MEP_Management_System.Controllers.AdminController
                     return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Địa chỉ đã tồn tại trong hệ thống." } });
             }
 
+            var branchNameTrimmed = dto.BranchName?.Trim();
+            if (!string.IsNullOrWhiteSpace(branchNameTrimmed))
+            {
+                var nameExists = await _context.Branches.AnyAsync(b => b.BranchName.ToLower() == branchNameTrimmed.ToLower());
+                if (nameExists)
+                    return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Tên cửa hàng đã tồn tại." } });
+            }
+
             if (dto.ManagerUserId.HasValue)
             {
                 var ownerBranchExists = await _context.Branches.AnyAsync(b => b.ManagerUserId == dto.ManagerUserId.Value);

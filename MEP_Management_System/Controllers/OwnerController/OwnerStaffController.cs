@@ -204,33 +204,48 @@ public class OwnerStaffController : ControllerBase
             .Select(sa => sa.UserId)
             .ToListAsync();
 
-        // view=active (default) | hidden | deleted
+        // view=all | active (default) | hidden | deleted
+        // - all: Không lọc theo status
         // - active: Status = ACTIVE
-        // - hidden: Status = INACTIVE (suspended)
+        // - hidden: Status = INACTIVE (đã khóa)
         // - deleted: Status = DELETED
         string? statusFilter = null;
-        if (string.Equals(view, "hidden", StringComparison.OrdinalIgnoreCase))
+        string viewMessage;
+
+        if (string.Equals(view, "all", StringComparison.OrdinalIgnoreCase))
+        {
+            statusFilter = null;
+            viewMessage = "Danh sách tất cả nhân viên.";
+        }
+        else if (string.Equals(view, "hidden", StringComparison.OrdinalIgnoreCase))
         {
             statusFilter = "INACTIVE";
+            viewMessage = "Danh sách nhân viên đã khóa.";
         }
         else if (string.Equals(view, "deleted", StringComparison.OrdinalIgnoreCase))
         {
             statusFilter = "DELETED";
+            viewMessage = "Danh sách nhân viên đã xóa.";
         }
         else
         {
             statusFilter = "ACTIVE";
+            viewMessage = "Danh sách nhân viên đang hoạt động.";
         }
 
         var query = _context.Users
             .Include(u => u.UserPermissions).ThenInclude(up => up.Permission)
             .Include(u => u.Roles)
             .Where(u => staffUserIds.Contains(u.UserId)
-                && u.Status == statusFilter
                 && u.UserId != ownerId.Value
                 // Loại trừ Admin/Owner - chỉ hiển thị staff (Sale, Kho, etc.)
                 && !u.Roles.Any(r => r.RoleName == "Admin" || r.RoleName == "Owner"))
             .AsQueryable();
+
+        if (statusFilter != null)
+        {
+            query = query.Where(u => u.Status == statusFilter);
+        }
 
         // isDeleted override chỉ áp dụng nếu muốn xem tất cả (backward compatible)
         if (isDeleted == true)
@@ -243,6 +258,7 @@ public class OwnerStaffController : ControllerBase
                     && u.UserId != ownerId.Value
                     && !u.Roles.Any(r => r.RoleName == "Admin" || r.RoleName == "Owner"))
                 .AsQueryable();
+            viewMessage = "Danh sách nhân viên đã xóa.";
         }
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -275,7 +291,7 @@ public class OwnerStaffController : ControllerBase
         return Ok(new ApiResponse<PaginatedResponse<OwnerStaffDto>>
         {
             Success = true,
-            Message = "Danh sách nhân viên.",
+            Message = viewMessage,
             Data = new PaginatedResponse<OwnerStaffDto>
             {
                 Items = dtos,

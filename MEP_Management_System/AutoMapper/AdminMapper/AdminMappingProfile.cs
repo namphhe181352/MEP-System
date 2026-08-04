@@ -35,7 +35,15 @@ public class AdminMappingProfile : Profile
 
         // SystemLog -> SystemLogDto
         CreateMap<SystemLog, SystemLogDto>()
-            .ForMember(d => d.UserName, o => o.MapFrom(s => s.User != null ? s.User.FullName : null));
+            .ForMember(d => d.UserName, o => o.MapFrom(s => s.User != null ? s.User.FullName : null))
+            .ForMember(d => d.BranchName, o => o.MapFrom(s =>
+                s.User != null && s.User.StaffAssignments.Any()
+                    ? s.User.StaffAssignments.First().Branch.BranchName
+                    : null))
+            .ForMember(d => d.RoleName, o => o.MapFrom(s =>
+                s.User != null && s.User.Roles.Any()
+                    ? s.User.Roles.First().RoleName
+                    : null));
 
         // SystemLog -> SystemEventDto
         CreateMap<SystemLog, SystemEventDto>()

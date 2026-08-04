@@ -332,6 +332,10 @@ public class AdminAccountsController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.Password) || dto.Password.Length < 6)
             return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Mật khẩu phải có ít nhất 6 ký tự." } });
 
+        // BranchName là bắt buộc khi không chọn branch có sẵn
+        if (!dto.BranchId.HasValue && string.IsNullOrWhiteSpace(dto.BranchName))
+            return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Tên cửa hàng là bắt buộc khi tạo Owner mới." } });
+
         if (await IsEmailTakenAsync(dto.Email))
             return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-409", Message = "Email đã được sử dụng." } });
 
@@ -380,39 +384,28 @@ public class AdminAccountsController : ControllerBase
         }
         else
         {
-            // For a single-store system, we should assign the owner to the existing active branch
-            // Prefer the branch with the most products to ensure they see the main data
-            var existingMainBranch = await _context.Branches
-                .Where(b => b.IsActive == 1)
-                .OrderByDescending(b => b.BranchProducts.Count)
-                .FirstOrDefaultAsync();
+            // Check duplicate branch name
+            var branchNameTrimmed = dto.BranchName.Trim();
+            var nameExists = await _context.Branches.AnyAsync(b => b.BranchName.ToLower() == branchNameTrimmed.ToLower());
+            if (nameExists)
+                return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Tên cửa hàng đã tồn tại." } });
 
-            if (existingMainBranch != null)
+            // Tự tạo branch mới với tên cửa hàng bắt buộc từ admin
+            var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+            var newBranch = new Branch
             {
-                branch = existingMainBranch;
-                branchId = existingMainBranch.BranchId;
-            }
-            else
-            {
-                // Tự tạo branch chỉ khi hệ thống chưa có bất kỳ chi nhánh nào
-                var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
-                var newBranch = new Branch
-                {
-                    BranchId = Guid.NewGuid(),
-                    BranchName = !string.IsNullOrWhiteSpace(dto.BranchName)
-                        ? dto.BranchName.Trim()
-                        : $"{dto.FullName.Trim()} Store",
-                    Phone = dto.PhoneNumber,
-                    ManagerUserId = null,
-                    IsActive = 1,
-                    CreatedAt = now,
-                    UpdatedAt = now
-                };
-                _context.Branches.Add(newBranch);
-                await _context.SaveChangesAsync(); // get BranchId
-                branch = newBranch;
-                branchId = newBranch.BranchId;
-            }
+                BranchId = Guid.NewGuid(),
+                BranchName = branchNameTrimmed,
+                Phone = dto.PhoneNumber,
+                ManagerUserId = null,
+                IsActive = 1,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            _context.Branches.Add(newBranch);
+            await _context.SaveChangesAsync(); // get BranchId
+            branch = newBranch;
+            branchId = newBranch.BranchId;
         }
 
         var nowUtc = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
