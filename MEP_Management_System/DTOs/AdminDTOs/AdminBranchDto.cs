@@ -23,7 +23,9 @@ namespace MEP_Management_System.DTOs.AdminDTOs
     public class CreateAdminBranchRequest
     {
         [Required(ErrorMessage = "Tên cửa hàng là bắt buộc.")]
-        [StringLength(100, ErrorMessage = "Tên cửa hàng không được vượt quá 100 ký tự.")]
+        [StringLength(100, MinimumLength = 2, ErrorMessage = "Tên cửa hàng phải có từ 2 đến 100 ký tự.")]
+        [RegularExpression(@"^[\p{L}0-9\s\.\-_&/]+$",
+            ErrorMessage = "Tên cửa hàng chỉ được chứa chữ cái, số, khoảng trắng và các ký tự: . - _ & /")]
         public string BranchName { get; set; } = null!;
 
         [StringLength(20, ErrorMessage = "Mã chi nhánh không được vượt quá 20 ký tự.")]
@@ -52,7 +54,9 @@ namespace MEP_Management_System.DTOs.AdminDTOs
 
     public class UpdateAdminBranchRequest
     {
-        [StringLength(100, ErrorMessage = "Tên cửa hàng không được vượt quá 100 ký tự.")]
+        [StringLength(100, MinimumLength = 2, ErrorMessage = "Tên cửa hàng phải có từ 2 đến 100 ký tự.")]
+        [RegularExpression(@"^[\p{L}0-9\s\.\-_&/]+$",
+            ErrorMessage = "Tên cửa hàng chỉ được chứa chữ cái, số, khoảng trắng và các ký tự: . - _ & /")]
         public string? BranchName { get; set; }
 
         [StringLength(20, ErrorMessage = "Mã chi nhánh không được vượt quá 20 ký tự.")]
