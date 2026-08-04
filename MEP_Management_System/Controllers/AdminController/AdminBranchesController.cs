@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.AdminDTOs;
 using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -18,10 +19,12 @@ namespace MEP_Management_System.Controllers.AdminController
     public class AdminBranchesController : ControllerBase
     {
         private readonly MEPDatabaseContext _context;
+        private readonly MepNotificationService _notify;
 
-        public AdminBranchesController(MEPDatabaseContext context)
+        public AdminBranchesController(MEPDatabaseContext context, MepNotificationService notify)
         {
             _context = context;
+            _notify = notify;
         }
 
         private Guid? GetCurrentUserId()
@@ -275,6 +278,10 @@ namespace MEP_Management_System.Controllers.AdminController
             await LogAction(branch.BranchId, "UPDATE_BRANCH", "branches", "Branch", $"Cập nhật chi nhánh: {branch.BranchName}");
             await _context.SaveChangesAsync();
 
+            // Thông báo cho chủ cửa hàng (nếu có)
+            await SafeNotifyBranchChangeAsync(branch.ManagerUserId, branch.BranchId, branch.BranchName, "UPDATE_BRANCH",
+                $"Cửa hàng \"{branch.BranchName}\" của bạn vừa được cập nhật bởi quản trị viên.");
+
             return Ok(MapToDto(branch));
         }
 
@@ -308,12 +315,19 @@ namespace MEP_Management_System.Controllers.AdminController
                 });
             }
 
-            // Soft delete: đánh dấu IsActive = 0 và clear ManagerUserId để giải phóng user
+            // Capture managerId trước khi xóa (nếu là hard delete còn giữ trong DB, soft delete vẫn giữ)
+            var managerId = branch.ManagerUserId;
+            var branchName = branch.BranchName;
+
+            // Soft delete: đánh dấu IsActive = 0
             branch.IsActive = 0;
             branch.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
-            await LogAction(branch.BranchId, "SOFT_DELETE_BRANCH", "branches", "Branch", $"Xóa nháp chi nhánh: {branch.BranchName}");
+            await LogAction(branch.BranchId, "SOFT_DELETE_BRANCH", "branches", "Branch", $"Xóa nháp chi nhánh: {branchName}");
             await _context.SaveChangesAsync();
+
+            await SafeNotifyBranchChangeAsync(managerId, branch.BranchId, branchName, "SOFT_DELETE_BRANCH",
+                $"Cửa hàng \"{branchName}\" của bạn vừa được tạm ngưng hoạt động bởi quản trị viên.");
 
             return Ok(new { message = "Đã xóa nháp chi nhánh. Bạn có thể khôi phục hoặc xóa hẳn.", isActive = (short)0 });
         }
@@ -338,6 +352,9 @@ namespace MEP_Management_System.Controllers.AdminController
 
             await LogAction(branch.BranchId, "RESTORE_BRANCH", "branches", "Branch", $"Khôi phục chi nhánh: {branch.BranchName}");
             await _context.SaveChangesAsync();
+
+            await SafeNotifyBranchChangeAsync(branch.ManagerUserId, branch.BranchId, branch.BranchName, "RESTORE_BRANCH",
+                $"Cửa hàng \"{branch.BranchName}\" của bạn vừa được khôi phục hoạt động.");
 
             return Ok(new { message = "Khôi phục chi nhánh thành công.", isActive = (short)1 });
         }
@@ -380,6 +397,8 @@ namespace MEP_Management_System.Controllers.AdminController
                 });
             }
 
+            // Capture managerId + branchName TRƯỚC khi xóa hẳn branch khỏi DB
+            var managerId = branch.ManagerUserId;
             var branchName = branch.BranchName;
 
             await using var transaction = await _context.Database.BeginTransactionAsync();
@@ -415,7 +434,27 @@ namespace MEP_Management_System.Controllers.AdminController
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
+            // Notify SAU khi commit (branch name vẫn còn trong capture)
+            await SafeNotifyBranchChangeAsync(managerId, id, branchName, "HARD_DELETE_BRANCH",
+                $"Cửa hàng \"{branchName}\" của bạn đã bị xóa vĩnh viễn bởi quản trị viên.");
+
             return Ok(new { message = "Xóa hẳn chi nhánh thành công." });
+        }
+
+        /// <summary>
+        /// Helper gọi MepNotificationService mà không làm fail request nếu SignalR lỗi.
+        /// </summary>
+        private async Task SafeNotifyBranchChangeAsync(Guid? ownerId, Guid branchId, string branchName, string action, string message)
+        {
+            try
+            {
+                await _notify.NotifyBranchChange(ownerId, branchId, action, branchName, message);
+            }
+            catch (Exception ex)
+            {
+                // Không fail mutation vì lỗi broadcast — chỉ log
+                Console.WriteLine($"[AdminBranchesController] NotifyBranchChange failed: {ex.Message}");
+            }
         }
 
         /// <summary>
