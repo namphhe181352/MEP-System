@@ -277,7 +277,7 @@ public class AdminAccountsController : ControllerBase
 
         var query = _context.SystemLogs
             .Include(l => l.User)
-            .Where(l => l.UserId == id);
+            .Where(l => l.UserId == id || (l.EntityType == "User" && l.EntityId == id));
 
         var totalCount = await query.CountAsync();
 
