@@ -278,6 +278,10 @@ namespace MEP_Management_System.Controllers.AdminController
             return Ok(MapToDto(branch));
         }
 
+        /// <summary>
+        /// Xóa nháp (soft delete): chỉ chuyển IsActive = 0. Vẫn chặn nếu còn dữ liệu nghiệp vụ.
+        /// Sau khi xóa nháp, dùng endpoint DELETE /branches/{id}/permanent để xóa hẳn.
+        /// </summary>
         [HttpDelete("{id:guid}")]
         public async Task<IActionResult> DeleteBranch(Guid id)
         {
@@ -288,9 +292,9 @@ namespace MEP_Management_System.Controllers.AdminController
                 return NotFound(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-404", Message = "Chi nhánh không tồn tại." } });
 
             if (branch.IsActive == 0)
-                return Ok(new { message = "Chi nhánh đã được xóa trước đó." });
+                return Ok(new { message = "Chi nhánh đã ở trạng thái xóa nháp.", isActive = (short)0 });
 
-            // Kiểm tra dữ liệu nghiệp vụ liên quan (các bảng FK IsRequired sẽ chặn hard delete)
+            // Chặn xóa nháp nếu còn dữ liệu nghiệp vụ liên quan
             var relatedData = await CheckBranchHasBusinessDataAsync(id);
             if (relatedData.HasRelations)
             {
@@ -304,24 +308,92 @@ namespace MEP_Management_System.Controllers.AdminController
                 });
             }
 
-            var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+            // Soft delete: đánh dấu IsActive = 0 và clear ManagerUserId để giải phóng user
+            branch.IsActive = 0;
+            branch.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+
+            await LogAction(branch.BranchId, "SOFT_DELETE_BRANCH", "branches", "Branch", $"Xóa nháp chi nhánh: {branch.BranchName}");
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Đã xóa nháp chi nhánh. Bạn có thể khôi phục hoặc xóa hẳn.", isActive = (short)0 });
+        }
+
+        /// <summary>
+        /// Khôi phục chi nhánh đã xóa nháp (IsActive = 0 → 1).
+        /// </summary>
+        [HttpPatch("{id:guid}/restore")]
+        public async Task<IActionResult> RestoreBranch(Guid id)
+        {
+            var branch = await _context.Branches
+                .FirstOrDefaultAsync(b => b.BranchId == id);
+
+            if (branch == null)
+                return NotFound(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-404", Message = "Chi nhánh không tồn tại." } });
+
+            if (branch.IsActive == 1)
+                return Ok(new { message = "Chi nhánh đang hoạt động.", isActive = (short)1 });
+
+            branch.IsActive = 1;
+            branch.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+
+            await LogAction(branch.BranchId, "RESTORE_BRANCH", "branches", "Branch", $"Khôi phục chi nhánh: {branch.BranchName}");
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Khôi phục chi nhánh thành công.", isActive = (short)1 });
+        }
+
+        /// <summary>
+        /// Xóa hẳn chi nhánh (hard delete). Chỉ áp dụng cho chi nhánh đã ở trạng thái xóa nháp (IsActive = 0).
+        /// </summary>
+        [HttpDelete("{id:guid}/permanent")]
+        public async Task<IActionResult> HardDeleteBranch(Guid id)
+        {
+            var branch = await _context.Branches
+                .FirstOrDefaultAsync(b => b.BranchId == id);
+
+            if (branch == null)
+                return NotFound(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-404", Message = "Chi nhánh không tồn tại." } });
+
+            if (branch.IsActive == 1)
+            {
+                return Conflict(new ErrorResponseDto
+                {
+                    Error = new ErrorDetail
+                    {
+                        Code = "MSG-409",
+                        Message = "Vui lòng xóa nháp trước khi xóa hẳn."
+                    }
+                });
+            }
+
+            // Vẫn check business data lần cuối để an toàn
+            var relatedData = await CheckBranchHasBusinessDataAsync(id);
+            if (relatedData.HasRelations)
+            {
+                return Conflict(new ErrorResponseDto
+                {
+                    Error = new ErrorDetail
+                    {
+                        Code = "MSG-409",
+                        Message = relatedData.Message
+                    }
+                });
+            }
+
+            var branchName = branch.BranchName;
 
             await using var transaction = await _context.Database.BeginTransactionAsync();
 
             // Xóa cascade các bảng phụ thuộc an toàn trước khi hard delete Branch
-            // StaffAssignments, Shifts, SystemConfigs: FK BranchId IsRequired với Cascade
             await _context.StaffAssignments.Where(sa => sa.BranchId == id).ExecuteDeleteAsync();
             await _context.Shifts.Where(s => s.BranchId == id).ExecuteDeleteAsync();
             await _context.SystemConfigs.Where(c => c.BranchId == id).ExecuteDeleteAsync();
-            // Print templates & taxonomies: nullable FK, chỉ SetNull ở DB, xóa luôn cho sạch
             await _context.InvoicePrintTemplates.Where(t => t.BranchId == id).ExecuteDeleteAsync();
             await _context.StockPrintTemplates.Where(t => t.BranchId == id).ExecuteDeleteAsync();
             await _context.ProductTaxonomies.Where(t => t.BranchId == id).ExecuteDeleteAsync();
             await _context.OrderDiscountTiers.Where(t => t.BranchId == id).ExecuteDeleteAsync();
-            // BranchProducts: FK IsRequired nhưng không có data nghiệp vụ (đã check ở trên)
             await _context.BranchProducts.Where(bp => bp.BranchId == id).ExecuteDeleteAsync();
 
-            // Hard delete Branch
             var deletedRows = await _context.Branches
                 .Where(b => b.BranchId == id)
                 .ExecuteDeleteAsync();
@@ -339,11 +411,11 @@ namespace MEP_Management_System.Controllers.AdminController
                 });
             }
 
-            await LogAction(branch.BranchId, "DELETE_BRANCH", "branches", "Branch", $"Xóa (hard) chi nhánh: {branch.BranchName}");
+            await LogAction(id, "HARD_DELETE_BRANCH", "branches", "Branch", $"Xóa hẳn chi nhánh: {branchName}");
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
-            return Ok(new { message = "Xóa chi nhánh thành công." });
+            return Ok(new { message = "Xóa hẳn chi nhánh thành công." });
         }
 
         /// <summary>
