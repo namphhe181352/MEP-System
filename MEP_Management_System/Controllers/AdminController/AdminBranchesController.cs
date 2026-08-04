@@ -282,7 +282,6 @@ namespace MEP_Management_System.Controllers.AdminController
         public async Task<IActionResult> DeleteBranch(Guid id)
         {
             var branch = await _context.Branches
-                .AsNoTracking()
                 .FirstOrDefaultAsync(b => b.BranchId == id);
 
             if (branch == null)
@@ -291,16 +290,45 @@ namespace MEP_Management_System.Controllers.AdminController
             if (branch.IsActive == 0)
                 return Ok(new { message = "Chi nhánh đã được xóa trước đó." });
 
+            // Kiểm tra dữ liệu nghiệp vụ liên quan (các bảng FK IsRequired sẽ chặn hard delete)
+            var relatedData = await CheckBranchHasBusinessDataAsync(id);
+            if (relatedData.HasRelations)
+            {
+                return Conflict(new ErrorResponseDto
+                {
+                    Error = new ErrorDetail
+                    {
+                        Code = "MSG-409",
+                        Message = relatedData.Message
+                    }
+                });
+            }
+
             var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
-            var updatedRows = await _context.Branches
-                .Where(b => b.BranchId == id)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(b => b.IsActive, (short)0)
-                    .SetProperty(b => b.UpdatedAt, now));
+            await using var transaction = await _context.Database.BeginTransactionAsync();
 
-            if (updatedRows == 0)
+            // Xóa cascade các bảng phụ thuộc an toàn trước khi hard delete Branch
+            // StaffAssignments, Shifts, SystemConfigs: FK BranchId IsRequired với Cascade
+            await _context.StaffAssignments.Where(sa => sa.BranchId == id).ExecuteDeleteAsync();
+            await _context.Shifts.Where(s => s.BranchId == id).ExecuteDeleteAsync();
+            await _context.SystemConfigs.Where(c => c.BranchId == id).ExecuteDeleteAsync();
+            // Print templates & taxonomies: nullable FK, chỉ SetNull ở DB, xóa luôn cho sạch
+            await _context.InvoicePrintTemplates.Where(t => t.BranchId == id).ExecuteDeleteAsync();
+            await _context.StockPrintTemplates.Where(t => t.BranchId == id).ExecuteDeleteAsync();
+            await _context.ProductTaxonomies.Where(t => t.BranchId == id).ExecuteDeleteAsync();
+            await _context.OrderDiscountTiers.Where(t => t.BranchId == id).ExecuteDeleteAsync();
+            // BranchProducts: FK IsRequired nhưng không có data nghiệp vụ (đã check ở trên)
+            await _context.BranchProducts.Where(bp => bp.BranchId == id).ExecuteDeleteAsync();
+
+            // Hard delete Branch
+            var deletedRows = await _context.Branches
+                .Where(b => b.BranchId == id)
+                .ExecuteDeleteAsync();
+
+            if (deletedRows == 0)
             {
+                await transaction.RollbackAsync();
                 return Conflict(new ErrorResponseDto
                 {
                     Error = new ErrorDetail
@@ -311,10 +339,42 @@ namespace MEP_Management_System.Controllers.AdminController
                 });
             }
 
-            await LogAction(branch.BranchId, "DELETE_BRANCH", "branches", "Branch", $"Xóa (soft) chi nhánh: {branch.BranchName}");
+            await LogAction(branch.BranchId, "DELETE_BRANCH", "branches", "Branch", $"Xóa (hard) chi nhánh: {branch.BranchName}");
             await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
 
             return Ok(new { message = "Xóa chi nhánh thành công." });
+        }
+
+        /// <summary>
+        /// Kiểm tra xem chi nhánh có dữ liệu nghiệp vụ liên quan không.
+        /// Trả về true nếu có bất kỳ record nào trong các bảng FK IsRequired.
+        /// </summary>
+        private async Task<(bool HasRelations, string Message)> CheckBranchHasBusinessDataAsync(Guid branchId)
+        {
+            var ordersCount = await _context.Orders.CountAsync(o => o.BranchId == branchId);
+            if (ordersCount > 0)
+                return (true, $"Không thể xóa chi nhánh vì còn {ordersCount} đơn hàng liên quan. Vui lòng xử lý trước.");
+
+            var stockTicketsCount = await _context.StockTickets.CountAsync(st => st.BranchId == branchId);
+            if (stockTicketsCount > 0)
+                return (true, $"Không thể xóa chi nhánh vì còn {stockTicketsCount} phiếu kho liên quan. Vui lòng xử lý trước.");
+
+            var inventoryCheckTicketsCount = await _context.InventoryCheckTickets.CountAsync(t => t.BranchId == branchId);
+            if (inventoryCheckTicketsCount > 0)
+                return (true, $"Không thể xóa chi nhánh vì còn {inventoryCheckTicketsCount} phiếu kiểm kê liên quan. Vui lòng xử lý trước.");
+
+            var notificationsCount = await _context.Notifications.CountAsync(n => n.BranchId == branchId);
+            if (notificationsCount > 0)
+                return (true, $"Không thể xóa chi nhánh vì còn {notificationsCount} thông báo liên quan. Vui lòng xử lý trước.");
+
+            // BranchProducts có stock thực tế thì chặn, còn lại cho phép xóa cascade
+            var branchProductsWithStock = await _context.BranchProducts
+                .CountAsync(bp => bp.BranchId == branchId && (bp.ActualStock > 0 || bp.ReservedStock > 0));
+            if (branchProductsWithStock > 0)
+                return (true, $"Không thể xóa chi nhánh vì còn tồn kho thực tế ở {branchProductsWithStock} sản phẩm. Vui lòng xử lý trước.");
+
+            return (false, string.Empty);
         }
 
         [HttpGet("{id:guid}/users")]
