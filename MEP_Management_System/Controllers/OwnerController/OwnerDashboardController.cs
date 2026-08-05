@@ -23,12 +23,14 @@ public class OwnerDashboardController : ControllerBase
     private readonly MEPDatabaseContext _context;
     private readonly ICurrentBranchAccessor _currentBranch;
     private readonly CustomerDebtService _customerDebtService;
+    private readonly ISupplierDebtService _supplierDebtService;
 
-    public OwnerDashboardController(MEPDatabaseContext context, ICurrentBranchAccessor currentBranch, CustomerDebtService customerDebtService)
+    public OwnerDashboardController(MEPDatabaseContext context, ICurrentBranchAccessor currentBranch, CustomerDebtService customerDebtService, ISupplierDebtService supplierDebtService)
     {
         _context = context;
         _currentBranch = currentBranch;
         _customerDebtService = customerDebtService;
+        _supplierDebtService = supplierDebtService;
     }
 
     /// <summary>
@@ -281,11 +283,12 @@ public class OwnerDashboardController : ControllerBase
                         && o.CreatedAt.HasValue && o.CreatedAt >= last30Days && o.CreatedAt < now)
             .SumAsync(o => (decimal?)o.TotalAmount) ?? 0m;
 
-        var totalSupplierDebt = await _context.StockTickets.AsNoTracking()
-            .Where(st => st.BranchId == branchId.Value && st.TicketType == "PURCHASE"
-                         && CompletedStatuses.Contains(st.Status)
-                         && st.CreatedAt.HasValue && st.CreatedAt >= yearStart && st.CreatedAt < now)
-            .SumAsync(st => (decimal?)st.TotalAmount) ?? 0m;
+        var activeSupplierIds = await _context.Suppliers.AsNoTracking()
+            .Where(s => s.BranchId == branchId.Value && (s.Status == 1 || s.Status == null))
+            .Select(s => s.SupplierId)
+            .ToListAsync();
+        var supplierDebtMap = await _supplierDebtService.CalculateCurrentDebtBatchAsync(activeSupplierIds);
+        var totalSupplierDebt = supplierDebtMap.Values.Sum(x => x.CurrentDebt);
 
         var supplierDebtPaidLast30Days = await _context.SupplierPayments.AsNoTracking()
             .Where(sp => sp.Supplier.BranchId == branchId.Value && sp.CreatedAt >= last30Days && sp.CreatedAt < now && sp.IsDeleted == 0)

@@ -17,12 +17,14 @@ public class AdminDashboardController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
     private readonly CustomerDebtService _customerDebtService;
+    private readonly ISupplierDebtService _supplierDebtService;
     private static readonly string[] CompletedStatuses = { "COMPLETED", "Completed", "PAID", "Paid", "DONE", "Done" };
 
-    public AdminDashboardController(MEPDatabaseContext context, CustomerDebtService customerDebtService)
+    public AdminDashboardController(MEPDatabaseContext context, CustomerDebtService customerDebtService, ISupplierDebtService supplierDebtService)
     {
         _context = context;
         _customerDebtService = customerDebtService;
+        _supplierDebtService = supplierDebtService;
     }
 
     /// <summary>
@@ -265,7 +267,12 @@ public class AdminDashboardController : ControllerBase
             .ToListAsync();
 
         // --- Supplier debt ---
-        var totalSupplierDebt = 0m; // TODO: calculate from purchase orders vs payments
+        var activeSupplierIds = await _context.Suppliers.AsNoTracking()
+            .Where(s => s.Status == 1 || s.Status == null)
+            .Select(s => s.SupplierId)
+            .ToListAsync();
+        var supplierDebtMap = await _supplierDebtService.CalculateCurrentDebtBatchAsync(activeSupplierIds);
+        var totalSupplierDebt = supplierDebtMap.Values.Sum(x => x.CurrentDebt);
 
         var overview = new DashboardOverviewDto
         {
