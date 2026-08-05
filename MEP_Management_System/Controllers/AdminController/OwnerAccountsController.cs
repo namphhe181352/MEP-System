@@ -153,6 +153,7 @@ public class OwnerAccountsController : ControllerBase
         public string Password { get; set; } = null!;
         public string Role { get; set; } = null!;  // Owner | SalesStaff | InventoryStaff
         public Guid? BranchId { get; set; }
+        public string? BranchName { get; set; }
         public string? SubscriptionPlan { get; set; }
     }
 
@@ -223,13 +224,21 @@ public class OwnerAccountsController : ControllerBase
 
         user.Roles.Add(role);
 
-        // If Owner with no BranchId, create a default branch
+        // If Owner with no BranchId, create a default branch (BranchName is required)
         if (dto.Role == "Owner" && !dto.BranchId.HasValue)
         {
+            if (string.IsNullOrWhiteSpace(dto.BranchName))
+            {
+                return BadRequest(new ErrorResponseDto
+                {
+                    Error = new ErrorDetail { Code = "MSG-400", Message = "Tên cửa hàng là bắt buộc khi tạo Owner." }
+                });
+            }
+
             var branch = new Branch
             {
                 BranchId = Guid.NewGuid(),
-                BranchName = dto.FullName.Trim() + " Store"
+                BranchName = dto.BranchName.Trim()
             };
             _context.Branches.Add(branch);
             await _context.SaveChangesAsync(); // get branch ID
