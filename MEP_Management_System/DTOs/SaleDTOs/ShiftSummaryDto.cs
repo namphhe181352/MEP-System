@@ -20,12 +20,26 @@ public class ShiftSummaryDto
     public decimal? Variance { get; set; }
     public int TotalOrders { get; set; }
     public int TotalRefunds { get; set; }
+    public Guid OpenedByUserId { get; set; }
+    public string? OpenedByUserName { get; set; }
+    public Guid? ClosedByUserId { get; set; }
+    public string? ClosedByUserName { get; set; }
+    public string? ForceCloseReason { get; set; }
     public List<PaymentMethodSummary> PaymentBreakdown { get; set; } = new();
+    public List<UserSalesSummary> SalesByUser { get; set; } = new();
 
     public class PaymentMethodSummary
     {
         public string Method { get; set; } = null!;
         public decimal Total { get; set; }
         public int Count { get; set; }
+    }
+
+    public class UserSalesSummary
+    {
+        public Guid UserId { get; set; }
+        public string UserName { get; set; } = null!;
+        public int InvoiceCount { get; set; }
+        public decimal TotalAmount { get; set; }
     }
 }
