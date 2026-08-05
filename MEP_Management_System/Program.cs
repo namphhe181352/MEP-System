@@ -1,6 +1,7 @@
 using MEP_Management_System.Authorization;
 using MEP_Management_System.DTOs.SaleDTOs;
 using MEP_Management_System.Hubs;
+using MEP_Management_System.Middleware;
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
 using MEP_Management_System.Services.Email;
@@ -50,6 +51,7 @@ builder.Services.AddTransient<IEmailService, EmailService>();
 
 // Background Services
 builder.Services.AddHostedService<UserCleanupService>();
+builder.Services.AddHostedService<NotificationDispatcherService>();
 // OData
 var odataBuilder = new ODataConventionModelBuilder();
 odataBuilder.EntitySet<User>("Users");
@@ -249,6 +251,7 @@ app.UseSwaggerUI(c =>
 app.UseCors("AllowFrontend");
 // app.UseHttpsRedirection(); // Bỏ comment khi deploy lên server thật có SSL/TLS
 app.UseAuthentication();
+app.UseActiveUserCheck();
 app.UseAuthorization();
 
 app.MapControllers();
