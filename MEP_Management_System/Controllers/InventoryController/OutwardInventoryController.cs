@@ -658,9 +658,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (stockTicket.Status == "COMPLETED")
                 {
                     // COMPLETED: CHỈ cho phép sửa Note/Reason, không cho sửa Items
-                    if (!string.IsNullOrWhiteSpace(dto.Note))
+                    if (dto.Note != null)
                         stockTicket.Notes = dto.Note;
-                    else if (!string.IsNullOrWhiteSpace(dto.Reason))
+                    else if (dto.Reason != null)
                         stockTicket.Notes = dto.Reason;
 
                     await _context.SaveChangesAsync();
@@ -682,9 +682,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 // PENDING: Cho phép sửa tất cả (Items, Note, Reason, Status)
-                if (!string.IsNullOrWhiteSpace(dto.Note))
+                if (dto.Note != null)
                     stockTicket.Notes = dto.Note;
-                else if (!string.IsNullOrWhiteSpace(dto.Reason))
+                else if (dto.Reason != null)
                     stockTicket.Notes = dto.Reason;
 
                 // ============================================================
@@ -962,7 +962,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 // ============================================================
                 // QUY TẮC MỚI: Kiểm tra trạng thái
                 // ============================================================
-                if (stockTicket.Status == "CANCELLED")
+                if (stockTicket.Status?.ToUpperInvariant() == "CANCELLED")
                 {
                     await transaction.RollbackAsync();
                     return BadRequest(new ApiResponse<object>
@@ -977,7 +977,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 // PHIẾU ĐÃ COMPLETED (đã cập nhật tồn kho + ảnh hưởng sổ cái) → không cho phép hủy.
                 // Nếu cần điều chỉnh phải tạo phiếu nhập kho ngược / phiếu điều chỉnh.
                 // ============================================================
-                if (stockTicket.Status == "COMPLETED")
+                if (stockTicket.Status?.ToUpperInvariant() == "COMPLETED")
                 {
                     await transaction.RollbackAsync();
                     return BadRequest(new ApiResponse<object>

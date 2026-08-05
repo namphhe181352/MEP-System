@@ -430,6 +430,8 @@ public class AdminAccountsController : ControllerBase
         _context.Users.Add(newUser);
 
         // Gán Manager cho branch nếu vừa tạo
+        // Lưu ý: KHÔNG seed global products cho branch mới — mỗi cửa hàng tự quản lý catalog riêng.
+        // Chủ cửa hàng phải tự thêm sản phẩm sau khi tạo tài khoản.
         if (branch.ManagerUserId == null)
         {
             branch.ManagerUserId = newUser.UserId;

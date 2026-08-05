@@ -182,6 +182,9 @@ namespace MEP_Management_System.Controllers.AdminController
                 });
             }
 
+            // Lưu ý: KHÔNG seed global products cho branch mới — mỗi cửa hàng tự quản lý catalog riêng.
+            // Owner phải tự thêm sản phẩm sau khi tạo branch.
+
 
 
             await LogAction(branch.BranchId, "CREATE_BRANCH", "branches", "Branch", $"Tạo chi nhánh: {branch.BranchName}");
