@@ -288,7 +288,7 @@ public class OwnerDashboardController : ControllerBase
             .SumAsync(st => (decimal?)st.TotalAmount) ?? 0m;
 
         var supplierDebtPaidLast30Days = await _context.SupplierPayments.AsNoTracking()
-            .Where(sp => sp.CreatedAt >= last30Days && sp.CreatedAt < now && sp.IsDeleted == 0)
+            .Where(sp => sp.Supplier.BranchId == branchId.Value && sp.CreatedAt >= last30Days && sp.CreatedAt < now && sp.IsDeleted == 0)
             .SumAsync(sp => (decimal?)sp.Amount) ?? 0m;
 
         // Refund trend 12 months
