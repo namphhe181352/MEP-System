@@ -528,6 +528,7 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasPrecision(15, 2)
                 .HasColumnName("total_amount");
             entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.ShiftId).HasColumnName("shift_id");
             entity.Property(e => e.InvoiceCode)
                 .HasMaxLength(50)
                 .HasColumnName("invoice_code");
@@ -565,6 +566,11 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("invoices_user_id_fkey");
+
+            entity.HasOne(d => d.Shift).WithMany(p => p.Invoices)
+                .HasForeignKey(d => d.ShiftId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("invoices_shift_id_fkey");
         });
 
         modelBuilder.Entity<InvoiceItem>(entity =>
@@ -1702,10 +1708,22 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasDefaultValue(0)
                 .HasColumnName("total_orders");
             entity.Property(e => e.Note).HasColumnName("note");
+            entity.Property(e => e.ClosedByUserId).HasColumnName("closed_by_user_id");
+            entity.Property(e => e.ForceCloseReason)
+                .HasMaxLength(500)
+                .HasColumnName("force_close_reason");
             entity.HasIndex(e => e.ShiftCode).IsUnique().HasDatabaseName("ix_shifts_code");
+            entity.HasIndex(e => e.BranchId)
+                .HasDatabaseName("ix_shifts_one_open_per_branch")
+                .HasFilter("status = 'OPEN'")
+                .IsUnique();
             entity.HasOne(d => d.User).WithMany(p => p.Shifts)
                 .HasForeignKey(d => d.UserId)
                 .HasConstraintName("shifts_user_id_fkey");
+            entity.HasOne(d => d.ClosedBy).WithMany()
+                .HasForeignKey(d => d.ClosedByUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("shifts_closed_by_user_id_fkey");
             entity.HasOne(d => d.Branch).WithMany(p => p.Shifts)
                 .HasForeignKey(d => d.BranchId)
                 .HasConstraintName("shifts_branch_id_fkey");

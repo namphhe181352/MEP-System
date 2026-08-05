@@ -10,4 +10,11 @@ public class EndShiftRequest
 
     [StringLength(500, ErrorMessage = "Ghi chú không được vượt quá 500 ký tự.")]
     public string? Note { get; set; }
+
+    /// <summary>Force close - dành cho Manager/Owner khi người mở ca không có mặt</summary>
+    public bool ForceClose { get; set; }
+
+    /// <summary>Lý do force close</summary>
+    [StringLength(500)]
+    public string? ForceCloseReason { get; set; }
 }

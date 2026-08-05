@@ -7,6 +7,7 @@ public partial class Shift
     /// <summary>Format: SHIFT-YYYYMMDD-XXX</summary>
     public string ShiftCode { get; set; } = null!;
 
+    /// <summary>Người mở ca (Cash Session)</summary>
     public Guid UserId { get; set; }
 
     public Guid BranchId { get; set; }
@@ -32,7 +33,17 @@ public partial class Shift
 
     public string? Note { get; set; }
 
+    /// <summary>Người chốt ca (có thể khác người mở nếu Force Close)</summary>
+    public Guid? ClosedByUserId { get; set; }
+
+    /// <summary>Lý do Force Close</summary>
+    public string? ForceCloseReason { get; set; }
+
     public virtual User User { get; set; } = null!;
 
+    public virtual User? ClosedBy { get; set; }
+
     public virtual Branch Branch { get; set; } = null!;
+
+    public virtual ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
 }
