@@ -69,6 +69,8 @@ public class AdminUsersController : ControllerBase
                 IsActive = u.IsActive,
                 Status = u.Status,
                 CreatedAt = u.CreatedAt,
+                BranchId = u.DefaultBranchId,
+                BranchName = _context.Branches.Where(b => b.BranchId == u.DefaultBranchId).Select(b => b.BranchName).FirstOrDefault(),
                 Roles = u.Roles.Select(r => new AdminRoleDto
                 {
                     RoleId = r.RoleId,
@@ -114,6 +116,8 @@ public class AdminUsersController : ControllerBase
             IsVerified = user.IsVerified,
             SuspendedUntil = user.SuspendedUntil,
             SubscriptionPlan = user.SubscriptionPlan,
+            BranchId = user.DefaultBranchId,
+            BranchName = await _context.Branches.Where(b => b.BranchId == user.DefaultBranchId).Select(b => b.BranchName).FirstOrDefaultAsync(),
             Roles = user.Roles.Select(r => new AdminRoleDto
             {
                 RoleId = r.RoleId,
