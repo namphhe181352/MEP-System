@@ -53,7 +53,7 @@ public class AdminCreateOwnerRequest
     public Guid? BranchId { get; set; }
 
     /// <summary>
-    /// Tên branch khi tự tạo (chỉ dùng khi BranchId == null). Mặc định: "{FullName} Store".
+    /// Tên branch khi tự tạo (chỉ dùng khi BranchId == null). Bắt buộc nhập khi không chọn branch có sẵn.
     /// </summary>
     public string? BranchName { get; set; }
 

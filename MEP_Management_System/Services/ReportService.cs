@@ -283,6 +283,7 @@ public class ReportService
             .Where(st => st.BranchId == branchId.Value
                 && (st.Status == "COMPLETED" || st.Status == "Completed")
                 && (st.TicketType == "PURCHASE" || st.TicketType == "BALANCE_ADJUST")
+                && !(st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT"))
                 && st.CreatedAt < fromDate)
             .SelectMany(st => st.StockTicketItems)
             .GroupBy(sti => sti.BranchProductId)
@@ -321,12 +322,34 @@ public class ReportService
             .Select(g => new { BranchProductId = g.Key, TotalOutward = g.Sum(sti => sti.Discrepancy) })
             .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalOutward);
 
+        // Điều chỉnh kiểm kê TRƯỚC fromDate (để tính tồn đầu kỳ theo đúng ERP)
+        var adjustmentBeforePeriod = await _context.StockTickets
+            .Where(st => st.BranchId == branchId.Value
+                && (st.Status == "COMPLETED" || st.Status == "Completed")
+                && st.Notes != null
+                && st.Notes.Contains("INVENTORY_ADJUSTMENT")
+                && st.CreatedAt < fromDate)
+            .SelectMany(st => st.StockTicketItems.Select(sti => new
+            {
+                BranchProductId = sti.BranchProductId,
+                TicketType = st.TicketType,
+                Discrepancy = sti.Discrepancy
+            }))
+            .GroupBy(x => x.BranchProductId)
+            .Select(g => new
+            {
+                BranchProductId = g.Key,
+                TotalAdjustment = g.Sum(x => (x.TicketType == "BALANCE_ADJUST" ? 1m : -1m) * x.Discrepancy)
+            })
+            .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalAdjustment);
+
         // ===== TÍNH NHẬP/XUẤT TRONG KỲ =====
-        // Nhập mua trong kỳ (PURCHASE + BALANCE_ADJUST, không bao gồm CUSTOMER_RETURN để tính giá trị)
+        // Nhập mua trong kỳ (PURCHASE only; KHÔNG tính điều chỉnh kiểm kê vào cột NHẬP)
         var inwardPurchaseInPeriod = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
                 && (st.Status == "COMPLETED" || st.Status == "Completed")
                 && (st.TicketType == "PURCHASE" || st.TicketType == "BALANCE_ADJUST")
+                && !(st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT"))
                 && st.CreatedAt >= fromDate
                 && st.CreatedAt <= toDate)
             .SelectMany(st => st.StockTicketItems)
@@ -357,11 +380,12 @@ public class ReportService
             .Select(g => new { BranchProductId = g.Key, TotalOutward = g.Sum(oi => oi.Quantity) })
             .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalOutward);
 
-        // Xuất kho trong kỳ
+        // Xuất kho trong kỳ (phân loại khỏi phiếu điều chỉnh kiểm kê)
         var outwardTicketsInPeriod = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
                 && (st.Status == "COMPLETED" || st.Status == "Completed")
                 && (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER")
+                && !(st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT"))
                 && st.CreatedAt >= fromDate
                 && st.CreatedAt <= toDate)
             .SelectMany(st => st.StockTicketItems)
@@ -369,20 +393,60 @@ public class ReportService
             .Select(g => new { BranchProductId = g.Key, TotalOutward = g.Sum(sti => sti.Discrepancy) })
             .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalOutward);
 
-        // Giá trị xuất kho thực tế theo UnitPrice từ phiếu (không dùng CostPrice hiện tại)
+        // Điều chỉnh kiểm kê trong kỳ (chỉ cộng vào cột riêng, không đẩy vào NHẬP/XUẤT thương mại)
+        var adjustmentInPeriod = await _context.StockTickets
+            .Where(st => st.BranchId == branchId.Value
+                && (st.Status == "COMPLETED" || st.Status == "Completed")
+                && st.Notes != null
+                && st.Notes.Contains("INVENTORY_ADJUSTMENT")
+                && st.CreatedAt >= fromDate
+                && st.CreatedAt <= toDate)
+            .SelectMany(st => st.StockTicketItems.Select(sti => new
+            {
+                BranchProductId = sti.BranchProductId,
+                TicketType = st.TicketType,
+                Discrepancy = sti.Discrepancy,
+                UnitPrice = sti.UnitPrice,
+                CostPrice = sti.BranchProduct.CostPrice
+            }))
+            .GroupBy(x => x.BranchProductId)
+            .Select(g => new
+            {
+                BranchProductId = g.Key,
+                TotalAdjustment = g.Sum(x => (x.TicketType == "BALANCE_ADJUST" ? 1m : -1m) * x.Discrepancy),
+                TotalAdjustmentValue = g.Sum(x => (x.TicketType == "BALANCE_ADJUST" ? 1m : -1m) * x.Discrepancy * (
+                    x.UnitPrice.HasValue && x.UnitPrice.Value > 0
+                        ? x.UnitPrice.Value
+                        : x.CostPrice > 0
+                            ? x.CostPrice
+                            : 0m))
+            })
+            .ToDictionaryAsync(x => x.BranchProductId, x => new { x.TotalAdjustment, x.TotalAdjustmentValue });
+
+        // Giá trị xuất kho thực tế theo giá vốn (CostPrice) với fallback an toàn nếu UnitPrice cũ = 0/null.
         var outwardValueMap = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
                 && (st.Status == "COMPLETED" || st.Status == "Completed")
                 && (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER")
+                && !(st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT"))
                 && st.CreatedAt >= fromDate
                 && st.CreatedAt <= toDate)
             .SelectMany(st => st.StockTicketItems)
             .GroupBy(sti => sti.BranchProductId)
-            .Select(g => new { BranchProductId = g.Key, Value = g.Sum(sti => sti.Discrepancy * (sti.UnitPrice ?? 0)) })
+            .Select(g => new
+            {
+                BranchProductId = g.Key,
+                Value = g.Sum(sti => sti.Discrepancy * (
+                    sti.UnitPrice.HasValue && sti.UnitPrice.Value > 0
+                        ? sti.UnitPrice.Value
+                        : sti.BranchProduct.CostPrice > 0
+                            ? sti.BranchProduct.CostPrice
+                            : 0m))
+            })
             .ToDictionaryAsync(x => x.BranchProductId, x => x.Value);
 
         var items = new List<StockMovementItemDto>();
-        decimal totalOpeningValue = 0, totalInwardValue = 0, totalOutwardValue = 0, totalClosingValue = 0;
+        decimal totalOpeningValue = 0, totalInwardValue = 0, totalOutwardValue = 0, totalAdjustmentValue = 0, totalClosingValue = 0;
 
         foreach (var bp in products)
         {
@@ -404,15 +468,22 @@ public class ReportService
             var outwardOut = outwardTicketsInPeriod.GetValueOrDefault(branchProductId, 0);
             var inwardInPeriod2 = inwardIn;
             var outwardInPeriod2 = salesOut + outwardOut;
+            var adjustmentBefore = adjustmentBeforePeriod.GetValueOrDefault(branchProductId, 0m);
+            var adjustmentIn = adjustmentInPeriod.GetValueOrDefault(branchProductId, new { TotalAdjustment = 0m, TotalAdjustmentValue = 0m }).TotalAdjustment;
+            var adjustmentValue = adjustmentInPeriod.GetValueOrDefault(branchProductId, new { TotalAdjustment = 0m, TotalAdjustmentValue = 0m }).TotalAdjustmentValue;
 
-            // Tồn cuối = Tồn đầu kỳ + Nhập trong kỳ - Xuất trong kỳ
-            var closingStock = openingStock + inwardInPeriod2 - outwardInPeriod2;
+            // Tồn đầu kỳ = dư lượng trước kỳ + điều chỉnh kiểm kê trước kỳ
+            openingStock = openingStock + adjustmentBefore;
+
+            // Tồn cuối = Đầu kỳ + Nhập - Xuất + Điều chỉnh kiểm kê trong kỳ
+            var closingStock = openingStock + inwardInPeriod2 - outwardInPeriod2 + adjustmentIn;
 
             // Giá trị: KHÔNG tính CUSTOMER_RETURN vào giá trị nhập (hàng trả lại không có giá trị mua)
-            var openingValue = (inwardPurchaseBefore * bp.CostPrice) - ((salesBefore + outwardBefore) * bp.CostPrice);
+            var openingValue = (inwardPurchaseBefore * bp.CostPrice) - ((salesBefore + outwardBefore) * bp.CostPrice) + adjustmentBefore * bp.CostPrice;
             var inwardValue = inwardPurchaseIn * bp.CostPrice;
             var outwardValue = (salesOut * bp.CostPrice) + outwardValueMap.GetValueOrDefault(branchProductId, 0);
-            var closingValue = openingValue + inwardValue - outwardValue;
+            var adjustmentValueForItem = adjustmentValue;
+            var closingValue = openingValue + inwardValue - outwardValue + adjustmentValueForItem;
 
             items.Add(new StockMovementItemDto
             {
@@ -424,16 +495,19 @@ public class ReportService
                 OpeningStock = openingStock,
                 InwardQuantity = inwardInPeriod2,
                 OutwardQuantity = outwardInPeriod2,
+                AdjustmentQuantity = adjustmentIn,
                 ClosingStock = closingStock,
                 OpeningValue = openingValue,
                 InwardValue = inwardValue,
                 OutwardValue = outwardValue,
+                AdjustmentValue = adjustmentValueForItem,
                 ClosingValue = closingValue
             });
 
             totalOpeningValue += openingValue;
             totalInwardValue += inwardValue;
             totalOutwardValue += outwardValue;
+            totalAdjustmentValue += adjustmentValueForItem;
             totalClosingValue += closingValue;
         }
 
@@ -447,6 +521,7 @@ public class ReportService
             TotalOpeningValue = totalOpeningValue,
             TotalInwardValue = totalInwardValue,
             TotalOutwardValue = totalOutwardValue,
+            TotalAdjustmentValue = totalAdjustmentValue,
             TotalClosingValue = totalClosingValue
         };
 
@@ -490,8 +565,29 @@ public class ReportService
                 && i.CreatedAt.HasValue
                 && i.CreatedAt >= fromDate
                 && i.CreatedAt <= toDate)
-            .Select(i => new { CreatedAt = i.CreatedAt!.Value, Revenue = i.TotalAmount })
+            .Select(i => new { CreatedAt = i.CreatedAt!.Value, Revenue = i.TotalAmount, InvoiceId = i.InvoiceId })
             .ToListAsync();
+
+        var invoiceItems = await _context.InvoiceItems
+            .Include(ii => ii.BranchProduct)
+            .Include(ii => ii.Invoice)
+            .Where(ii => ii.Invoice != null
+                && ii.Invoice.Order != null
+                && ii.Invoice.Order.BranchId == branchId.Value
+                && (ii.Invoice.Status == "Completed" || ii.Invoice.Status == "COMPLETED")
+                && ii.Invoice.CreatedAt.HasValue
+                && ii.Invoice.CreatedAt >= fromDate
+                && ii.Invoice.CreatedAt <= toDate)
+            .Select(ii => new
+            {
+                Date = ii.Invoice.CreatedAt!.Value.Date,
+                Cost = ii.Quantity * (ii.BranchProduct.CostPrice > 0 ? ii.BranchProduct.CostPrice : 0m)
+            })
+            .ToListAsync();
+
+        var costByDate = invoiceItems
+            .GroupBy(x => x.Date)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Cost));
 
         var chartData = new List<ReportRevenueChartPointDto>();
         var tableData = new List<RevenueTimeItemDto>();
@@ -510,12 +606,11 @@ public class ReportService
                 })
                 .ToList();
 
-            decimal? prevRevenue = null;
             foreach (var day in dailyData)
             {
-                var growth = prevRevenue.HasValue && prevRevenue.Value > 0
-                    ? ((day.Revenue - prevRevenue.Value) / prevRevenue.Value) * 100
-                    : 0m;
+                var dailyCost = costByDate.GetValueOrDefault(day.Date, 0m);
+                var grossProfit = day.Revenue - dailyCost;
+                var profitMargin = day.Revenue > 0 ? (grossProfit / day.Revenue) * 100 : 0m;
 
                 chartData.Add(new ReportRevenueChartPointDto
                 {
@@ -530,11 +625,10 @@ public class ReportService
                     TimeKey = day.Date.ToString("dd/MM/yyyy"),
                     Revenue = day.Revenue,
                     Orders = day.OrderCount,
-                    AverageValue = day.OrderCount > 0 ? day.Revenue / day.OrderCount : 0m,
-                    GrowthPercent = growth
+                    TotalCost = dailyCost,
+                    GrossProfit = grossProfit,
+                    ProfitMargin = profitMargin
                 });
-
-                prevRevenue = day.Revenue;
             }
         }
         else if (normalizedGrouping == "week")
@@ -552,12 +646,14 @@ public class ReportService
                 })
                 .ToList();
 
-            decimal? prevRevenue = null;
             foreach (var week in weeklyData)
             {
-                var growth = prevRevenue.HasValue && prevRevenue.Value > 0
-                    ? ((week.Revenue - prevRevenue.Value) / prevRevenue.Value) * 100
-                    : 0m;
+                var weekStart = week.StartDate.Date;
+                var weeklyCost = invoiceItems
+                    .Where(x => x.Date >= weekStart && x.Date <= weekStart.AddDays(6))
+                    .Sum(x => x.Cost);
+                var grossProfit = week.Revenue - weeklyCost;
+                var profitMargin = week.Revenue > 0 ? (grossProfit / week.Revenue) * 100 : 0m;
 
                 chartData.Add(new ReportRevenueChartPointDto
                 {
@@ -572,11 +668,10 @@ public class ReportService
                     TimeKey = $"Tuần {week.Week}",
                     Revenue = week.Revenue,
                     Orders = week.OrderCount,
-                    AverageValue = week.OrderCount > 0 ? week.Revenue / week.OrderCount : 0m,
-                    GrowthPercent = growth
+                    TotalCost = weeklyCost,
+                    GrossProfit = grossProfit,
+                    ProfitMargin = profitMargin
                 });
-
-                prevRevenue = week.Revenue;
             }
         }
         else if (normalizedGrouping == "month")
@@ -595,13 +690,16 @@ public class ReportService
                 })
                 .ToList();
 
-            decimal? prevRevenue = null;
             foreach (var month in monthlyData)
             {
                 var monthName = new DateTime(month.Year, month.Month, 1).ToString("MMMM", new System.Globalization.CultureInfo("vi-VN"));
-                var growth = prevRevenue.HasValue && prevRevenue.Value > 0
-                    ? ((month.Revenue - prevRevenue.Value) / prevRevenue.Value) * 100
-                    : 0m;
+                var monthStart = new DateTime(month.Year, month.Month, 1);
+                var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+                var monthlyCost = invoiceItems
+                    .Where(x => x.Date >= monthStart.Date && x.Date <= monthEnd.Date)
+                    .Sum(x => x.Cost);
+                var grossProfit = month.Revenue - monthlyCost;
+                var profitMargin = month.Revenue > 0 ? (grossProfit / month.Revenue) * 100 : 0m;
 
                 chartData.Add(new ReportRevenueChartPointDto
                 {
@@ -616,13 +714,17 @@ public class ReportService
                     TimeKey = $"{monthName} {month.Year}",
                     Revenue = month.Revenue,
                     Orders = month.OrderCount,
-                    AverageValue = month.OrderCount > 0 ? month.Revenue / month.OrderCount : 0m,
-                    GrowthPercent = growth
+                    TotalCost = monthlyCost,
+                    GrossProfit = grossProfit,
+                    ProfitMargin = profitMargin
                 });
-
-                prevRevenue = month.Revenue;
             }
         }
+
+        var totalRevenue = orders.Sum(o => o.Revenue);
+        var totalCost = invoiceItems.Sum(x => x.Cost);
+        var totalGrossProfit = totalRevenue - totalCost;
+        var averageProfitMargin = totalRevenue > 0 ? (totalGrossProfit / totalRevenue) * 100 : 0m;
 
         var result = new RevenueByTimeReportDto
         {
@@ -633,9 +735,11 @@ public class ReportService
             TimeGrouping = request.TimeGrouping,
             ChartData = chartData,
             TableData = tableData,
-            TotalRevenue = orders.Sum(o => o.Revenue),
+            TotalRevenue = totalRevenue,
             TotalOrders = orders.Count,
-            AverageOrderValue = orders.Count > 0 ? orders.Sum(o => o.Revenue) / orders.Count : 0m
+            TotalGrossProfit = totalGrossProfit,
+            AverageProfitMargin = averageProfitMargin,
+            AverageOrderValue = orders.Count > 0 ? totalRevenue / orders.Count : 0m
         };
 
         return result;

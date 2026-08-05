@@ -449,7 +449,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     var foundProductIds = branchProducts.Select(bp => bp.ProductId).ToHashSet();
                     var foundBranchProductIds = branchProducts.Select(bp => bp.BranchProductId).ToHashSet();
                     var missingIds = productIds.Where(id => !foundProductIds.Contains(id) && !foundBranchProductIds.Contains(id)).ToList();
-                    
+
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
@@ -460,6 +460,8 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 // Kiểm tra số lượng hợp lệ
                 var validationErrors = new List<string>();
+                var effectiveUnitPriceByBranchProductId = new Dictionary<Guid, decimal>();
+
                 foreach (var item in dto.Items)
                 {
                     if (item.Quantity <= 0)
@@ -478,6 +480,19 @@ namespace MEP_Management_System.Controllers.InventoryController
                     {
                         validationErrors.Add($"Sản phẩm {bp.Product?.ProductName ?? bp.ProductId.ToString()} không đủ tồn kho để xuất. Tồn hiện tại: {bp.ActualStock}, số lượng cần xuất: {item.Quantity}.");
                     }
+
+                    var fallbackUnitPrice = item.UnitPrice.HasValue && item.UnitPrice.Value > 0
+                        ? item.UnitPrice.Value
+                        : bp.CostPrice > 0
+                            ? bp.CostPrice
+                            : 0m;
+
+                    if (fallbackUnitPrice <= 0)
+                    {
+                        validationErrors.Add($"Sản phẩm {bp.Product?.ProductName ?? bp.ProductId.ToString()} chưa có giá vốn hợp lệ để xuất kho.");
+                    }
+
+                    effectiveUnitPriceByBranchProductId[bp.BranchProductId] = fallbackUnitPrice;
                 }
 
                 if (validationErrors.Count > 0)
@@ -517,6 +532,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     foreach (var item in dto.Items)
                     {
                         var bp = branchProducts.First(x => x.BranchProductId == item.BranchProductId || x.ProductId == item.BranchProductId);
+                        var effectiveUnitPrice = effectiveUnitPriceByBranchProductId[bp.BranchProductId];
 
                         var ticketItem = new StockTicketItem
                         {
@@ -526,7 +542,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                             SystemQuantity = bp.ActualStock,
                             ActualQuantity = bp.ActualStock,
                             Discrepancy = item.Quantity,
-                            UnitPrice = item.UnitPrice ?? bp.CostPrice
+                            UnitPrice = effectiveUnitPrice
                         };
 
                         _context.StockTicketItems.Add(ticketItem);

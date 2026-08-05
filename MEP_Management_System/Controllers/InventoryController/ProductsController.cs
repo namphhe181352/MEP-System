@@ -585,7 +585,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var existingCategories = await _context.ProductTaxonomies
                     .Where(t => t.BranchId == branchId.Value && t.Type == "Category")
                     .ToListAsync();
-                
+
                 var existingBrands = await _context.ProductTaxonomies
                     .Where(t => t.BranchId == branchId.Value && t.Type == "Brand")
                     .ToListAsync();
@@ -615,7 +615,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                         // Check existing code
                         bool isCodeExist = await _context.BranchProducts
                             .AnyAsync(bp => bp.BranchId == branchId.Value && bp.Product.ProductCode.ToLower() == pDto.ProductCode.Trim().ToLower());
-                        
+
                         if (isCodeExist)
                         {
                             errors.Add($"Sản phẩm '{pDto.ProductName}': Mã '{pDto.ProductCode}' đã tồn tại");
@@ -669,7 +669,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                         product.ProductId = Guid.NewGuid();
                         product.CreatedAt = currentLocalTime;
                         product.CreatedBy = currentUserId;
-                        
+
                         product.ProductConversionUnits = new List<ProductConversionUnit>();
                         product.BranchProducts = new List<BranchProduct>();
 
@@ -931,7 +931,7 @@ namespace MEP_Management_System.Controllers.InventoryController
             }
         }
 
-        
+
         [HttpDelete("{id:guid}")]
         [HasPermission(PermissionConstants.PRODUCT_DELETE)]
         public async Task<IActionResult> DeleteProduct(Guid id)

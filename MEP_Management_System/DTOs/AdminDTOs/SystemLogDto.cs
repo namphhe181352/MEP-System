@@ -11,6 +11,8 @@ public class SystemLogDto
     public string? Source { get; set; }
     public string? IpAddress { get; set; }
     public string? UserAgent { get; set; }
-    public string UserName { get; set; } = null!;
+    public string? UserName { get; set; }
+    public string? BranchName { get; set; }
+    public string? RoleName { get; set; }
     public DateTime? Timestamp { get; set; }
 }

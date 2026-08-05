@@ -318,6 +318,8 @@ namespace MEP_Management_System.Controllers
             if (!isCorrectPassword) return BadRequest(new { message = "Mật khẩu không chính xác." });
 
             if (user.IsActive != 1) return BadRequest(new { message = "Tài khoản của bạn hiện đang bị khóa." });
+            if (string.Equals(user.Status, "DELETED", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { message = "Tài khoản đã bị xóa. Vui lòng liên hệ Admin." });
             if (!user.IsVerified) return BadRequest(new { message = "Tài khoản của bạn chưa được xác thực." });
 
             var userRoles = await _context.Roles
