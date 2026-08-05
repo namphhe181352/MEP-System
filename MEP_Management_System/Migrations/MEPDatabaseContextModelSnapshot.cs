@@ -1484,6 +1484,9 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("base_unit");
 
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("BrandName")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
