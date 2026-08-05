@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace MEP_Management_System.DTOs.InventoryDTOs
 {
@@ -22,6 +23,10 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
 
     public class CreateOwnerBranchRequest
     {
+        [Required(ErrorMessage = "Tên cửa hàng là bắt buộc.")]
+        [StringLength(100, MinimumLength = 2, ErrorMessage = "Tên cửa hàng phải có từ 2 đến 100 ký tự.")]
+        [RegularExpression(@"^[\p{L}0-9\s\.\-_&/]+$",
+            ErrorMessage = "Tên cửa hàng chỉ được chứa chữ cái, số, khoảng trắng và các ký tự: . - _ & /")]
         public string BranchName { get; set; } = null!;
         public string? BranchCode { get; set; }
         public string? Phone { get; set; }
@@ -33,6 +38,9 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
 
     public class UpdateOwnerBranchRequest
     {
+        [StringLength(100, MinimumLength = 2, ErrorMessage = "Tên cửa hàng phải có từ 2 đến 100 ký tự.")]
+        [RegularExpression(@"^[\p{L}0-9\s\.\-_&/]+$",
+            ErrorMessage = "Tên cửa hàng chỉ được chứa chữ cái, số, khoảng trắng và các ký tự: . - _ & /")]
         public string? BranchName { get; set; }
         public string? BranchCode { get; set; }
         public string? Phone { get; set; }

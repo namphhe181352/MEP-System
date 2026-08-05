@@ -585,7 +585,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var existingCategories = await _context.ProductTaxonomies
                     .Where(t => t.BranchId == branchId.Value && t.Type == "Category")
                     .ToListAsync();
-                
+
                 var existingBrands = await _context.ProductTaxonomies
                     .Where(t => t.BranchId == branchId.Value && t.Type == "Brand")
                     .ToListAsync();
@@ -615,7 +615,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                         // Check existing code
                         bool isCodeExist = await _context.BranchProducts
                             .AnyAsync(bp => bp.BranchId == branchId.Value && bp.Product.ProductCode.ToLower() == pDto.ProductCode.Trim().ToLower());
-                        
+
                         if (isCodeExist)
                         {
                             errors.Add($"Sản phẩm '{pDto.ProductName}': Mã '{pDto.ProductCode}' đã tồn tại");
@@ -669,7 +669,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                         product.ProductId = Guid.NewGuid();
                         product.CreatedAt = currentLocalTime;
                         product.CreatedBy = currentUserId;
-                        
+
                         product.ProductConversionUnits = new List<ProductConversionUnit>();
                         product.BranchProducts = new List<BranchProduct>();
 
@@ -739,7 +739,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// </summary>
         [HttpPut("{id:guid}")]
         [HasPermission(PermissionConstants.PRODUCT_UPDATE)]
-        public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpsertDto dto)
+        public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] UpdateProductDto dto)
         {
             try
             {
@@ -804,21 +804,28 @@ namespace MEP_Management_System.Controllers.InventoryController
                 try
                 {
                     var originalProductId = bp.Product.ProductId;
-                    _mapper.Map(dto, bp.Product);
-                    bp.Product.ProductId = originalProductId;
-
+                    bp.Product.ProductName = dto.ProductName;
+                    bp.Product.Barcode = dto.Barcode;
+                    bp.Product.Specification = dto.Specification;
+                    bp.Product.ItemType = dto.ItemType;
+                    bp.Product.BrandName = dto.BrandName;
+                    bp.Product.CategoryName = dto.CategoryName;
+                    bp.Product.SupplierId = dto.SupplierId;
+                    bp.Product.Weight = dto.Weight;
+                    bp.Product.WeightUnit = dto.WeightUnit;
+                    bp.Product.Width = dto.Width;
+                    bp.Product.Length = dto.Length;
+                    bp.Product.Height = dto.Height;
+                    bp.Product.SizeUnit = dto.SizeUnit;
+                    bp.Product.ProductCode = dto.ProductCode;
                     bp.Product.UpdatedAt = currentLocalTime;
                     bp.Product.UpdatedBy = currentUserId;
 
-                    // Đảm bảo SizeUnit được lưu (DTO có, Product có, AutoMapper xử lý đúng)
-                    if (!string.IsNullOrWhiteSpace(dto.SizeUnit))
-                        bp.Product.SizeUnit = dto.SizeUnit;
-
                     _context.Products.Update(bp.Product);
 
-                    bp.ActualStock = dto.ActualStock;
-                    bp.AvailableStock = dto.AvailableStock;
-                    bp.ReservedStock = dto.ReservedStock;
+                    bp.ActualStock = bp.ActualStock;
+                    bp.AvailableStock = bp.AvailableStock;
+                    bp.ReservedStock = bp.ReservedStock;
 
                     // Chuẩn hoá ShelfLocation: ưu tiên ShelfLocation đầu tiên trong ShelfLocations
                     var primaryShelfLocation =
@@ -924,7 +931,7 @@ namespace MEP_Management_System.Controllers.InventoryController
             }
         }
 
-        
+
         [HttpDelete("{id:guid}")]
         [HasPermission(PermissionConstants.PRODUCT_DELETE)]
         public async Task<IActionResult> DeleteProduct(Guid id)

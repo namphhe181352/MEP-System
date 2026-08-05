@@ -38,6 +38,10 @@ public class SystemLogsController : ControllerBase
     {
         var query = _context.SystemLogs
             .Include(l => l.User)
+                .ThenInclude(u => u.Roles)
+            .Include(l => l.User)
+                .ThenInclude(u => u.StaffAssignments)
+                    .ThenInclude(sa => sa.Branch)
             .AsQueryable();
 
         if (!string.IsNullOrEmpty(action))
@@ -69,11 +73,29 @@ public class SystemLogsController : ControllerBase
             .OrderByDescending(l => l.Timestamp)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
+            .Select(l => new SystemLogDto
+            {
+                LogId = l.LogId,
+                Action = l.Action,
+                Description = l.Description,
+                TableName = l.TableName,
+                EntityType = l.EntityType,
+                Level = l.Level,
+                Source = l.Source,
+                IpAddress = l.IpAddress,
+                UserAgent = l.UserAgent,
+                UserName = l.User != null ? l.User.FullName : null,
+                BranchName = l.User != null && !l.User.Roles.Any(r => r.RoleName == "Admin")
+                    ? l.User.StaffAssignments.Select(sa => sa.Branch.BranchName).FirstOrDefault()
+                    : null,
+                RoleName = l.User != null ? l.User.Roles.Select(r => r.RoleName).FirstOrDefault() : null,
+                Timestamp = l.Timestamp
+            })
             .ToListAsync();
 
         return Ok(new PageResultDto<SystemLogDto>
         {
-            Items = _mapper.Map<List<SystemLogDto>>(logs),
+            Items = logs,
             TotalCount = totalCount,
             PageNumber = page,
             PageSize = pageSize
@@ -155,10 +177,32 @@ public class SystemLogsController : ControllerBase
     {
         var log = await _context.SystemLogs
             .Include(l => l.User)
+                .ThenInclude(u => u.Roles)
+            .Include(l => l.User)
+                .ThenInclude(u => u.StaffAssignments)
+                    .ThenInclude(sa => sa.Branch)
+            .Select(l => new SystemLogDto
+            {
+                LogId = l.LogId,
+                Action = l.Action,
+                Description = l.Description,
+                TableName = l.TableName,
+                EntityType = l.EntityType,
+                Level = l.Level,
+                Source = l.Source,
+                IpAddress = l.IpAddress,
+                UserAgent = l.UserAgent,
+                UserName = l.User != null ? l.User.FullName : null,
+                BranchName = l.User != null && !l.User.Roles.Any(r => r.RoleName == "Admin")
+                    ? l.User.StaffAssignments.Select(sa => sa.Branch.BranchName).FirstOrDefault()
+                    : null,
+                RoleName = l.User != null ? l.User.Roles.Select(r => r.RoleName).FirstOrDefault() : null,
+                Timestamp = l.Timestamp
+            })
             .FirstOrDefaultAsync(l => l.LogId == id);
 
         if (log == null) return NotFound(new { error = new { code = "MSG-404", message = "Không tìm thấy." } });
 
-        return Ok(_mapper.Map<SystemLogDto>(log));
+        return Ok(log);
     }
 }

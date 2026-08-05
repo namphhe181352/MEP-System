@@ -1040,19 +1040,7 @@ public class InventoryCheckController : ControllerBase
                 .Where(bp => bp.BranchId == branchId.Value && productIds.Contains(bp.ProductId))
                 .ToDictionaryAsync(bp => bp.ProductId);
 
-            // Generate StockTicket for adjustments
-            var stockTicket = new StockTicket
-            {
-                StockTicketId = Guid.NewGuid(),
-                TicketCode = await GenerateStockTicketCodeAsync(),
-                BranchId = branchId.Value,
-                UserId = userId.Value,
-                TicketType = "ADJUSTMENT",
-                Status = "COMPLETED",
-                Notes = $"Điều chỉnh tồn kho từ phiếu kiểm kê {ticket.TicketCode} (Phiên đếm #{ticket.RecountNumber + 1})",
-                CreatedAt = DateTime.UtcNow
-            };
-            _context.StockTickets.Add(stockTicket);
+            var linkedStockTicketIds = new List<Guid>();
 
             foreach (var detail in ticket.Details)
             {
@@ -1099,16 +1087,32 @@ public class InventoryCheckController : ControllerBase
                 // Ghi nhận điều chỉnh vào StockTicket nếu có chênh lệch
                 if (discrepancy != 0)
                 {
-                    var stockTicketItem = new StockTicketItem
+                    var directionTicket = new StockTicket
+                    {
+                        StockTicketId = Guid.NewGuid(),
+                        TicketCode = await GenerateStockTicketCodeAsync(),
+                        BranchId = branchId.Value,
+                        UserId = userId.Value,
+                        TicketType = discrepancy > 0 ? "BALANCE_ADJUST" : "WRITE_OFF",
+                        Status = "COMPLETED",
+                        Notes = $"INVENTORY_ADJUSTMENT | Sinh tự động từ phiếu kiểm kê #{ticket.TicketCode}",
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    var directionItem = new StockTicketItem
                     {
                         TicketItemId = Guid.NewGuid(),
-                        StockTicketId = stockTicket.StockTicketId,
+                        StockTicketId = directionTicket.StockTicketId,
                         BranchProductId = branchProduct.BranchProductId,
                         SystemQuantity = detail.SystemQuantity,
                         ActualQuantity = detail.ActualQuantity,
-                        Discrepancy = discrepancy // Phần chênh lệch do kiểm kê
+                        Discrepancy = Math.Abs(discrepancy),
+                        UnitPrice = branchProduct.CostPrice
                     };
-                    _context.StockTicketItems.Add(stockTicketItem);
+
+                    _context.StockTickets.Add(directionTicket);
+                    _context.StockTicketItems.Add(directionItem);
+                    linkedStockTicketIds.Add(directionTicket.StockTicketId);
                 }
 
                 // Log khi phát hiện có giao dịch bán/nhập xen vào trong lúc kiểm kê
@@ -1136,7 +1140,9 @@ public class InventoryCheckController : ControllerBase
             ticket.Status = InventoryCheckTicketStatus.Completed;
             ticket.ApprovedByUserId = userId;
             ticket.ApprovedAt = DateTime.UtcNow;
-            ticket.LinkedStockTicketId = stockTicket.StockTicketId;
+            ticket.LinkedStockTicketId = linkedStockTicketIds.Count > 0
+                ? linkedStockTicketIds.FirstOrDefault()
+                : null;
 
             await _context.SaveChangesAsync();
 
@@ -1579,7 +1585,7 @@ public class InventoryCheckController : ControllerBase
             var query = _context.Notifications
                 .Include(n => n.TriggeredByUser)
                 .Include(n => n.InventoryCheck)
-                .Where(n => (n.RecipientUserId == userId) || 
+                .Where(n => (n.RecipientUserId == userId) ||
                             (n.RecipientUserId == null && n.BranchId == branchId.Value))
                 .AsQueryable();
 
@@ -1590,7 +1596,7 @@ public class InventoryCheckController : ControllerBase
 
             var totalCount = await query.CountAsync();
             var unreadCount = await _context.Notifications
-                .Where(n => (n.RecipientUserId == userId) || 
+                .Where(n => (n.RecipientUserId == userId) ||
                             (n.RecipientUserId == null && n.BranchId == branchId.Value))
                 .CountAsync(n => !n.IsRead);
 
@@ -1949,7 +1955,12 @@ th {{ background: #f0f0f0; }}
     private async Task<string> GenerateStockTicketCodeAsync()
     {
         const string prefix = "ADJ";
-        const int maxRetries = 5;
+        const int maxRetries = 10;
+
+        var localTicketCodes = _context.ChangeTracker.Entries<StockTicket>()
+            .Where(e => e.Entity.TicketCode != null && e.Entity.TicketCode.StartsWith(prefix))
+            .Select(e => e.Entity.TicketCode!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         for (int attempt = 0; attempt < maxRetries; attempt++)
         {
@@ -1971,15 +1982,17 @@ th {{ background: #f0f0f0; }}
                     }
                 }
 
-                var newCode = $"{prefix}-{DateTime.UtcNow:yyyyMMdd}-{nextSequence:D4}";
+                var candidate = $"{prefix}-{DateTime.UtcNow:yyyyMMdd}-{nextSequence:D4}";
+                var finalCandidate = candidate;
 
-                var exists = await _context.StockTickets
-                    .AnyAsync(t => t.TicketCode == newCode);
-
-                if (!exists)
+                while (localTicketCodes.Contains(finalCandidate) || await _context.StockTickets.AnyAsync(t => t.TicketCode == finalCandidate))
                 {
-                    return newCode;
+                    nextSequence++;
+                    finalCandidate = $"{prefix}-{DateTime.UtcNow:yyyyMMdd}-{nextSequence:D4}";
                 }
+
+                localTicketCodes.Add(finalCandidate);
+                return finalCandidate;
             }
             catch (DbUpdateException)
             {
@@ -1987,7 +2000,7 @@ th {{ background: #f0f0f0; }}
             }
         }
 
-        return $"{prefix}-{Guid.NewGuid().ToString("N")[..8].ToUpper()}";
+        return $"{prefix}-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpper()}";
     }
 
     #endregion
