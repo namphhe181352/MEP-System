@@ -1013,32 +1013,21 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                // ============================================================
-                // PHIẾU ĐÃ COMPLETED (đã cập nhật tồn kho + ảnh hưởng sổ cái) → không cho phép hủy.
-                // Nếu cần điều chỉnh phải tạo phiếu nhập kho ngược / phiếu điều chỉnh.
-                // ============================================================
-                if (stockTicket.Status?.ToUpperInvariant() == "COMPLETED")
-                {
-                    await transaction.RollbackAsync();
-                    return BadRequest(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "Cannot cancel completed ticket",
-                        Errors = new List<string>
-                        {
-                            "Phiếu xuất kho đã hoàn thành, không thể hủy.",
-                            "Vui lòng tạo phiếu nhập kho ngược / phiếu điều chỉnh nếu cần."
-                        }
-                    });
-                }
-
-                // ============================================================
-                // BUG 1 FIX: Lưu trạng thái TRƯỚC KHI đổi để message chính xác
-                // ============================================================
+                var currentUserId = GetCurrentUserId();
                 var previousStatus = stockTicket.Status;
 
-                // PENDING hoặc COMPLETED (đã rollback): Đều chuyển sang CANCELLED
-                var currentUserId = GetCurrentUserId();
+                // COMPLETED: đã trừ tồn kho → phải cộng lại
+                if (stockTicket.Status?.ToUpperInvariant() == "COMPLETED")
+                {
+                    foreach (var item in stockTicket.StockTicketItems)
+                    {
+                        if (item.BranchProduct != null)
+                        {
+                            item.BranchProduct.ActualStock += item.Discrepancy;
+                            item.BranchProduct.AvailableStock += item.Discrepancy;
+                        }
+                    }
+                }
                 stockTicket.Status = "CANCELLED";
                 stockTicket.CancelledAt = DateTime.UtcNow;
                 stockTicket.CancelledBy = currentUserId;
