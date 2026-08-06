@@ -49,7 +49,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                 var branchId = _currentBranch.GetBranchId();
                 if (branchId == null) return BadRequest(new ApiResponse<object> { Success = false, Message = "Không xác định được chi nhánh." });
 
-                var query = _context.Suppliers.Where(s => s.BranchId == branchId).AsQueryable();
+                var query = _context.Suppliers.Where(s => s.BranchId == branchId && s.Status != -1).AsQueryable();
 
                 // Filter search
                 if (!string.IsNullOrWhiteSpace(p.SearchTerm))
@@ -163,7 +163,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                 if (branchId == null) return BadRequest(new ApiResponse<object> { Success = false, Message = "Không xác định được chi nhánh." });
 
                 var s = await _context.Suppliers
-                    .FirstOrDefaultAsync(x => x.SupplierId == id && x.BranchId == branchId);
+                    .FirstOrDefaultAsync(x => x.SupplierId == id && x.BranchId == branchId && x.Status != -1);
 
                 if (s == null)
                     return NotFound(new DTOs.ApiResponse<object>
@@ -237,7 +237,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
 
                 var inputName = req.SupplierName.Trim();
                 var exists = await _context.Suppliers
-                    .AnyAsync(x => x.SupplierName.Trim().ToLower() == inputName.ToLower() && x.BranchId == branchId);
+                    .AnyAsync(x => x.SupplierName.Trim().ToLower() == inputName.ToLower() && x.BranchId == branchId && x.Status != -1);
                 if (exists)
                     return BadRequest(new ApiResponse<object>
                     {
@@ -339,7 +339,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                 var branchId = _currentBranch.GetBranchId();
                 if (branchId == null) return BadRequest(new ApiResponse<object> { Success = false, Message = "Không xác định được chi nhánh." });
 
-                var s = await _context.Suppliers.FirstOrDefaultAsync(x => x.SupplierId == id && x.BranchId == branchId);
+                var s = await _context.Suppliers.FirstOrDefaultAsync(x => x.SupplierId == id && x.BranchId == branchId && x.Status != -1);
                 if (s == null)
                     return NotFound(new ApiResponse<object>
                     {
@@ -352,7 +352,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
 
                 // Kiểm tra trùng tên với nhà cung cấp khác có kèm theo Trim()
                 var nameExists = await _context.Suppliers
-                    .AnyAsync(x => x.SupplierId != id && x.BranchId == branchId
+                    .AnyAsync(x => x.SupplierId != id && x.BranchId == branchId && x.Status != -1
                                 && x.SupplierName.Trim().ToLower() == inputName.ToLower());
                 if (nameExists)
                     return BadRequest(new ApiResponse<object>
@@ -445,9 +445,48 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         Message = "Supplier not found",
                         Errors = new() { $"No supplier with ID: {id}" }
                     });
-                _context.Suppliers.Remove(s);
 
-                // Lưu thay đổi (EF Core sẽ sinh ra lệnh DELETE FROM suppliers WHERE...)
+                // Check for dependencies
+                var hasDependencies = await _context.Products.AnyAsync(p => p.SupplierId == id) ||
+                                      await _context.PurchaseOrders.AnyAsync(po => po.SupplierId == id) ||
+                                      await _context.SupplierPayments.AnyAsync(sp => sp.SupplierId == id) ||
+                                      await _context.StockTickets.AnyAsync(st => st.SupplierId == id);
+
+                if (hasDependencies)
+                {
+                    // Soft delete
+                    s.Status = -1; // -1 represents deleted
+                    
+                    // Rename to free up the name
+                    var shortId = s.SupplierId.ToString().Substring(0, 6);
+                    var newName = $"d_{shortId}_{s.SupplierName}";
+                    if (newName.Length > 150) newName = newName.Substring(0, 150);
+                    s.SupplierName = newName;
+                    
+                    if (!string.IsNullOrEmpty(s.ContactPhone))
+                    {
+                        var newPhone = $"d_{shortId}_{s.ContactPhone}";
+                        if (newPhone.Length > 20) newPhone = newPhone.Substring(0, 20);
+                        s.ContactPhone = newPhone;
+                    }
+                    if (!string.IsNullOrEmpty(s.ContactEmail))
+                    {
+                        var newEmail = $"d_{shortId}_{s.ContactEmail}";
+                        if (newEmail.Length > 150) newEmail = newEmail.Substring(0, 150);
+                        s.ContactEmail = newEmail;
+                    }
+                    if (!string.IsNullOrEmpty(s.TaxCode))
+                    {
+                        var newTaxCode = $"d_{shortId}_{s.TaxCode}";
+                        if (newTaxCode.Length > 50) newTaxCode = newTaxCode.Substring(0, 50);
+                        s.TaxCode = newTaxCode;
+                    }
+                }
+                else
+                {
+                    _context.Suppliers.Remove(s);
+                }
+
                 await _context.SaveChangesAsync();
 
                 return Ok(new ApiResponse<object>
@@ -492,7 +531,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                 var branchId = _currentBranch.GetBranchId();
                 if (branchId == null) return BadRequest(new ApiResponse<object> { Success = false, Message = "Không xác định được chi nhánh." });
 
-                var s = await _context.Suppliers.FirstOrDefaultAsync(x => x.SupplierId == id && x.BranchId == branchId);
+                var s = await _context.Suppliers.FirstOrDefaultAsync(x => x.SupplierId == id && x.BranchId == branchId && x.Status != -1);
                 if (s == null)
                     return NotFound(new ApiResponse<object>
                     {
