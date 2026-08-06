@@ -1648,6 +1648,9 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("type_id")
                         .HasDefaultValueSql("uuid_generate_v4()");
 
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("created_at");
@@ -1740,6 +1743,9 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("location_id")
                         .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone")

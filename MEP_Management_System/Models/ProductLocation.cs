@@ -5,6 +5,7 @@ namespace MEP_Management_System.Models
     public class ProductLocation
     {
         public Guid LocationId { get; set; }
+        public Guid? BranchId { get; set; }
         public string LocationName { get; set; } = null!;
         public string? LocationCode { get; set; }
         public string? Description { get; set; }
