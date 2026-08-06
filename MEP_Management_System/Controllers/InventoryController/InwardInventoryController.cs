@@ -241,8 +241,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return NotFound(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Inward inventory not found",
-                        Errors = new() { $"No inward inventory with ID: {id}" }
+                        Message = "Phiếu nhập kho không tồn tại hoặc đã ở trạng thái không thể chỉnh sửa.",
+                        Errors = new() { $"Không tìm thấy phiếu nhập kho với ID: {id}" }
                     });
                 }
 
@@ -600,15 +600,16 @@ namespace MEP_Management_System.Controllers.InventoryController
                     if (dto.InwardType != InwardInventoryType.CustomerReturn)
                         totalAmount += item.Quantity * effectiveCostPrice;
 
-                    // Tạo ticket item với số lượng tồn hiện tại (chưa cộng thêm)
+                    // Snapshot đơn giá tại thời điểm tạo phiếu - giữ nguyên vẹn, không bị ảnh hưởng bởi CostPrice sau này
                     var ticketItem = new StockTicketItem
                     {
                         TicketItemId = Guid.NewGuid(),
                         StockTicketId = stockTicket.StockTicketId,
                         BranchProductId = actualBranchProductId,
-                        SystemQuantity = branchProduct.ActualStock, // Tồn trước khi nhập
-                        ActualQuantity = branchProduct.ActualStock, // Tồn sau khi nhập (chưa thay đổi vì PENDING)
-                        Discrepancy = item.Quantity
+                        SystemQuantity = branchProduct.ActualStock,
+                        ActualQuantity = branchProduct.ActualStock,
+                        Discrepancy = item.Quantity,
+                        UnitPrice = effectiveCostPrice // Snapshot giá nhập tại thời điểm tạo phiếu
                     };
 
                     _context.StockTicketItems.Add(ticketItem);
@@ -698,8 +699,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return NotFound(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Inward inventory not found",
-                        Errors = new() { $"No inward inventory with ID: {id}" }
+                        Message = "Phiếu nhập kho không tồn tại hoặc đã ở trạng thái không thể chỉnh sửa.",
+                        Errors = new() { $"Không tìm thấy phiếu nhập kho với ID: {id}" }
                     });
                 }
 
@@ -815,8 +816,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return NotFound(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Inward inventory not found",
-                        Errors = new() { $"No inward inventory with ID: {id}" }
+                        Message = "Phiếu nhập kho không tồn tại hoặc đã ở trạng thái không thể chỉnh sửa.",
+                        Errors = new() { $"Không tìm thấy phiếu nhập kho với ID: {id}" }
                     });
                 }
 
@@ -855,24 +856,59 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 // ============================================================
-                // QUY TẮC MỚI: Cập nhật tồn kho (INWARD: cộng kho)
+                // QUY TẮC MỚI: Cập nhật tồn kho bằng Atomic SQL Update
+                // Tránh race condition khi 2 user cùng thao tác trên 1 sản phẩm
+                // Đồng thời snapshot UnitPrice và tính giá vốn bình quân di động
                 // ============================================================
                 var currentUserId = GetCurrentUserId();
 
                 foreach (var item in stockTicket.StockTicketItems)
                 {
-                    var branchProduct = await _context.BranchProducts
-                        .FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
-
-                    if (branchProduct != null)
+                    // Snapshot đơn giá nhập nếu chưa có (tương thích ngược với phiếu cũ)
+                    var unitPrice = item.UnitPrice > 0 ? item.UnitPrice.Value : 0m;
+                    if (unitPrice == 0)
                     {
-                        // Cập nhật tồn kho - Nhập kho thì CỘNG
-                        branchProduct.ActualStock += item.Discrepancy;
-                        branchProduct.AvailableStock += item.Discrepancy;
+                        var bpForPrice = await _context.BranchProducts
+                            .FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
+                        unitPrice = bpForPrice?.CostPrice ?? 0;
+                        item.UnitPrice = unitPrice;
+                    }
 
-                        // Cập nhật ActualQuantity trong ticket item (tồn sau khi nhập)
-                        item.ActualQuantity = branchProduct.ActualStock;
-                        item.SystemQuantity = branchProduct.ActualStock - item.Discrepancy;
+                    // Atomic UPDATE: cộng tồn kho trực tiếp trong DB, tránh xung đột
+                    try
+                    {
+                        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                            UPDATE branch_products
+                            SET actual_stock = actual_stock + {item.Discrepancy},
+                                available_stock = available_stock + {item.Discrepancy},
+                                cost_price = CASE
+                                    WHEN (actual_stock + {item.Discrepancy}) > 0
+                                    THEN ROUND((
+                                        (actual_stock * cost_price) + ({item.Discrepancy} * {unitPrice})
+                                    ) / (actual_stock + {item.Discrepancy}), 2)
+                                    ELSE {unitPrice}
+                                END
+                            WHERE branch_product_id = {item.BranchProductId}
+                        ");
+                    }
+                    catch (Exception ex) when (ex is DbUpdateConcurrencyException || ex is DbUpdateException)
+                    {
+                        await transaction.RollbackAsync();
+                        return StatusCode(409, new ApiResponse<object>
+                        {
+                            Success = false,
+                            Message = "Hệ thống đang xử lý một giao dịch kho khác cho sản phẩm này. Vui lòng thử lại sau giây lát.",
+                            Errors = new() { ex.Message }
+                        });
+                    }
+
+                    // Đọc lại tồn kho sau khi cập nhật để ghi nhận vào ticket item
+                    var updatedBp = await _context.BranchProducts
+                        .FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
+                    if (updatedBp != null)
+                    {
+                        item.ActualQuantity = updatedBp.ActualStock;
+                        item.SystemQuantity = updatedBp.ActualStock - item.Discrepancy;
                     }
                 }
 
@@ -882,7 +918,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 stockTicket.ConfirmedBy = currentUserId;
                 if (stockTicket.TicketType == "PURCHASE" && stockTicket.TotalAmount == 0)
                 {
-                    stockTicket.TotalAmount = stockTicket.StockTicketItems.Sum(item => item.Discrepancy * (item.BranchProduct?.CostPrice ?? 0));
+                    stockTicket.TotalAmount = stockTicket.StockTicketItems.Sum(item =>
+                        item.Discrepancy * (item.UnitPrice ?? 0));
                 }
 
                 await _context.SaveChangesAsync();
@@ -899,7 +936,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = "Inward inventory confirmed successfully. Stock updated.",
+                    Message = "Xác nhận phiếu nhập kho thành công. Tồn kho đã được cập nhật.",
                     Data = new
                     {
                         TicketId = stockTicket.StockTicketId,
@@ -908,13 +945,13 @@ namespace MEP_Management_System.Controllers.InventoryController
                     }
                 });
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not DbUpdateConcurrencyException && ex is not DbUpdateException)
             {
                 await transaction.RollbackAsync();
                 return StatusCode(500, new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Error confirming inward inventory",
+                    Message = "Lỗi hệ thống khi xác nhận phiếu nhập kho. Vui lòng thử lại sau.",
                     Errors = new() { ex.Message }
                 });
             }
@@ -959,8 +996,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return NotFound(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Inward inventory not found",
-                        Errors = new() { $"No inward inventory with ID: {id}" }
+                        Message = "Phiếu nhập kho không tồn tại hoặc đã ở trạng thái không thể chỉnh sửa.",
+                        Errors = new() { $"Không tìm thấy phiếu nhập kho với ID: {id}" }
                     });
                 }
 
@@ -1178,7 +1215,7 @@ th {{ background: #f0f0f0; }}
                 CancelReason = stockTicket.CancelReason,
                 CostPrice = stockTicket.TicketType == "CUSTOMER_RETURN"
                     ? 0
-                    : stockTicket.StockTicketItems?.Sum(i => i.BranchProduct?.CostPrice ?? 0) ?? 0,
+                    : stockTicket.StockTicketItems?.Sum(i => i.UnitPrice ?? 0) ?? 0,
                 Items = stockTicket.StockTicketItems?.Select(item => new InwardInventoryItemResponseDto
                 {
                     TicketItemId = item.TicketItemId,
@@ -1191,7 +1228,7 @@ th {{ background: #f0f0f0; }}
                     ActualQuantity = item.ActualQuantity,
                     CostPrice = stockTicket.TicketType == "CUSTOMER_RETURN"
                         ? 0
-                        : item.BranchProduct?.CostPrice ?? 0,
+                        : (item.UnitPrice ?? 0),
                     UnitPrice = item.UnitPrice,
                     UnitName = item.BranchProduct?.Product?.BaseUnit
                 }).ToList() ?? new()

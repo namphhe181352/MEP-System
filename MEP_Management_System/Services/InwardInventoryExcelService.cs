@@ -87,7 +87,7 @@ namespace MEP_Management_System.Services
                     preview.Errors.Add(new ExcelValidationErrorDto
                     {
                         RowNumber = 2,
-                        ErrorMessage = "File Excel không có dữ liệu (chỉ có tiêu đề)."
+                        ErrorMessage = "File Excel không chứa dữ liệu nhập kho nào."
                     });
                     return preview;
                 }
@@ -105,9 +105,12 @@ namespace MEP_Management_System.Services
 
                 preview.TotalRows = rows.Count;
 
-                // Parse từng dòng
+                // Parse từng dòng - nếu trùng ProductCode thì cộng dồn số lượng,
+                // tính đơn giá bình quân gia quyền, nối ghi chú
                 var items = new List<ExcelInwardItemDto>();
-                var productCodeSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var productCodeIndexMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                // Lưu raw rows để phát hiện chênh lệch giá
+                var rawRowsByCode = new Dictionary<string, List<(int RowNumber, decimal DonGiaNhap, string TenSanPham)>>(StringComparer.OrdinalIgnoreCase);
 
                 for (int i = 0; i < rows.Count; i++)
                 {
@@ -134,18 +137,6 @@ namespace MEP_Management_System.Services
                             continue;
                         }
 
-                        // Kiểm tra trùng mã SP trong file
-                        if (!productCodeSet.Add(maSanPham))
-                        {
-                            preview.Errors.Add(new ExcelValidationErrorDto
-                            {
-                                RowNumber = rowNumber,
-                                MaSanPham = maSanPham,
-                                ErrorMessage = "Mã sản phẩm bị trùng trong file Excel."
-                            });
-                            continue;
-                        }
-
                         // Parse số lượng
                         if (!decimal.TryParse(soLuongStr, out var soLuong) || soLuong <= 0)
                         {
@@ -153,7 +144,7 @@ namespace MEP_Management_System.Services
                             {
                                 RowNumber = rowNumber,
                                 MaSanPham = maSanPham,
-                                ErrorMessage = "SoLuong phải là số nguyên dương."
+                                ErrorMessage = $"Dòng {rowNumber}: Số lượng nhập phải lớn hơn 0."
                             });
                             continue;
                         }
@@ -165,20 +156,48 @@ namespace MEP_Management_System.Services
                             {
                                 RowNumber = rowNumber,
                                 MaSanPham = maSanPham,
-                                ErrorMessage = "DonGiaNhap phải là số dương."
+                                ErrorMessage = $"Dòng {rowNumber}: Đơn giá nhập phải là số dương."
                             });
                             continue;
                         }
 
-                        items.Add(new ExcelInwardItemDto
+                        // Lưu raw row để phát hiện chênh lệch giá sau này
+                        if (!rawRowsByCode.ContainsKey(maSanPham))
+                            rawRowsByCode[maSanPham] = new List<(int, decimal, string)>();
+                        rawRowsByCode[maSanPham].Add((rowNumber, donGiaNhap, tenSanPham ?? maSanPham));
+
+                        // Nếu mã SP đã tồn tại trong danh sách -> cộng dồn (aggregation)
+                        if (productCodeIndexMap.TryGetValue(maSanPham, out var existingIndex))
                         {
-                            RowNumber = rowNumber,
-                            MaSanPham = maSanPham,
-                            TenSanPham = tenSanPham,
-                            SoLuong = soLuong,
-                            DonGiaNhap = donGiaNhap,
-                            GhiChu = ghiChu
-                        });
+                            var existing = items[existingIndex];
+                            var oldTotal = existing.SoLuong * existing.DonGiaNhap;
+                            var newTotal = soLuong * donGiaNhap;
+                            existing.SoLuong += soLuong;
+                            // Đơn giá bình quân gia quyền
+                            existing.DonGiaNhap = Math.Round((oldTotal + newTotal) / existing.SoLuong, 2);
+                            // Nối ghi chú
+                            if (!string.IsNullOrWhiteSpace(ghiChu))
+                            {
+                                existing.GhiChu = string.IsNullOrWhiteSpace(existing.GhiChu)
+                                    ? ghiChu
+                                    : existing.GhiChu + "; " + ghiChu;
+                            }
+                            // Cập nhật RowNumber thành row cuối cùng
+                            existing.RowNumber = rowNumber;
+                        }
+                        else
+                        {
+                            productCodeIndexMap[maSanPham] = items.Count;
+                            items.Add(new ExcelInwardItemDto
+                            {
+                                RowNumber = rowNumber,
+                                MaSanPham = maSanPham,
+                                TenSanPham = tenSanPham,
+                                SoLuong = soLuong,
+                                DonGiaNhap = donGiaNhap,
+                                GhiChu = ghiChu
+                            });
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -196,6 +215,55 @@ namespace MEP_Management_System.Services
                     return preview;
                 }
 
+                // Bước 1: Kiểm tra tính nhất quán nội bộ file Excel
+                // Cùng 1 Mã hàng bắt buộc chỉ có 1 Tên hàng và 1 Đơn giá
+                foreach (var kvp in rawRowsByCode)
+                {
+                    var rowsForCode = kvp.Value;
+                    if (rowsForCode.Count < 2) continue;
+
+                    var productName = rowsForCode.First().TenSanPham;
+
+                    // 1a. Kiểm tra Tên hàng: 1 mã không được gắn cho nhiều tên khác nhau
+                    var distinctNames = rowsForCode
+                        .Select(r => (r.TenSanPham ?? "").Trim().ToLower())
+                        .Where(n => !string.IsNullOrEmpty(n))
+                        .Distinct()
+                        .ToList();
+                    if (distinctNames.Count > 1)
+                    {
+                        var nameDetails = string.Join("\n", rowsForCode.Select(r =>
+                            $"  - Dòng {r.RowNumber}: \"{r.TenSanPham}\""));
+                        preview.Errors.Add(new ExcelValidationErrorDto
+                        {
+                            RowNumber = rowsForCode.First().RowNumber,
+                            MaSanPham = kvp.Key,
+                            ErrorMessage =
+                                $"Mã hàng {kvp.Key} đang bị đặt cho nhiều tên sản phẩm khác nhau:\n" +
+                                $"{nameDetails}\n" +
+                                $"→ Vui lòng sửa lại mã hàng trong file Excel."
+                        });
+                        continue;
+                    }
+
+                    // 1b. Kiểm tra Đơn giá: 1 mã không được có nhiều đơn giá khác nhau
+                    var prices = rowsForCode.Select(r => r.DonGiaNhap).Distinct().ToList();
+                    if (prices.Count >= 2)
+                    {
+                        var lineDetails = string.Join("\n", rowsForCode.Select(r =>
+                            $"  - Dòng {r.RowNumber}: {r.DonGiaNhap:N0} VNĐ"));
+                        preview.Errors.Add(new ExcelValidationErrorDto
+                        {
+                            RowNumber = rowsForCode.First().RowNumber,
+                            MaSanPham = kvp.Key,
+                            ErrorMessage =
+                                $"Sản phẩm {kvp.Key} ({productName}) xuất hiện {rowsForCode.Count} lần với đơn giá khác nhau:\n" +
+                                $"{lineDetails}\n" +
+                                $"→ Vui lòng thống nhất đơn giá cho sản phẩm này trong file Excel trước khi import."
+                        });
+                    }
+                }
+
                 // Validate MaSanPham tồn tại trong hệ thống
                 var productCodes = items.Select(x => x.MaSanPham).ToList();
                 var existingProducts = await _context.Products
@@ -211,23 +279,63 @@ namespace MEP_Management_System.Services
                     p => p.ProductCode,
                     StringComparer.OrdinalIgnoreCase);
 
+                // Lấy toàn bộ tên sản phẩm trong DB để kiểm tra trùng tên cho mã mới (Bước 3)
+                var allProductNames = await _context.Products
+                    .Select(p => new { p.ProductId, p.ProductCode, p.ProductName })
+                    .ToListAsync();
+
                 foreach (var item in items)
                 {
                     if (!existingProductCodes.Contains(item.MaSanPham))
                     {
-                        preview.Errors.Add(new ExcelValidationErrorDto
+                        // Bước 3: Mã chưa có trong DB -> kiểm tra Tên có bị trùng với sản phẩm khác không
+                        var excelName = (item.TenSanPham ?? "").Trim();
+                        if (!string.IsNullOrEmpty(excelName))
                         {
-                            RowNumber = item.RowNumber,
-                            MaSanPham = item.MaSanPham,
-                            ErrorMessage = $"Mã sản phẩm '{item.MaSanPham}' không tồn tại trong hệ thống."
-                        });
+                            var duplicateByName = allProductNames
+                                .FirstOrDefault(p => string.Equals(p.ProductName.Trim(), excelName, StringComparison.OrdinalIgnoreCase));
+                            if (duplicateByName != null)
+                            {
+                                preview.Errors.Add(new ExcelValidationErrorDto
+                                {
+                                    RowNumber = item.RowNumber,
+                                    MaSanPham = item.MaSanPham,
+                                    ErrorMessage =
+                                        $"Dòng {item.RowNumber}: Tên sản phẩm '{item.TenSanPham}' " +
+                                        $"đã tồn tại trên hệ thống với mã '{duplicateByName.ProductCode}'. " +
+                                        $"Vui lòng kiểm tra lại mã '{item.MaSanPham}' trong file Excel xem có phải gõ nhầm mã hay không."
+                                });
+                                continue;
+                            }
+                        }
+                        // Mã mới hoàn toàn, không trùng tên -> cho phép tạo mới
                     }
                     else
                     {
                         // Resolve ProductId
                         var product = productLookup[item.MaSanPham];
                         item.ResolvedProductId = product.ProductId;
-                        item.TenSanPham = product.ProductName; // Cập nhật tên chính xác
+                        // Bước 2: Kiểm tra bất nhất Tên hàng giữa Excel và Database
+                        var excelName = (item.TenSanPham ?? "").Trim();
+                        var dbName = (product.ProductName ?? "").Trim();
+                        if (!string.IsNullOrEmpty(excelName) && !string.IsNullOrEmpty(dbName) &&
+                            !string.Equals(excelName, dbName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            preview.Errors.Add(new ExcelValidationErrorDto
+                            {
+                                RowNumber = item.RowNumber,
+                                MaSanPham = item.MaSanPham,
+                                ErrorMessage =
+                                    $"Dòng {item.RowNumber}: Bất nhất dữ liệu! Mã '{item.MaSanPham}' " +
+                                    $"trên hệ thống là '{product.ProductName}', " +
+                                    $"nhưng file Excel ghi là '{item.TenSanPham}'. " +
+                                    $"Vui lòng kiểm tra lại mã hoặc tên sản phẩm."
+                            });
+                        }
+                        else
+                        {
+                            item.TenSanPham = product.ProductName; // Cập nhật tên chính xác từ DB
+                        }
                     }
                 }
 
@@ -358,8 +466,20 @@ namespace MEP_Management_System.Services
                     else
                     {
                         actualBranchProductId = branchProduct.BranchProductId;
-                        // Cập nhật CostPrice (ghi đè theo yêu cầu)
-                        branchProduct.CostPrice = item.DonGiaNhap;
+                        // Cập nhật CostPrice theo giá vốn bình quân di động
+                        var oldStock = branchProduct.ActualStock;
+                        var oldCost = branchProduct.CostPrice;
+                        if (oldStock + item.SoLuong > 0)
+                        {
+                            branchProduct.CostPrice = Math.Round(
+                                ((oldStock * oldCost) + (item.SoLuong * item.DonGiaNhap)) / (oldStock + item.SoLuong),
+                                2
+                            );
+                        }
+                        else
+                        {
+                            branchProduct.CostPrice = item.DonGiaNhap;
+                        }
                     }
 
                     // Lưu tồn kho trước khi nhập
@@ -369,7 +489,7 @@ namespace MEP_Management_System.Services
                     branchProduct.ActualStock += item.SoLuong;
                     branchProduct.AvailableStock += item.SoLuong;
 
-                    // Tạo StockTicketItem
+                    // Tạo StockTicketItem - snapshot UnitPrice tại thời điểm nhập
                     var ticketItem = new StockTicketItem
                     {
                         TicketItemId = Guid.NewGuid(),
@@ -377,7 +497,8 @@ namespace MEP_Management_System.Services
                         BranchProductId = actualBranchProductId,
                         SystemQuantity = systemQuantity,
                         ActualQuantity = branchProduct.ActualStock,
-                        Discrepancy = item.SoLuong
+                        Discrepancy = item.SoLuong,
+                        UnitPrice = item.DonGiaNhap
                     };
 
                     ticketItems.Add(ticketItem);
@@ -465,7 +586,7 @@ namespace MEP_Management_System.Services
                 var header = worksheet.Cell(1, i + 1).GetString()?.Trim() ?? "";
                 if (!string.Equals(header, ExpectedHeaders[i], StringComparison.OrdinalIgnoreCase))
                 {
-                    return (false, $"Sai cột thứ {i + 1}:期望 '{ExpectedHeaders[i]}', thực tế '{header}'");
+                    return (false, $"Cấu trúc file Excel không đúng định dạng mẫu. Vui lòng kiểm tra lại các cột tiêu đề. Cột {i + 1}: mong đợi '{ExpectedHeaders[i]}', thực tế là '{header}'");
                 }
             }
             return (true, "");
