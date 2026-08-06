@@ -430,8 +430,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (string.IsNullOrWhiteSpace(dto.ProductCode)) errors.Add("productCode is required");
                 if (string.IsNullOrWhiteSpace(dto.ProductName)) errors.Add("productName is required");
                 if (string.IsNullOrWhiteSpace(dto.Unit)) errors.Add("unit is required");
-                if (dto.CostPrice < 0) errors.Add("costPrice không được âm");
-                if (dto.SalePrice < 0) errors.Add("salePrice không được âm");
+                if (dto.CostPrice <= 0) errors.Add("costPrice phải lớn hơn 0");
+                if (dto.SalePrice <= 0) errors.Add("salePrice phải lớn hơn 0");
 
                 if (errors.Any())
                 {
@@ -781,8 +781,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (string.IsNullOrWhiteSpace(dto.ProductCode)) errors.Add("productCode is required");
                 if (string.IsNullOrWhiteSpace(dto.ProductName)) errors.Add("productName is required");
                 if (string.IsNullOrWhiteSpace(dto.Unit)) errors.Add("unit is required");
-                if (dto.CostPrice < 0) errors.Add("costPrice không được âm");
-                if (dto.SalePrice < 0) errors.Add("salePrice không được âm");
+                if (dto.CostPrice <= 0) errors.Add("costPrice phải lớn hơn 0");
+                if (dto.SalePrice <= 0) errors.Add("salePrice phải lớn hơn 0");
 
                 if (errors.Any())
                 {
