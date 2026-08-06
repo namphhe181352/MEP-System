@@ -1015,6 +1015,19 @@ public class OwnerStaffController : ControllerBase
         staff.IsActive = 0;
         staff.IsVerified = false; // Không thể login nữa
         staff.DeletedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+
+        // Giải phóng các trường unique (Email, Username, Phone) để có thể tạo lại tài khoản
+        var shortId = staff.UserId.ToString().Substring(0, 6);
+        
+        var newEmail = $"del_{shortId}_{staff.Email}";
+        if (newEmail.Length > 150) newEmail = newEmail.Substring(0, 150);
+        staff.Email = newEmail;
+        
+        var newUsername = $"del_{shortId}_{staff.Username}";
+        if (newUsername.Length > 50) newUsername = newUsername.Substring(0, 50);
+        staff.Username = newUsername;
+
+        staff.PhoneNumber = null;
         await _context.SaveChangesAsync();
 
         var response = new ApiResponse<object>

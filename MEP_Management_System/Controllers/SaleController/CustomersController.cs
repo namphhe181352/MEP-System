@@ -204,6 +204,13 @@ public class CustomersController : ControllerBase
         if (hasOrders)
         {
             customer.Status = 0;
+            if (!string.IsNullOrEmpty(customer.PhoneNumber))
+            {
+                var shortId = customer.CustomerId.ToString().Substring(0, 6);
+                var newPhone = $"d_{shortId}_{customer.PhoneNumber}";
+                if (newPhone.Length > 20) newPhone = newPhone.Substring(0, 20);
+                customer.PhoneNumber = newPhone;
+            }
             customer.UpdatedAt = DateTime.UtcNow;
         }
         else
