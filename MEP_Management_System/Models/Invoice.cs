@@ -14,6 +14,9 @@ public partial class Invoice
 
     public Guid UserId { get; set; }
 
+    /// <summary>Cash Session (Shift) mà hóa đơn thuộc về</summary>
+    public Guid ShiftId { get; set; }
+
     /// <summary>Tổng tiền TRƯỚC chiết khấu (dùng để so ngưỡng).</summary>
     public decimal SubTotalAmount { get; set; }
 
@@ -48,4 +51,6 @@ public partial class Invoice
     public virtual Order Order { get; set; } = null!;
 
     public virtual User User { get; set; } = null!;
+
+    public virtual Shift Shift { get; set; } = null!;
 }
