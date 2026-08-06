@@ -66,11 +66,20 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
-                    return BadRequest(new ApiResponse<object>
+                    return Ok(new ApiResponse<PaginatedResponse<ProductUpsertDto>>
                     {
-                        Success = false,
-                        Message = "Không tìm thấy chi nhánh hợp lệ.",
-                        Errors = new() { "No valid branch found." }
+                        Success = true,
+                        Message = "Chưa được gán chi nhánh.",
+                        Data = new PaginatedResponse<ProductUpsertDto>
+                        {
+                            Items = new List<ProductUpsertDto>(),
+                            TotalCount = 0,
+                            PageNumber = @params.PageNumber,
+                            PageSize = @params.PageSize,
+                            TotalPages = 1,
+                            HasNextPage = false,
+                            HasPreviousPage = false
+                        }
                     });
                 }
 
@@ -195,11 +204,11 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
-                    return BadRequest(new ApiResponse<object>
+                    return Ok(new ApiResponse<object>
                     {
-                        Success = false,
-                        Message = "Không tìm thấy chi nhánh hợp lệ.",
-                        Errors = new() { "No valid branch found." }
+                        Success = true,
+                        Message = "Chưa được gán chi nhánh.",
+                        Data = new { items = new List<ProductSearchResultDto>() }
                     });
                 }
 
@@ -1269,10 +1278,11 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
-                    return BadRequest(new ApiResponse<object>
+                    return Ok(new ApiResponse<List<TaxonomyItemDto>>
                     {
-                        Success = false,
-                        Message = "Không tìm thấy chi nhánh hợp lệ."
+                        Success = true,
+                        Message = "Chưa được gán chi nhánh.",
+                        Data = new List<TaxonomyItemDto>()
                     });
                 }
 
@@ -1332,10 +1342,11 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
-                    return BadRequest(new ApiResponse<object>
+                    return Ok(new ApiResponse<List<TaxonomyItemDto>>
                     {
-                        Success = false,
-                        Message = "Không tìm thấy chi nhánh hợp lệ."
+                        Success = true,
+                        Message = "Chưa được gán chi nhánh.",
+                        Data = new List<TaxonomyItemDto>()
                     });
                 }
 
