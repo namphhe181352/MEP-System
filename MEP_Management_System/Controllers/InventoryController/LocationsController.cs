@@ -45,7 +45,7 @@ namespace MEP_Management_System.Controllers.InventoryController
             try
             {
                 var branchId = GetCurrentBranchId();
-                var query = _context.ProductLocations.Where(l => l.BranchId == branchId || l.BranchId == null).AsQueryable();
+                var query = _context.ProductLocations.Where(l => l.BranchId == branchId).AsQueryable();
 
                 if (activeOnly == true)
                 {
@@ -145,7 +145,7 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 // Check duplicate name
                 var existing = await _context.ProductLocations
-                    .FirstOrDefaultAsync(l => l.LocationName.ToLower() == dto.LocationName.Trim().ToLower() && (l.BranchId == branchId || l.BranchId == null));
+                    .FirstOrDefaultAsync(l => l.LocationName.ToLower() == dto.LocationName.Trim().ToLower() && l.BranchId == branchId);
 
                 if (existing != null)
                 {
@@ -224,7 +224,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (!string.IsNullOrWhiteSpace(dto.LocationName))
                 {
                     var existing = await _context.ProductLocations
-                        .FirstOrDefaultAsync(l => l.LocationName.ToLower() == dto.LocationName.Trim().ToLower() && l.LocationId != id && (l.BranchId == branchId || l.BranchId == null));
+                        .FirstOrDefaultAsync(l => l.LocationName.ToLower() == dto.LocationName.Trim().ToLower() && l.LocationId != id && l.BranchId == branchId);
 
                     if (existing != null)
                     {

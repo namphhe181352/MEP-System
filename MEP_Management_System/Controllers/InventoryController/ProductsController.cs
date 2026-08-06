@@ -1328,7 +1328,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .ToListAsync();
 
                 var taxonomies = await _context.ProductTaxonomies
-                    .Where(t => (t.BranchId == branchId || t.BranchId == null) && t.Type == "Category")
+                    .Where(t => t.BranchId == branchId && t.Type == "Category")
                     .Select(t => t.Name)
                     .ToListAsync();
 
@@ -1392,7 +1392,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .ToListAsync();
 
                 var taxonomies = await _context.ProductTaxonomies
-                    .Where(t => (t.BranchId == branchId || t.BranchId == null) && t.Type == "Brand")
+                    .Where(t => t.BranchId == branchId && t.Type == "Brand")
                     .Select(t => t.Name)
                     .ToListAsync();
 
@@ -2164,7 +2164,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var branchId = GetCurrentBranchId();
 
                 var result = await _context.ProductAttributeTypes
-                    .Where(t => t.IsActive == 1 && (t.BranchId == branchId || t.BranchId == null))
+                    .Where(t => t.IsActive == 1 && t.BranchId == branchId)
                     .OrderBy(t => t.TypeName)
                     .Select(t => new
                     {
@@ -2212,7 +2212,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var branchId = GetCurrentBranchId();
 
                 var exists = await _context.ProductAttributeTypes
-                    .AnyAsync(t => t.TypeName.ToLower() == dto.TypeName.Trim().ToLower() && t.IsActive == 1 && (t.BranchId == branchId || t.BranchId == null));
+                    .AnyAsync(t => t.TypeName.ToLower() == dto.TypeName.Trim().ToLower() && t.IsActive == 1 && t.BranchId == branchId);
 
                 if (exists)
                 {

@@ -524,6 +524,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                         TicketType = GetTicketTypeName(dto.OutwardType),
                         Status = "PENDING",
                         Notes = !string.IsNullOrWhiteSpace(dto.Note) ? dto.Note : dto.Reason,
+                        SupplierId = dto.SupplierId,
                         CreatedAt = currentTime
                     };
 
