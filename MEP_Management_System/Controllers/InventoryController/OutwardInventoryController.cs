@@ -478,7 +478,7 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                     if (item.Quantity > bp.ActualStock)
                     {
-                        validationErrors.Add($"Sản phẩm {bp.Product?.ProductName ?? bp.ProductId.ToString()} không đủ tồn kho để xuất. Tồn hiện tại: {bp.ActualStock}, số lượng cần xuất: {item.Quantity}.");
+                        validationErrors.Add($"Số lượng tồn kho khả dụng của sản phẩm '{bp.Product?.ProductName ?? bp.ProductId.ToString()}' không đủ để thực hiện xuất kho. Tồn hiện tại: {bp.ActualStock}, cần xuất: {item.Quantity}.");
                     }
 
                     var fallbackUnitPrice = item.UnitPrice.HasValue && item.UnitPrice.Value > 0
@@ -859,19 +859,58 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 // ============================================================
-                // QUY TẮC MỚI: Cập nhật tồn kho (OUTWARD: trừ kho)
+                // QUY TẮC MỚI: Cập nhật tồn kho bằng Atomic SQL Update
+                // Tránh race condition khi 2 user cùng thao tác trên 1 sản phẩm
                 // ============================================================
                 foreach (var item in stockTicket.StockTicketItems)
                 {
-                    if (latestBranchProducts.TryGetValue(item.BranchProductId, out var bp))
-                    {
-                        // Cập nhật tồn kho - Xuất kho thì TRỪ
-                        bp.ActualStock -= item.Discrepancy;
-                        bp.AvailableStock -= item.Discrepancy;
+                    if (!latestBranchProducts.TryGetValue(item.BranchProductId, out var bp))
+                        continue;
 
-                        // Cập nhật lại ticket item
-                        item.SystemQuantity = bp.ActualStock + item.Discrepancy;
-                        item.ActualQuantity = bp.ActualStock;
+                    // Atomic UPDATE: trừ tồn kho trực tiếp trong DB, có kiểm tra tồn >= SL xuất
+                    try
+                    {
+                        var rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                            UPDATE branch_products
+                            SET actual_stock = actual_stock - {item.Discrepancy},
+                                available_stock = available_stock - {item.Discrepancy}
+                            WHERE branch_product_id = {item.BranchProductId}
+                              AND actual_stock >= {item.Discrepancy}
+                        ");
+
+                        if (rowsAffected == 0)
+                        {
+                            await transaction.RollbackAsync();
+                            return BadRequest(new ApiResponse<object>
+                            {
+                                Success = false,
+                                Message = "Số lượng tồn kho khả dụng của sản phẩm không đủ để thực hiện xuất kho.",
+                                Errors = new()
+                                {
+                                    $"Sản phẩm '{bp.Product?.ProductName ?? item.BranchProductId.ToString()}' không đủ tồn kho. " +
+                                    $"Tồn hiện tại: {bp.ActualStock}, cần xuất: {item.Discrepancy}"
+                                }
+                            });
+                        }
+                    }
+                    catch (Exception ex) when (ex is DbUpdateConcurrencyException || ex is DbUpdateException)
+                    {
+                        await transaction.RollbackAsync();
+                        return StatusCode(409, new ApiResponse<object>
+                        {
+                            Success = false,
+                            Message = "Hệ thống đang xử lý một giao dịch kho khác cho sản phẩm này. Vui lòng thử lại sau giây lát.",
+                            Errors = new() { ex.Message }
+                        });
+                    }
+
+                    // Đọc lại tồn kho sau khi cập nhật
+                    var updatedBp = await _context.BranchProducts
+                        .FirstOrDefaultAsync(bp2 => bp2.BranchProductId == item.BranchProductId);
+                    if (updatedBp != null)
+                    {
+                        item.SystemQuantity = updatedBp.ActualStock + item.Discrepancy;
+                        item.ActualQuantity = updatedBp.ActualStock;
                     }
                 }
 
@@ -904,13 +943,13 @@ namespace MEP_Management_System.Controllers.InventoryController
                     }
                 });
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not DbUpdateConcurrencyException && ex is not DbUpdateException)
             {
                 await transaction.RollbackAsync();
                 return StatusCode(500, new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Lỗi khi xác nhận phiếu xuất kho.",
+                    Message = "Lỗi hệ thống khi xác nhận phiếu xuất kho. Vui lòng thử lại sau.",
                     Errors = new() { ex.Message }
                 });
             }

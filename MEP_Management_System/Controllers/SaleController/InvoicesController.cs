@@ -329,7 +329,7 @@ public class InvoicesController : ControllerBase
             if (unitPrice < effectiveCost)
             {
                 await transaction.RollbackAsync();
-                return BadRequest(ApiErrorResponse.Create("MSG-63", "Price override below floor price"));
+                return BadRequest(ApiErrorResponse.Create("MSG-63", "Giá bán không được thấp hơn giá sàn."));
             }
 
             var existingItem = invoice.InvoiceItems

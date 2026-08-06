@@ -73,6 +73,30 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
     }
 
     /// <summary>
+    /// Cảnh báo phát hiện trùng mã SP với giá chênh lệch lớn trong file Excel.
+    /// </summary>
+    public class PriceVarianceWarningDto
+    {
+        /// <summary>Mã sản phẩm</summary>
+        public string ProductCode { get; set; } = null!;
+
+        /// <summary>Tên sản phẩm</summary>
+        public string ProductName { get; set; } = null!;
+
+        /// <summary>Các dòng bị ảnh hưởng</summary>
+        public List<int> LineNumbers { get; set; } = new();
+
+        /// <summary>Các mức giá khác nhau</summary>
+        public List<decimal> Prices { get; set; } = new();
+
+        /// <summary>warning | error</summary>
+        public string Severity { get; set; } = "warning";
+
+        /// <summary>Thông báo tiếng Việt</summary>
+        public string Message { get; set; } = null!;
+    }
+
+    /// <summary>
     /// Kết quả preview sau khi parse & validate Excel (Bước 1).
     /// </summary>
     public class InwardInventoryExcelPreviewDto
@@ -88,6 +112,9 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
 
         /// <summary>Danh sách lỗi</summary>
         public List<ExcelValidationErrorDto> Errors { get; set; } = new();
+
+        /// <summary>Danh sách cảnh báo giá chênh lệch</summary>
+        public List<PriceVarianceWarningDto> Warnings { get; set; } = new();
 
         /// <summary>ID tạm để sử dụng ở bước commit</summary>
         public string PreviewToken { get; set; } = null!;
