@@ -188,6 +188,42 @@ public class CustomersController : ControllerBase
         return Ok(_mapper.Map<CustomerDto>(customer));
     }
 
+    // DELETE /api/pos/customers/{id}
+    // Có đơn hàng → soft-delete (Status = 0) để giữ lịch sử.
+    // Không có đơn → hard-delete.
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeleteCustomer(Guid id)
+    {
+        var branchId = GetBranchId();
+        var customer = await _context.Customers.FirstOrDefaultAsync(c => c.CustomerId == id && c.BranchId == branchId);
+        if (customer == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Customer not found"));
+
+        var hasOrders = await _context.Orders.AnyAsync(o => o.CustomerId == id);
+        var action = hasOrders ? "SOFT_DELETE_CUSTOMER" : "HARD_DELETE_CUSTOMER";
+
+        if (hasOrders)
+        {
+            customer.Status = 0;
+            customer.UpdatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            _context.Customers.Remove(customer);
+        }
+
+        await _context.SaveChangesAsync();
+
+        await TryWriteSystemLog(
+            GetUserId(),
+            action,
+            "customers",
+            "Customer",
+            customer.CustomerId,
+            $"Xóa khách hàng {customer.CustomerName} - SĐT: {customer.PhoneNumber ?? "—"} ({(hasOrders ? "soft-delete" : "hard-delete")})");
+
+        return Ok(new { success = true, message = hasOrders ? "Customer blocked" : "Customer deleted", softDelete = hasOrders });
+    }
+
     // GET /api/pos/customers/{id}/orders
     [HttpGet("{id:guid}/orders")]
     public async Task<ActionResult<PageResultDto<CustomerOrderDto>>> GetCustomerOrders(

@@ -658,7 +658,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (stockTicket.Status == "COMPLETED")
                 {
                     // COMPLETED: CHỈ cho phép sửa Note/Reason, không cho sửa Items
-                    if (!string.IsNullOrWhiteSpace(dto.Reason))
+                    if (dto.Note != null)
+                        stockTicket.Notes = dto.Note;
+                    else if (dto.Reason != null)
                         stockTicket.Notes = dto.Reason;
 
                     await _context.SaveChangesAsync();
@@ -680,7 +682,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 // PENDING: Cho phép sửa tất cả (Items, Note, Reason, Status)
-                if (!string.IsNullOrWhiteSpace(dto.Reason))
+                if (dto.Note != null)
+                    stockTicket.Notes = dto.Note;
+                else if (dto.Reason != null)
                     stockTicket.Notes = dto.Reason;
 
                 // ============================================================
@@ -958,8 +962,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                 // ============================================================
                 // QUY TẮC MỚI: Kiểm tra trạng thái
                 // ============================================================
-                if (stockTicket.Status == "CANCELLED")
+                if (stockTicket.Status?.ToUpperInvariant() == "CANCELLED")
                 {
+                    await transaction.RollbackAsync();
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
@@ -969,24 +974,22 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 // ============================================================
-                // QUY TẮC MỚI: Xử lý theo trạng thái hiện tại
+                // PHIẾU ĐÃ COMPLETED (đã cập nhật tồn kho + ảnh hưởng sổ cái) → không cho phép hủy.
+                // Nếu cần điều chỉnh phải tạo phiếu nhập kho ngược / phiếu điều chỉnh.
                 // ============================================================
-                if (stockTicket.Status == "COMPLETED")
+                if (stockTicket.Status?.ToUpperInvariant() == "COMPLETED")
                 {
-                    // COMPLETED: Cần rollback tồn kho (cộng lại)
-                    // Xuất kho thì hủy -> cộng lại số lượng vào tồn kho
-                    foreach (var item in stockTicket.StockTicketItems)
+                    await transaction.RollbackAsync();
+                    return BadRequest(new ApiResponse<object>
                     {
-                        var branchProduct = await _context.BranchProducts
-                            .FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
-
-                        if (branchProduct != null)
+                        Success = false,
+                        Message = "Cannot cancel completed ticket",
+                        Errors = new List<string>
                         {
-                            // Hoàn lại số lượng đã trừ
-                            branchProduct.ActualStock += item.Discrepancy;
-                            branchProduct.AvailableStock += item.Discrepancy;
+                            "Phiếu xuất kho đã hoàn thành, không thể hủy.",
+                            "Vui lòng tạo phiếu nhập kho ngược / phiếu điều chỉnh nếu cần."
                         }
-                    }
+                    });
                 }
 
                 // ============================================================
@@ -1193,6 +1196,7 @@ th {{ background: #f0f0f0; }}
                 UserId = stockTicket.UserId,
                 UserName = stockTicket.User?.FullName ?? stockTicket.User?.Username,
                 Reason = stockTicket.Notes,
+                Note = stockTicket.Notes,
                 CreatedAt = stockTicket.CreatedAt,
                 CompletedAt = stockTicket.CompletedAt,
                 CancelledAt = stockTicket.CancelledAt,

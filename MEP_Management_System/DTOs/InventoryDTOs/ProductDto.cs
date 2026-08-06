@@ -312,6 +312,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
     public class OutwardInventoryUpdateDto
     {
         public string? Reason { get; set; }
+        public string? Note { get; set; }
         public string? Status { get; set; }
     }
 
@@ -339,6 +340,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public Guid UserId { get; set; }
         public string? UserName { get; set; }
         public string? Reason { get; set; }
+        public string? Note { get; set; }
         public DateTime? CreatedAt { get; set; }
 
         // === Audit trail ===

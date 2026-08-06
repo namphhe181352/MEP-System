@@ -68,7 +68,7 @@ public class ProductsController : ControllerBase
             .ThenInclude(p => p!.ProductConversionUnits)
             .Include(b => b.Product)
             .ThenInclude(p => p!.MediaResources)
-            .Where(b => b.BranchId == branchId && b.IsActive == 1 && b.Product != null && b.Product.Status == 1);
+            .Where(b => b.BranchId == branchId && b.IsActive == 1 && b.Product != null && b.Product.Status == 1 && (b.Product.BranchId == null || b.Product.BranchId == branchId));
 
         if (!string.IsNullOrWhiteSpace(search))
         {
