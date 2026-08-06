@@ -93,6 +93,12 @@ public class DashboardOverviewDto
     public List<DashboardBranchRevenueDto> TopBranchesByRevenue { get; set; } = new();
 
     public List<SystemEventDto> RecentSystemEvents { get; set; } = new();
+
+    // Admin-only platform fields (Owner leaves these at default 0)
+    public int ActiveTenants { get; set; }
+    public decimal SubscriptionRevenue { get; set; }
+    public decimal B2bCommission { get; set; }
+    public int OverdueAlerts { get; set; }
 }
 
 public class DashboardCategoryPerformanceDto
