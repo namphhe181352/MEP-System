@@ -440,7 +440,10 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 // Check product code uniqueness WITHIN CURRENT BRANCH only
                 bool isCodeExist = await _context.BranchProducts
-                    .AnyAsync(bp => bp.BranchId == branchId.Value && bp.Product.ProductCode.ToLower() == dto.ProductCode.Trim().ToLower());
+                    .AnyAsync(bp => bp.BranchId == branchId.Value && 
+                                    bp.IsActive != -1 && 
+                                    bp.Product.Status != -1 &&
+                                    bp.Product.ProductCode.ToLower() == dto.ProductCode.Trim().ToLower());
                 if (isCodeExist)
                 {
                     return BadRequest(new ApiResponse<object> { Success = false, Message = "Mã sản phẩm đã tồn tại trong chi nhánh này", Errors = new() { $"Code '{dto.ProductCode}' exists" } });
@@ -786,10 +789,15 @@ namespace MEP_Management_System.Controllers.InventoryController
                     return BadRequest(new ApiResponse<object> { Success = false, Message = "Validation failed", Errors = errors });
                 }
 
-                bool isCodeExist = await _context.Products.AnyAsync(p => p.ProductId != id && p.ProductCode.ToLower() == dto.ProductCode.Trim().ToLower());
+                bool isCodeExist = await _context.BranchProducts
+                    .AnyAsync(otherBp => otherBp.BranchId == branchId.Value && 
+                                         otherBp.ProductId != id &&
+                                         otherBp.IsActive != -1 &&
+                                         otherBp.Product.Status != -1 &&
+                                         otherBp.Product.ProductCode.ToLower() == dto.ProductCode.Trim().ToLower());
                 if (isCodeExist)
                 {
-                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Product code already exists", Errors = new() { $"Code '{dto.ProductCode}' exists" } });
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Product code already exists in this branch", Errors = new() { $"Code '{dto.ProductCode}' exists" } });
                 }
 
                 // UOM: Không cho sửa BaseUnit khi sản phẩm đã có giao dịch
@@ -968,21 +976,40 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                bp.IsActive = -1;
-                if (bp.Product != null)
+                var hasDependencies = await _context.OrderItems.AnyAsync(oi => oi.BranchProductId == bp.BranchProductId) ||
+                                      await _context.ReturnItems.AnyAsync(ri => ri.BranchProductId == bp.BranchProductId) ||
+                                      await _context.StockTicketItems.AnyAsync(sti => sti.BranchProductId == bp.BranchProductId);
+
+                if (hasDependencies)
                 {
-                    bp.Product.Status = -1;
-                    if (!string.IsNullOrEmpty(bp.Product.ProductCode))
+                    bp.IsActive = -1;
+                    if (bp.Product != null)
                     {
-                        var shortId = bp.Product.ProductId.ToString().Substring(0, 6);
-                        var newCode = $"d_{shortId}_{bp.Product.ProductCode}";
-                        if (newCode.Length > 50) newCode = newCode.Substring(0, 50);
-                        bp.Product.ProductCode = newCode;
+                        bp.Product.Status = -1;
+                        if (!string.IsNullOrEmpty(bp.Product.ProductCode))
+                        {
+                            var shortId = bp.Product.ProductId.ToString().Substring(0, 6);
+                            var newCode = $"d_{shortId}_{bp.Product.ProductCode}";
+                            if (newCode.Length > 50) newCode = newCode.Substring(0, 50);
+                            bp.Product.ProductCode = newCode;
+                        }
+                        _context.Products.Update(bp.Product);
                     }
-                    _context.Products.Update(bp.Product);
+                    _context.BranchProducts.Update(bp);
+                }
+                else
+                {
+                    _context.BranchProducts.Remove(bp);
+                    if (bp.Product != null)
+                    {
+                        var hasOtherBranches = await _context.BranchProducts.AnyAsync(otherBp => otherBp.ProductId == bp.ProductId && otherBp.BranchProductId != bp.BranchProductId);
+                        if (!hasOtherBranches)
+                        {
+                            _context.Products.Remove(bp.Product);
+                        }
+                    }
                 }
 
-                _context.BranchProducts.Update(bp);
                 await _context.SaveChangesAsync();
 
                 return Ok(new ApiResponse<object>
@@ -1301,7 +1328,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .ToListAsync();
 
                 var taxonomies = await _context.ProductTaxonomies
-                    .Where(t => t.BranchId == branchId && t.Type == "Category")
+                    .Where(t => (t.BranchId == branchId || t.BranchId == null) && t.Type == "Category")
                     .Select(t => t.Name)
                     .ToListAsync();
 
@@ -1365,7 +1392,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .ToListAsync();
 
                 var taxonomies = await _context.ProductTaxonomies
-                    .Where(t => t.BranchId == branchId && t.Type == "Brand")
+                    .Where(t => (t.BranchId == branchId || t.BranchId == null) && t.Type == "Brand")
                     .Select(t => t.Name)
                     .ToListAsync();
 
@@ -1451,7 +1478,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     TaxonomyId = Guid.NewGuid(),
                     BranchId = branchId,
                     Name = trimmedName,
-                    Type = "Category"
+                    Type = "Category",
+                    CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
                 };
                 _context.ProductTaxonomies.Add(tax);
                 await _context.SaveChangesAsync();
@@ -1469,7 +1497,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 {
                     Success = false,
                     Message = "Lỗi khi thêm nhóm hàng",
-                    Errors = new() { ex.Message }
+                    Errors = new() { ex.Message, ex.InnerException?.Message ?? "No inner exception" }
                 });
             }
         }
@@ -1524,7 +1552,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     TaxonomyId = Guid.NewGuid(),
                     BranchId = branchId,
                     Name = trimmedName,
-                    Type = "Brand"
+                    Type = "Brand",
+                    CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
                 };
                 _context.ProductTaxonomies.Add(tax);
                 await _context.SaveChangesAsync();
@@ -1542,7 +1571,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 {
                     Success = false,
                     Message = "Lỗi khi thêm thương hiệu",
-                    Errors = new() { ex.Message }
+                    Errors = new() { ex.Message, ex.InnerException?.Message ?? "No inner exception" }
                 });
             }
         }
@@ -2197,12 +2226,16 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var userId = GetUserInfo();
                 var currentTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
+                var typeCode = !string.IsNullOrWhiteSpace(dto.TypeCode) 
+                    ? dto.TypeCode.Trim().ToUpper() 
+                    : "AT-" + Guid.NewGuid().ToString().Substring(0, 4).ToUpper();
+
                 var attributeType = new ProductAttributeType
                 {
                     TypeId = Guid.NewGuid(),
                     BranchId = branchId,
                     TypeName = dto.TypeName.Trim(),
-                    TypeCode = !string.IsNullOrWhiteSpace(dto.TypeCode) ? dto.TypeCode.Trim().ToUpper() : null,
+                    TypeCode = typeCode,
                     IsActive = 1,
                     CreatedAt = currentTime,
                     CreatedBy = userId

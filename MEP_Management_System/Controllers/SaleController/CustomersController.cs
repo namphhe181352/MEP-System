@@ -124,7 +124,7 @@ public class CustomersController : ControllerBase
             if (!PhoneRegex.IsMatch(request.PhoneNumber))
                 return BadRequest(ApiErrorResponse.Create("MSG-67", "Invalid phone number format. Expected: 0x-xxxx-xxxx (x = digit)"));
             var branchId = GetBranchId();
-            var exists = await _context.Customers.AnyAsync(c => c.PhoneNumber == request.PhoneNumber && c.BranchId == branchId);
+            var exists = await _context.Customers.AnyAsync(c => c.PhoneNumber == request.PhoneNumber && c.BranchId == branchId && (c.Status == 1 || c.Status == null));
             if (exists) return Conflict(ApiErrorResponse.Create("MSG-68", "Phone number already registered in this store"));
         }
 
@@ -160,7 +160,7 @@ public class CustomersController : ControllerBase
         {
             if (!PhoneRegex.IsMatch(request.PhoneNumber))
                 return BadRequest(ApiErrorResponse.Create("MSG-67", "Invalid phone number format"));
-            var exists = await _context.Customers.AnyAsync(c => c.PhoneNumber == request.PhoneNumber && c.CustomerId != id && c.BranchId == branchId);
+            var exists = await _context.Customers.AnyAsync(c => c.PhoneNumber == request.PhoneNumber && c.CustomerId != id && c.BranchId == branchId && (c.Status == 1 || c.Status == null));
             if (exists) return Conflict(ApiErrorResponse.Create("MSG-68", "Phone number already registered in this store"));
         }
 
