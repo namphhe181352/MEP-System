@@ -170,25 +170,12 @@ public class ShiftsController : ControllerBase
 
             return Ok(dto);
         }
-<<<<<<< HEAD
-        catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException pgEx && pgEx.SqlState == "23505")
+catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException pgEx && pgEx.SqlState == "23505")
         {
             await transaction.RollbackAsync();
             return Conflict(ApiErrorResponse.Create("MSG-76", "Chi nhánh đang có ca bán hoạt động. Vui lòng chốt ca trước khi mở ca mới."));
         }
         catch
-=======
-
-
-
-        var today = DateTime.UtcNow.Date;
-        var tomorrow = today.AddDays(1);
-        var todayCount = await _context.Shifts
-            .Where(s => s.StartedAt >= today && s.StartedAt < tomorrow)
-            .CountAsync();
-
-        var shift = new Shift
->>>>>>> 6cfdb420d468a05d56c4768a2a49f69aee52009c
         {
             await transaction.RollbackAsync();
             throw;
