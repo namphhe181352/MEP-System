@@ -94,8 +94,10 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Include(bp => bp.Product).ThenInclude(p => p.UpdatedByUser)
                     .Where(bp => bp.BranchId == branchId).AsQueryable();
 
-                // Exclude soft-deleted products
-                query = query.Where(bp => bp.IsActive != -1);
+                // Exclude soft-deleted products and enforce SaaS tenant isolation
+                query = query.Where(bp => bp.IsActive != -1 && 
+                                          (bp.Product.Status == null || bp.Product.Status != -1) &&
+                                          (bp.Product.BranchId == null || bp.Product.BranchId == branchId));
 
 
                 // Search by product name, code, or barcode
@@ -446,6 +448,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     product.ProductId = Guid.NewGuid();
                     product.CreatedAt = currentLocalTime;
                     product.CreatedBy = currentUserId;
+                    product.BranchId = branchId;
 
                     product.ProductConversionUnits = new List<ProductConversionUnit>();
                     product.BranchProducts = new List<BranchProduct>();
@@ -669,6 +672,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                         product.ProductId = Guid.NewGuid();
                         product.CreatedAt = currentLocalTime;
                         product.CreatedBy = currentUserId;
+                        product.BranchId = branchId;
 
                         product.ProductConversionUnits = new List<ProductConversionUnit>();
                         product.BranchProducts = new List<BranchProduct>();
@@ -818,6 +822,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     bp.Product.Height = dto.Height;
                     bp.Product.SizeUnit = dto.SizeUnit;
                     bp.Product.ProductCode = dto.ProductCode;
+                    bp.Product.BaseUnit = dto.Unit;
                     bp.Product.UpdatedAt = currentLocalTime;
                     bp.Product.UpdatedBy = currentUserId;
 

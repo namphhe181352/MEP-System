@@ -99,14 +99,7 @@ public class ShiftsController : ControllerBase
             }
         }
 
-        // Per-branch check (fix mới): nếu branch đang có ca OPEN của user KHÁC, bắt buộc chốt ca đó trước
-        var branchOpenShift = await _context.Shifts
-            .FirstOrDefaultAsync(s => s.BranchId == branchId.Value && s.Status == "OPEN");
 
-        if (branchOpenShift != null)
-        {
-            return Conflict(ApiErrorResponse.Create("MSG-76", "Ca vẫn đang mở, vui lòng chốt ca"));
-        }
 
         var today = DateTime.UtcNow.Date;
         var tomorrow = today.AddDays(1);
@@ -264,6 +257,7 @@ public class ShiftsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<PageResultDto<ShiftDto>>> GetShifts(
         [FromQuery] DateTime? from, [FromQuery] DateTime? to,
+        [FromQuery] string? status, [FromQuery] Guid? filterUserId,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         var userId = GetUserId();
@@ -276,6 +270,13 @@ public class ShiftsController : ControllerBase
 
         if (from.HasValue) query = query.Where(s => s.StartedAt >= from.Value);
         if (to.HasValue) query = query.Where(s => s.StartedAt <= to.Value);
+        
+        if (!string.IsNullOrEmpty(status))
+            query = query.Where(s => s.Status == status);
+            
+        // Nếu truyền filterUserId thì lọc theo user đó
+        if (filterUserId.HasValue)
+            query = query.Where(s => s.UserId == filterUserId.Value);
 
         var total = await query.CountAsync();
         var shifts = await query
