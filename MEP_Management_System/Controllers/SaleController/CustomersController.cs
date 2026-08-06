@@ -68,7 +68,7 @@ public class CustomersController : ControllerBase
     {
         var branchId = GetBranchId();
 
-        var query = _context.Customers.Where(c => c.BranchId == branchId && c.Status != 0).AsQueryable();
+        var query = _context.Customers.Where(c => c.BranchId == branchId && (c.Status == 1 || c.Status == null)).AsQueryable();
 
         if (!string.IsNullOrEmpty(search))
             query = query.Where(c =>
@@ -101,7 +101,7 @@ public class CustomersController : ControllerBase
     {
         var branchId = GetBranchId();
 
-        var query = _context.Customers.Where(c => c.BranchId == branchId && c.Status != 0).AsQueryable();
+        var query = _context.Customers.Where(c => c.BranchId == branchId && (c.Status == 1 || c.Status == null)).AsQueryable();
 
         if (!string.IsNullOrEmpty(search))
             query = query.Where(c =>
