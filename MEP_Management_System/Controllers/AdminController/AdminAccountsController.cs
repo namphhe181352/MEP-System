@@ -106,7 +106,7 @@ public class AdminAccountsController : ControllerBase
     private async Task<bool> IsEmailTakenAsync(string email, Guid? excludeUserId = null)
     {
         var normalized = email.Trim().ToLower();
-        var query = _context.Users.Where(u => u.Email.ToLower() == normalized);
+        var query = _context.Users.Where(u => u.Email.ToLower() == normalized && u.IsActive != 0);
         if (excludeUserId.HasValue)
             query = query.Where(u => u.UserId != excludeUserId.Value);
         return await query.AnyAsync();
@@ -115,7 +115,7 @@ public class AdminAccountsController : ControllerBase
     private async Task<bool> IsUsernameTakenAsync(string username, Guid? excludeUserId = null)
     {
         var normalized = username.Trim().ToLower();
-        var query = _context.Users.Where(u => u.Username.ToLower() == normalized);
+        var query = _context.Users.Where(u => u.Username.ToLower() == normalized && u.IsActive != 0);
         if (excludeUserId.HasValue)
             query = query.Where(u => u.UserId != excludeUserId.Value);
         return await query.AnyAsync();
@@ -125,7 +125,7 @@ public class AdminAccountsController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(phone)) return false;
         var normalized = phone.Trim();
-        var query = _context.Users.Where(u => u.PhoneNumber == normalized);
+        var query = _context.Users.Where(u => u.PhoneNumber == normalized && u.IsActive != 0);
         if (excludeUserId.HasValue)
             query = query.Where(u => u.UserId != excludeUserId.Value);
         return await query.AnyAsync();

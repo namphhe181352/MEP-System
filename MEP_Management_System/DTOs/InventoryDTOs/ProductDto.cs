@@ -306,6 +306,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public OutwardInventoryType OutwardType { get; set; }
         public string Reason { get; set; } = null!;
         public string? Note { get; set; }
+        public Guid? SupplierId { get; set; }
         public List<OutwardInventoryItemDto> Items { get; set; } = new();
     }
 

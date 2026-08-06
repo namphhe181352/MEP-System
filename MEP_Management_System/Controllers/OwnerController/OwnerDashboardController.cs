@@ -54,7 +54,7 @@ public class OwnerDashboardController : ControllerBase
         var branch = await _context.Branches
             .AsNoTracking()
             .Include(b => b.ManagerUser)
-            .FirstOrDefaultAsync(b => b.BranchId == branchId.Value && b.IsActive == 1);
+            .FirstOrDefaultAsync(b => b.BranchId == branchId.Value && b.IsActive != 0);
         if (branch == null)
         {
             return NotFound(new ApiResponse<object>

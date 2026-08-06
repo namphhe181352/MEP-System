@@ -147,13 +147,13 @@ public class AdminUsersController : ControllerBase
             return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-400", Message = "Mật khẩu phải có ít nhất 6 ký tự." } });
 
         var emailTrimmed = dto.Email.Trim().ToLower();
-        if (await _context.Users.AnyAsync(u => u.Email.ToLower() == emailTrimmed))
+        if (await _context.Users.AnyAsync(u => u.Email.ToLower() == emailTrimmed && u.IsActive != 0))
             return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-409", Message = "Email đã tồn tại." } });
 
         if (!string.IsNullOrWhiteSpace(dto.PhoneNumber))
         {
             var phoneTrimmed = dto.PhoneNumber.Trim();
-            if (await _context.Users.AnyAsync(u => u.PhoneNumber == phoneTrimmed))
+            if (await _context.Users.AnyAsync(u => u.PhoneNumber == phoneTrimmed && u.IsActive != 0))
                 return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-409", Message = "Số điện thoại đã tồn tại." } });
         }
 
@@ -257,7 +257,7 @@ public class AdminUsersController : ControllerBase
         if (!string.IsNullOrWhiteSpace(dto.PhoneNumber))
         {
             var phoneTrimmed = dto.PhoneNumber.Trim();
-            if (phoneTrimmed != (user.PhoneNumber ?? "") && await _context.Users.AnyAsync(u => u.PhoneNumber == phoneTrimmed))
+            if (phoneTrimmed != (user.PhoneNumber ?? "") && await _context.Users.AnyAsync(u => u.PhoneNumber == phoneTrimmed && u.IsActive != 0))
                 return BadRequest(new ErrorResponseDto { Error = new ErrorDetail { Code = "MSG-409", Message = "Số điện thoại đã tồn tại." } });
         }
 
