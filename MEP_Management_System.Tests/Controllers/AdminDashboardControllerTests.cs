@@ -26,42 +26,55 @@ namespace MEP_Management_System.Tests.Controllers
 
         private AdminDashboardController CreateController(MEPDatabaseContext context)
         {
-            var customerDebtService = new MEP_Management_System.Services.CustomerDebtService(context);
-            return new AdminDashboardController(context, customerDebtService);
+            return new AdminDashboardController(context);
         }
 
         [Fact]
-        public async Task GetStats_ReturnsStats()
+        public async Task GetOverview_ReturnsSystemLevelCounts()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var controller = CreateController(context);
             var branchId = Guid.NewGuid();
 
+            // 1 active branch
+            context.Branches.Add(new Branch { BranchId = branchId, BranchCode = "B1", BranchName = "Branch 1", IsActive = 1 });
+
+            // 2 active products
+            context.Products.Add(new Product { ProductId = Guid.NewGuid(), ProductCode = "P1", ProductName = "Product 1", Status = 1 });
+            context.Products.Add(new Product { ProductId = Guid.NewGuid(), ProductCode = "P2", ProductName = "Product 2", Status = 1 });
+
+            // 2 active tenants (1 owner + 1 staff)
             var ownerRole = new Role { RoleId = Guid.NewGuid(), RoleName = "Owner" };
             var owner = new User { UserId = Guid.NewGuid(), IsActive = 1, FullName = "Owner", Email = "owner@test.com", Username = "owner", PasswordHash = "hash" };
             owner.Roles.Add(ownerRole);
+            var staff = new User { UserId = Guid.NewGuid(), IsActive = 1, FullName = "Staff", Email = "staff@test.com", Username = "staff", PasswordHash = "hash" };
             context.Roles.Add(ownerRole);
-            context.Users.Add(owner);
+            context.Users.AddRange(owner, staff);
 
+            // Order with TRANSFER payment (feeds B2bCommission = 1% × 100000 = 1000)
+            var transferOrderId = Guid.NewGuid();
+            context.Orders.Add(new Order { OrderId = transferOrderId, OrderCode = "OT1", BranchId = branchId, PaymentMethod = "TRANSFER", TotalAmount = 100000, Status = "PENDING" });
+
+            // Completed invoice in last 30d (feeds SubscriptionRevenue = 50000)
             var orderId = Guid.NewGuid();
-            context.Orders.Add(new Order { OrderId = orderId, OrderCode = "O1", BranchId = branchId, PaymentMethod = "TRANSFER", TotalAmount = 100000, Status = "COMPLETED" });
+            context.Orders.Add(new Order { OrderId = orderId, OrderCode = "O1", BranchId = branchId, PaymentMethod = "CASH", TotalAmount = 50000, Status = "COMPLETED" });
             context.Invoices.Add(new Invoice { InvoiceId = Guid.NewGuid(), InvoiceCode = "I1", OrderId = orderId, Status = "COMPLETED", TotalAmount = 50000, CreatedAt = DateTime.UtcNow });
-            
-            context.Customers.Add(new Customer { CustomerId = Guid.NewGuid(), BranchId = branchId, Status = 1, CurrentDebt = 20000, DebtLimit = 10000, CustomerName = "Test" });
 
             await context.SaveChangesAsync();
 
             // Act
-            var result = await controller.GetStats();
+            var result = await controller.GetOverview();
 
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result);
-            var stats = Assert.IsType<DashboardStatsDto>(okResult.Value);
-            Assert.Equal(1, stats.ActiveTenants);
-            Assert.Equal(50000, stats.SubscriptionRevenue);
-            Assert.Equal(1000, stats.B2bCommission);
-            Assert.Equal(1, stats.OverdueAlerts);
+            var overview = Assert.IsType<DashboardOverviewDto>(okResult.Value);
+
+            Assert.Equal(1, overview.ActiveBranches);
+            Assert.Equal(2, overview.ActiveProducts);
+            Assert.Equal(2, overview.ActiveTenants);
+            Assert.Equal(50000m, overview.SubscriptionRevenue);
+            Assert.Equal(1000m, overview.B2bCommission);
         }
 
         [Fact]

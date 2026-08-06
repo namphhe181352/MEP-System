@@ -66,11 +66,20 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
-                    return BadRequest(new ApiResponse<object>
+                    return Ok(new ApiResponse<PaginatedResponse<ProductUpsertDto>>
                     {
-                        Success = false,
-                        Message = "Không tìm thấy chi nhánh hợp lệ.",
-                        Errors = new() { "No valid branch found." }
+                        Success = true,
+                        Message = "Chưa được gán chi nhánh.",
+                        Data = new PaginatedResponse<ProductUpsertDto>
+                        {
+                            Items = new List<ProductUpsertDto>(),
+                            TotalCount = 0,
+                            PageNumber = @params.PageNumber,
+                            PageSize = @params.PageSize,
+                            TotalPages = 1,
+                            HasNextPage = false,
+                            HasPreviousPage = false
+                        }
                     });
                 }
 
@@ -195,11 +204,11 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
-                    return BadRequest(new ApiResponse<object>
+                    return Ok(new ApiResponse<object>
                     {
-                        Success = false,
-                        Message = "Không tìm thấy chi nhánh hợp lệ.",
-                        Errors = new() { "No valid branch found." }
+                        Success = true,
+                        Message = "Chưa được gán chi nhánh.",
+                        Data = new { items = new List<ProductSearchResultDto>() }
                     });
                 }
 
@@ -963,6 +972,13 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (bp.Product != null)
                 {
                     bp.Product.Status = -1;
+                    if (!string.IsNullOrEmpty(bp.Product.ProductCode))
+                    {
+                        var shortId = bp.Product.ProductId.ToString().Substring(0, 6);
+                        var newCode = $"d_{shortId}_{bp.Product.ProductCode}";
+                        if (newCode.Length > 50) newCode = newCode.Substring(0, 50);
+                        bp.Product.ProductCode = newCode;
+                    }
                     _context.Products.Update(bp.Product);
                 }
 
@@ -1269,10 +1285,11 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
-                    return BadRequest(new ApiResponse<object>
+                    return Ok(new ApiResponse<List<TaxonomyItemDto>>
                     {
-                        Success = false,
-                        Message = "Không tìm thấy chi nhánh hợp lệ."
+                        Success = true,
+                        Message = "Chưa được gán chi nhánh.",
+                        Data = new List<TaxonomyItemDto>()
                     });
                 }
 
@@ -1332,10 +1349,11 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var branchId = GetCurrentBranchId();
                 if (branchId == null)
                 {
-                    return BadRequest(new ApiResponse<object>
+                    return Ok(new ApiResponse<List<TaxonomyItemDto>>
                     {
-                        Success = false,
-                        Message = "Không tìm thấy chi nhánh hợp lệ."
+                        Success = true,
+                        Message = "Chưa được gán chi nhánh.",
+                        Data = new List<TaxonomyItemDto>()
                     });
                 }
 
@@ -1430,6 +1448,7 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 var tax = new ProductTaxonomy
                 {
+                    TaxonomyId = Guid.NewGuid(),
                     BranchId = branchId,
                     Name = trimmedName,
                     Type = "Category"
@@ -1502,6 +1521,7 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 var tax = new ProductTaxonomy
                 {
+                    TaxonomyId = Guid.NewGuid(),
                     BranchId = branchId,
                     Name = trimmedName,
                     Type = "Brand"
@@ -2112,8 +2132,10 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
+                var branchId = GetCurrentBranchId();
+
                 var result = await _context.ProductAttributeTypes
-                    .Where(t => t.IsActive == 1)
+                    .Where(t => t.IsActive == 1 && (t.BranchId == branchId || t.BranchId == null))
                     .OrderBy(t => t.TypeName)
                     .Select(t => new
                     {
@@ -2158,8 +2180,10 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
+                var branchId = GetCurrentBranchId();
+
                 var exists = await _context.ProductAttributeTypes
-                    .AnyAsync(t => t.TypeName.ToLower() == dto.TypeName.Trim().ToLower() && t.IsActive == 1);
+                    .AnyAsync(t => t.TypeName.ToLower() == dto.TypeName.Trim().ToLower() && t.IsActive == 1 && (t.BranchId == branchId || t.BranchId == null));
 
                 if (exists)
                 {
@@ -2176,6 +2200,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var attributeType = new ProductAttributeType
                 {
                     TypeId = Guid.NewGuid(),
+                    BranchId = branchId,
                     TypeName = dto.TypeName.Trim(),
                     TypeCode = !string.IsNullOrWhiteSpace(dto.TypeCode) ? dto.TypeCode.Trim().ToUpper() : null,
                     IsActive = 1,
@@ -2218,8 +2243,10 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
+                var branchId = GetCurrentBranchId();
+
                 var attributeType = await _context.ProductAttributeTypes.FindAsync(id);
-                if (attributeType == null || attributeType.IsActive == 0)
+                if (attributeType == null || attributeType.IsActive == 0 || (attributeType.BranchId != null && attributeType.BranchId != branchId))
                 {
                     return NotFound(new ApiResponse<object>
                     {
@@ -2231,7 +2258,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (!string.IsNullOrWhiteSpace(dto.TypeName))
                 {
                     var exists = await _context.ProductAttributeTypes
-                        .AnyAsync(t => t.TypeId != id && t.TypeName.ToLower() == dto.TypeName.Trim().ToLower() && t.IsActive == 1);
+                        .AnyAsync(t => t.TypeId != id && t.TypeName.ToLower() == dto.TypeName.Trim().ToLower() && t.IsActive == 1 && (t.BranchId == branchId || t.BranchId == null));
 
                     if (exists)
                     {
@@ -2287,8 +2314,10 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
+                var branchId = GetCurrentBranchId();
+
                 var attributeType = await _context.ProductAttributeTypes.FindAsync(id);
-                if (attributeType == null || attributeType.IsActive == 0)
+                if (attributeType == null || attributeType.IsActive == 0 || (attributeType.BranchId != null && attributeType.BranchId != branchId))
                 {
                     return NotFound(new ApiResponse<object>
                     {
