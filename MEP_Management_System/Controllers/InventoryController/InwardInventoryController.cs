@@ -1001,9 +1001,6 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                // ============================================================
-                // QUY TẮC MỚI: Kiểm tra trạng thái
-                // ============================================================
                 if (stockTicket.Status?.ToUpperInvariant() == "CANCELLED")
                 {
                     return BadRequest(new ApiResponse<object>
@@ -1014,26 +1011,67 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                // Phiếu đã COMPLETED (đã cập nhật tồn kho + ảnh hưởng sổ cái) → không cho phép hủy.
-                // Nếu cần điều chỉnh phải tạo phiếu xuất/điều chỉnh ngược.
-                if (stockTicket.Status?.ToUpperInvariant() == "COMPLETED")
+                // ============================================================
+                // QUY TẮC MỚI: Xử lý theo trạng thái hiện tại
+                // ============================================================
+                if (stockTicket.Status == "COMPLETED")
                 {
-                    await transaction.RollbackAsync();
-                    return BadRequest(new ApiResponse<object>
+                    // COMPLETED: Cần rollback tồn kho (trừ lại)
+                    // Nhưng phải kiểm tra an toàn: không cho phép ActualStock < 0
+
+                    var unsafeItems = new List<string>();
+
+                    foreach (var item in stockTicket.StockTicketItems)
                     {
-                        Success = false,
-                        Message = "Cannot cancel completed ticket",
-                        Errors = new List<string>
+                        var branchProduct = await _context.BranchProducts
+                            .FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
+
+                        if (branchProduct != null)
                         {
-                            "Phiếu nhập kho đã hoàn thành, không thể hủy.",
-                            "Vui lòng tạo phiếu điều chỉnh/xuất kho ngược nếu cần."
+                            // Kiểm tra: nếu trừ kho sẽ âm không?
+                            if (branchProduct.ActualStock < item.Discrepancy ||
+                                branchProduct.AvailableStock < item.Discrepancy)
+                            {
+                                unsafeItems.Add(branchProduct.Product?.ProductName ?? item.BranchProductId.ToString());
+                            }
                         }
-                    });
+                    }
+
+                    if (unsafeItems.Any())
+                    {
+                        await transaction.RollbackAsync();
+                        return BadRequest(new ApiResponse<object>
+                        {
+                            Success = false,
+                            Message = "Không thể hủy vì hàng đã được xuất khỏi kho.",
+                            Errors = new List<string>
+                            {
+                                "Không thể hủy vì hàng đã được xuất khỏi kho.",
+                                $"Sản phẩm bị ảnh hưởng: {string.Join(", ", unsafeItems)}"
+                            }
+                        });
+                    }
+
+                    // Đủ điều kiện - Thực hiện rollback
+                    foreach (var item in stockTicket.StockTicketItems)
+                    {
+                        var branchProduct = await _context.BranchProducts
+                            .FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
+
+                        if (branchProduct != null)
+                        {
+                            branchProduct.ActualStock -= item.Discrepancy;
+                            branchProduct.AvailableStock -= item.Discrepancy;
+                        }
+                    }
                 }
 
                 var currentUserId = GetCurrentUserId();
 
-                // PENDING: Chuyển sang CANCELLED
+                // Lưu trạng thái TRƯỚC KHI đổi để response message chính xác
+                var wasCompleted = stockTicket.Status == "COMPLETED";
+
+                // PENDING hoặc COMPLETED (đã rollback): Đều chuyển sang CANCELLED
                 stockTicket.Status = "CANCELLED";
                 stockTicket.CancelledAt = DateTime.UtcNow;
                 stockTicket.CancelledBy = currentUserId;
@@ -1053,7 +1091,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = "Inward inventory cancelled successfully (pending ticket, no stock change)",
+                    Message = wasCompleted
+                        ? "Inward inventory cancelled and stock rolled back successfully"
+                        : "Inward inventory cancelled successfully (pending ticket, no stock change)",
                     Data = new
                     {
                         TicketId = stockTicket.StockTicketId,
