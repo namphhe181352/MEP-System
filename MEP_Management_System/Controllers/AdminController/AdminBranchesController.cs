@@ -182,24 +182,7 @@ namespace MEP_Management_System.Controllers.AdminController
                 });
             }
 
-            // Init tồn kho
-            var products = await _context.Products.Select(p => new { p.ProductId }).ToListAsync();
-            foreach (var product in products)
-            {
-                _context.BranchProducts.Add(new BranchProduct
-                {
-                    BranchProductId = Guid.NewGuid(),
-                    BranchId = branch.BranchId,
-                    ProductId = product.ProductId,
-                    ActualStock = 0m,
-                    AvailableStock = 0m,
-                    ReservedStock = 0m,
-                    CostPrice = 0m,
-                    SellPrice = 0m,
-                    ShelfLocation = "Chưa xếp vị trí",
-                    IsActive = 1
-                });
-            }
+
 
             await LogAction(branch.BranchId, "CREATE_BRANCH", "branches", "Branch", $"Tạo chi nhánh: {branch.BranchName}");
 

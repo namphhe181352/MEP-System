@@ -569,20 +569,18 @@ public class OwnerStaffController : ControllerBase
                 Message = "Không thể xác định người dùng từ token."
             });
 
-        // Lấy branchId của Owner để gán cho nhân viên mới
-        var ownerBranchId = await _context.StaffAssignments
-            .Where(sa => sa.UserId == ownerId.Value)
-            .Select(sa => sa.BranchId)
-            .FirstOrDefaultAsync();
-
-        if (ownerBranchId == Guid.Empty)
+        // Lấy branchId hiện tại (từ Header/Token) để gán cho nhân viên mới
+        var currentBranchId = GetCurrentBranchId();
+        if (currentBranchId == null || currentBranchId == Guid.Empty)
         {
             return BadRequest(new ApiResponse<object>
             {
                 Success = false,
-                Message = "Owner chưa được gán chi nhánh. Vui lòng liên hệ quản trị viên."
+                Message = "Không xác định được chi nhánh hiện tại. Vui lòng chọn chi nhánh."
             });
         }
+        
+        var ownerBranchId = currentBranchId.Value;
 
         if (string.IsNullOrWhiteSpace(dto.Username) ||
             string.IsNullOrWhiteSpace(dto.Email) ||
@@ -903,11 +901,21 @@ public class OwnerStaffController : ControllerBase
         if (!ownerId.HasValue)
             return Unauthorized(new ApiResponse<object> { Success = false, Message = "Không thể xác định người dùng từ token." });
 
+        var branchId = GetCurrentBranchId();
+        if (!branchId.HasValue)
+            return BadRequest(new ApiResponse<object> { Success = false, Message = "Không tìm thấy thông tin chi nhánh." });
+
+        var isInBranch = await _context.StaffAssignments
+            .AnyAsync(sa => sa.UserId == id && sa.BranchId == branchId.Value);
+
+        if (!isInBranch)
+            return NotFound(new ApiResponse<object> { Success = false, Message = "Nhân viên không tồn tại hoặc không thuộc chi nhánh này." });
+
         var staff = await _context.Users
-            .FirstOrDefaultAsync(u => u.UserId == id && u.CreatedBy == ownerId.Value);
+            .FirstOrDefaultAsync(u => u.UserId == id && u.Status != "DELETED");
 
         if (staff == null)
-            return NotFound(new ApiResponse<object> { Success = false, Message = "Nhân viên không tồn tại hoặc không thuộc quyền quản lý của bạn." });
+            return NotFound(new ApiResponse<object> { Success = false, Message = "Nhân viên đã bị xóa hoặc không tồn tại." });
 
         if (staff.UserId == ownerId.Value)
             return BadRequest(new ApiResponse<object> { Success = false, Message = "Bạn không thể tự khóa/mở khóa tài khoản của chính mình." });
