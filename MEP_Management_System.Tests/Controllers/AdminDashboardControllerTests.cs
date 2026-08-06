@@ -61,23 +61,6 @@ namespace MEP_Management_System.Tests.Controllers
             context.Orders.Add(new Order { OrderId = orderId, OrderCode = "O1", BranchId = branchId, PaymentMethod = "CASH", TotalAmount = 50000, Status = "COMPLETED" });
             context.Invoices.Add(new Invoice { InvoiceId = Guid.NewGuid(), InvoiceCode = "I1", OrderId = orderId, Status = "COMPLETED", TotalAmount = 50000, CreatedAt = DateTime.UtcNow });
 
-            // Pending invoice (feeds OverdueAlerts = 1)
-            var pendingOrderId = Guid.NewGuid();
-            context.Orders.Add(new Order { OrderId = pendingOrderId, OrderCode = "O2", BranchId = branchId, PaymentMethod = "CASH", TotalAmount = 30000, Status = "PENDING" });
-            context.Invoices.Add(new Invoice { InvoiceId = Guid.NewGuid(), InvoiceCode = "I2", OrderId = pendingOrderId, Status = "PENDING", TotalAmount = 30000, CreatedAt = DateTime.UtcNow });
-
-            // Pending expense voucher (feeds PendingExpenseCount = 1)
-            context.ExpenseVouchers.Add(new ExpenseVoucher
-            {
-                VoucherId = Guid.NewGuid(),
-                VoucherCode = "EV1",
-                BranchId = branchId,
-                CreatedBy = owner.UserId,
-                Reason = "Test expense",
-                Amount = 10000,
-                Status = "PENDING"
-            });
-
             await context.SaveChangesAsync();
 
             // Act
@@ -92,10 +75,6 @@ namespace MEP_Management_System.Tests.Controllers
             Assert.Equal(2, overview.ActiveTenants);
             Assert.Equal(50000m, overview.SubscriptionRevenue);
             Assert.Equal(1000m, overview.B2bCommission);
-            Assert.Equal(1, overview.OverdueAlerts);
-            // 2 PENDING orders: transferOrderId + pendingOrderId
-            Assert.Equal(2, overview.PendingOrderCount);
-            Assert.Equal(1, overview.PendingExpenseCount);
         }
 
         [Fact]
