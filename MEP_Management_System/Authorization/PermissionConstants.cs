@@ -68,6 +68,7 @@ public static class PermissionConstants
     public const string SHIFT_CREATE = "SHIFT_CREATE";
     public const string SHIFT_UPDATE = "SHIFT_UPDATE";
     public const string SHIFT_DELETE = "SHIFT_DELETE";
+    public const string SHIFT_FORCE_CLOSE = "SHIFT_FORCE_CLOSE";
 
     // === SYSTEM / OWNER ===
     public const string OWNER_MANAGE = "OWNER_MANAGE";

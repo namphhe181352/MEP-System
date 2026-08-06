@@ -19,4 +19,7 @@ public class ShiftDto
     public decimal TotalRevenue { get; set; }
     public int TotalOrders { get; set; }
     public string? Note { get; set; }
+    public Guid? ClosedByUserId { get; set; }
+    public string? ClosedByUserName { get; set; }
+    public string? ForceCloseReason { get; set; }
 }

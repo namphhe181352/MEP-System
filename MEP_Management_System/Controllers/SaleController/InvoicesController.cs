@@ -163,9 +163,9 @@ public class InvoicesController : ControllerBase
         var branchId = GetBranchId();
         var userId = GetUserId();
 
-        // Validate: user must have an open shift before creating invoice
+        // Validate: branch must have an open Cash Session (Shift) - any user can sell
         var openShift = await _context.Shifts
-            .FirstOrDefaultAsync(s => s.UserId == userId && s.BranchId == branchId && s.Status == "OPEN");
+            .FirstOrDefaultAsync(s => s.BranchId == branchId && s.Status == "OPEN");
         if (openShift == null)
             return BadRequest(ApiErrorResponse.Create("MSG-76", "Vui lòng mở ca bán trước khi tạo đơn hàng"));
 
@@ -221,6 +221,7 @@ public class InvoicesController : ControllerBase
             InvoiceCode = invCode,
             OrderId = order.OrderId,
             UserId = userId,
+            ShiftId = openShift.ShiftId,
             Status = "Draft",
             CreatedAt = now,
             SubTotalAmount = 0,
@@ -231,7 +232,7 @@ public class InvoicesController : ControllerBase
         _context.Orders.Add(order);
         _context.Invoices.Add(invoice);
         LogAction(order.OrderId, "CREATE_INVOICE", "orders", "Order",
-            $"Tạo hóa đơn {invCode} tại chi nhánh {branchId}");
+            $"Tạo hóa đơn {invCode} tại chi nhánh {branchId} - ShiftId: {openShift.ShiftId}");
         await _context.SaveChangesAsync();
 
         var dto = _mapper.Map<InvoiceDto>(invoice);
@@ -314,7 +315,10 @@ public class InvoicesController : ControllerBase
                 .FirstAsync();
 
             if (currentStock < actualQuantity)
+            {
+                await transaction.RollbackAsync();
                 return BadRequest(ApiErrorResponse.Create("MSG-59", $"Insufficient stock. Available: {currentStock} {bp.Product.BaseUnit}"));
+            }
 
             // Validate floor price with proper unit conversion scaling
             // effectiveCost = costPrice * convertValue / baseConvertValue
@@ -322,7 +326,11 @@ public class InvoicesController : ControllerBase
             var baseConvertValue = baseConvUnit?.ConvertValue ?? 1m;
             var effectiveCost = bp.CostPrice * convertValue / baseConvertValue;
 
-            if (unitPrice < effectiveCost) return BadRequest(ApiErrorResponse.Create("MSG-63", "Price override below floor price"));
+            if (unitPrice < effectiveCost)
+            {
+                await transaction.RollbackAsync();
+                return BadRequest(ApiErrorResponse.Create("MSG-63", "Price override below floor price"));
+            }
 
             var existingItem = invoice.InvoiceItems
                 .FirstOrDefault(ii => ii.BranchProductId == bp.BranchProductId && ii.SellPrice == unitPrice && ii.SelectedUnit == selectedUnit);
@@ -482,9 +490,15 @@ public class InvoicesController : ControllerBase
         using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
-            // Idempotency check: Re-verify invoice status within transaction to prevent race condition
-            var invoiceInTx = await _context.Invoices.FindAsync(invoiceId);
-            if (invoiceInTx == null || invoiceInTx.Status != "Draft")
+            // Idempotency check: re-read status directly from DB (bypass change tracker)
+            // FindAsync returns the tracked instance, which is useless for concurrency check.
+            var statusInDb = await _context.Invoices
+                .AsNoTracking()
+                .Where(i => i.InvoiceId == invoiceId)
+                .Select(i => i.Status)
+                .FirstOrDefaultAsync();
+
+            if (statusInDb == null || statusInDb != "Draft")
             {
                 await transaction.RollbackAsync();
                 return BadRequest(ApiErrorResponse.Create("MSG-78", "Invoice already finalized or not found"));

@@ -772,6 +772,10 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("payment_method");
 
+                    b.Property<Guid>("ShiftId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("shift_id");
+
                     b.Property<string>("Status")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
@@ -798,6 +802,8 @@ namespace MEP_Management_System.Migrations
 
                     b.HasIndex("OrderId")
                         .IsUnique();
+
+                    b.HasIndex("ShiftId");
 
                     b.HasIndex("UserId");
 
@@ -2216,6 +2222,10 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("branch_id");
 
+                    b.Property<Guid?>("ClosedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("closed_by_user_id");
+
                     b.Property<DateTime?>("EndedAt")
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("ended_at");
@@ -2224,6 +2234,11 @@ namespace MEP_Management_System.Migrations
                         .HasPrecision(15, 2)
                         .HasColumnType("numeric(15,2)")
                         .HasColumnName("expected_cash");
+
+                    b.Property<string>("ForceCloseReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("force_close_reason");
 
                     b.Property<string>("Note")
                         .HasColumnType("text")
@@ -2277,7 +2292,12 @@ namespace MEP_Management_System.Migrations
                     b.HasKey("ShiftId")
                         .HasName("shifts_pkey");
 
-                    b.HasIndex("BranchId");
+                    b.HasIndex("BranchId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_shifts_one_open_per_branch")
+                        .HasFilter("status = 'OPEN'");
+
+                    b.HasIndex("ClosedByUserId");
 
                     b.HasIndex("ShiftCode")
                         .IsUnique()
@@ -3368,6 +3388,12 @@ namespace MEP_Management_System.Migrations
                         .IsRequired()
                         .HasConstraintName("invoices_order_id_fkey");
 
+                    b.HasOne("MEP_Management_System.Models.Shift", "Shift")
+                        .WithMany("Invoices")
+                        .HasForeignKey("ShiftId")
+                        .IsRequired()
+                        .HasConstraintName("invoices_shift_id_fkey");
+
                     b.HasOne("MEP_Management_System.Models.User", "User")
                         .WithMany("Invoices")
                         .HasForeignKey("UserId")
@@ -3375,6 +3401,8 @@ namespace MEP_Management_System.Migrations
                         .HasConstraintName("invoices_user_id_fkey");
 
                     b.Navigation("Order");
+
+                    b.Navigation("Shift");
 
                     b.Navigation("User");
                 });
@@ -3745,6 +3773,12 @@ namespace MEP_Management_System.Migrations
                         .IsRequired()
                         .HasConstraintName("shifts_branch_id_fkey");
 
+                    b.HasOne("MEP_Management_System.Models.User", "ClosedBy")
+                        .WithMany()
+                        .HasForeignKey("ClosedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("shifts_closed_by_user_id_fkey");
+
                     b.HasOne("MEP_Management_System.Models.User", "User")
                         .WithMany("Shifts")
                         .HasForeignKey("UserId")
@@ -3753,6 +3787,8 @@ namespace MEP_Management_System.Migrations
                         .HasConstraintName("shifts_user_id_fkey");
 
                     b.Navigation("Branch");
+
+                    b.Navigation("ClosedBy");
 
                     b.Navigation("User");
                 });
@@ -4111,6 +4147,11 @@ namespace MEP_Management_System.Migrations
             modelBuilder.Entity("MEP_Management_System.Models.ReturnOrder", b =>
                 {
                     b.Navigation("ReturnItems");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.Shift", b =>
+                {
+                    b.Navigation("Invoices");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.StockTicket", b =>
