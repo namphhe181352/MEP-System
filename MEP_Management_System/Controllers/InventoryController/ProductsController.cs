@@ -972,6 +972,13 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (bp.Product != null)
                 {
                     bp.Product.Status = -1;
+                    if (!string.IsNullOrEmpty(bp.Product.ProductCode))
+                    {
+                        var shortId = bp.Product.ProductId.ToString().Substring(0, 6);
+                        var newCode = $"d_{shortId}_{bp.Product.ProductCode}";
+                        if (newCode.Length > 50) newCode = newCode.Substring(0, 50);
+                        bp.Product.ProductCode = newCode;
+                    }
                     _context.Products.Update(bp.Product);
                 }
 
