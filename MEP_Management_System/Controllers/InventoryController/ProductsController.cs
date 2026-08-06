@@ -1448,6 +1448,7 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 var tax = new ProductTaxonomy
                 {
+                    TaxonomyId = Guid.NewGuid(),
                     BranchId = branchId,
                     Name = trimmedName,
                     Type = "Category"
@@ -1520,6 +1521,7 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 var tax = new ProductTaxonomy
                 {
+                    TaxonomyId = Guid.NewGuid(),
                     BranchId = branchId,
                     Name = trimmedName,
                     Type = "Brand"
@@ -2130,8 +2132,10 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
+                var branchId = GetCurrentBranchId();
+
                 var result = await _context.ProductAttributeTypes
-                    .Where(t => t.IsActive == 1)
+                    .Where(t => t.IsActive == 1 && (t.BranchId == branchId || t.BranchId == null))
                     .OrderBy(t => t.TypeName)
                     .Select(t => new
                     {
@@ -2176,8 +2180,10 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
+                var branchId = GetCurrentBranchId();
+
                 var exists = await _context.ProductAttributeTypes
-                    .AnyAsync(t => t.TypeName.ToLower() == dto.TypeName.Trim().ToLower() && t.IsActive == 1);
+                    .AnyAsync(t => t.TypeName.ToLower() == dto.TypeName.Trim().ToLower() && t.IsActive == 1 && (t.BranchId == branchId || t.BranchId == null));
 
                 if (exists)
                 {
@@ -2194,6 +2200,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var attributeType = new ProductAttributeType
                 {
                     TypeId = Guid.NewGuid(),
+                    BranchId = branchId,
                     TypeName = dto.TypeName.Trim(),
                     TypeCode = !string.IsNullOrWhiteSpace(dto.TypeCode) ? dto.TypeCode.Trim().ToUpper() : null,
                     IsActive = 1,
@@ -2236,8 +2243,10 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
+                var branchId = GetCurrentBranchId();
+
                 var attributeType = await _context.ProductAttributeTypes.FindAsync(id);
-                if (attributeType == null || attributeType.IsActive == 0)
+                if (attributeType == null || attributeType.IsActive == 0 || (attributeType.BranchId != null && attributeType.BranchId != branchId))
                 {
                     return NotFound(new ApiResponse<object>
                     {
@@ -2249,7 +2258,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (!string.IsNullOrWhiteSpace(dto.TypeName))
                 {
                     var exists = await _context.ProductAttributeTypes
-                        .AnyAsync(t => t.TypeId != id && t.TypeName.ToLower() == dto.TypeName.Trim().ToLower() && t.IsActive == 1);
+                        .AnyAsync(t => t.TypeId != id && t.TypeName.ToLower() == dto.TypeName.Trim().ToLower() && t.IsActive == 1 && (t.BranchId == branchId || t.BranchId == null));
 
                     if (exists)
                     {
@@ -2305,8 +2314,10 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
+                var branchId = GetCurrentBranchId();
+
                 var attributeType = await _context.ProductAttributeTypes.FindAsync(id);
-                if (attributeType == null || attributeType.IsActive == 0)
+                if (attributeType == null || attributeType.IsActive == 0 || (attributeType.BranchId != null && attributeType.BranchId != branchId))
                 {
                     return NotFound(new ApiResponse<object>
                     {

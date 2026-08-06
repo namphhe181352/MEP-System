@@ -29,6 +29,12 @@ namespace MEP_Management_System.Controllers.InventoryController
             return Guid.TryParse(userIdClaim, out Guid userId) ? userId : null;
         }
 
+        private Guid? GetCurrentBranchId()
+        {
+            var branchIdClaim = User.FindFirst("branchId")?.Value;
+            return Guid.TryParse(branchIdClaim, out Guid branchId) ? branchId : null;
+        }
+
         /// <summary>
         /// GET /api/locations - Lấy danh sách vị trí
         /// </summary>
@@ -38,7 +44,8 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
-                var query = _context.ProductLocations.AsQueryable();
+                var branchId = GetCurrentBranchId();
+                var query = _context.ProductLocations.Where(l => l.BranchId == branchId || l.BranchId == null).AsQueryable();
 
                 if (activeOnly == true)
                 {
@@ -134,22 +141,25 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
+                var branchId = GetCurrentBranchId();
+
                 // Check duplicate name
                 var existing = await _context.ProductLocations
-                    .FirstOrDefaultAsync(l => l.LocationName.ToLower() == dto.LocationName.Trim().ToLower());
+                    .FirstOrDefaultAsync(l => l.LocationName.ToLower() == dto.LocationName.Trim().ToLower() && (l.BranchId == branchId || l.BranchId == null));
 
                 if (existing != null)
                 {
                     return BadRequest(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Tên vị trí đã tồn tại."
+                        Message = "Tên vị trí đã tồn tại trong chi nhánh này."
                     });
                 }
 
                 var location = new ProductLocation
                 {
                     LocationId = Guid.NewGuid(),
+                    BranchId = branchId,
                     LocationName = dto.LocationName.Trim(),
                     LocationCode = dto.LocationCode?.Trim(),
                     Description = dto.Description?.Trim(),
@@ -198,13 +208,15 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
+                var branchId = GetCurrentBranchId();
+
                 var location = await _context.ProductLocations.FindAsync(id);
-                if (location == null)
+                if (location == null || (location.BranchId != null && location.BranchId != branchId))
                 {
                     return NotFound(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Không tìm thấy vị trí."
+                        Message = "Không tìm thấy vị trí hoặc bạn không có quyền sửa vị trí này."
                     });
                 }
 
@@ -212,14 +224,14 @@ namespace MEP_Management_System.Controllers.InventoryController
                 if (!string.IsNullOrWhiteSpace(dto.LocationName))
                 {
                     var existing = await _context.ProductLocations
-                        .FirstOrDefaultAsync(l => l.LocationName.ToLower() == dto.LocationName.Trim().ToLower() && l.LocationId != id);
+                        .FirstOrDefaultAsync(l => l.LocationName.ToLower() == dto.LocationName.Trim().ToLower() && l.LocationId != id && (l.BranchId == branchId || l.BranchId == null));
 
                     if (existing != null)
                     {
                         return BadRequest(new ApiResponse<object>
                         {
                             Success = false,
-                            Message = "Tên vị trí đã tồn tại."
+                            Message = "Tên vị trí đã tồn tại trong chi nhánh này."
                         });
                     }
 
@@ -273,13 +285,15 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
+                var branchId = GetCurrentBranchId();
+
                 var location = await _context.ProductLocations.FindAsync(id);
-                if (location == null)
+                if (location == null || (location.BranchId != null && location.BranchId != branchId))
                 {
                     return NotFound(new ApiResponse<object>
                     {
                         Success = false,
-                        Message = "Không tìm thấy vị trí."
+                        Message = "Không tìm thấy vị trí hoặc bạn không có quyền xóa."
                     });
                 }
 

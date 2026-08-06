@@ -12,6 +12,8 @@ namespace MEP_Management_System.Models
         [Key]
         public Guid TypeId { get; set; } = Guid.NewGuid();
 
+        public Guid? BranchId { get; set; }
+
         [Required]
         [MaxLength(100)]
         public string TypeName { get; set; } = string.Empty;
