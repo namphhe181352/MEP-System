@@ -1129,6 +1129,19 @@ public class AdminAccountsController : ControllerBase
         user.IsActive = 0;
         user.DeletedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
+        // Giải phóng các trường unique (Email, Username, Phone) để có thể tạo lại tài khoản
+        var shortId = user.UserId.ToString().Substring(0, 6);
+        
+        var newEmail = $"del_{shortId}_{user.Email}";
+        if (newEmail.Length > 150) newEmail = newEmail.Substring(0, 150);
+        user.Email = newEmail;
+        
+        var newUsername = $"del_{shortId}_{user.Username}";
+        if (newUsername.Length > 50) newUsername = newUsername.Substring(0, 50);
+        user.Username = newUsername;
+
+        user.PhoneNumber = null;
+
         await LogAction(user.UserId, "DELETE_USER", "User",
             $"Xóa mềm tài khoản: {user.Email} ({user.FullName})", level: "WARN");
 
