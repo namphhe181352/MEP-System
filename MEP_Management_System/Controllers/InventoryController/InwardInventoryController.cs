@@ -350,6 +350,36 @@ namespace MEP_Management_System.Controllers.InventoryController
                 });
             }
 
+            // Validate NCC phải đang Active (Status = 1) mới cho tạo phiếu nhập mua.
+            if (dto.InwardType == InwardInventoryType.Purchase && dto.SupplierId.HasValue && dto.SupplierId != Guid.Empty)
+            {
+                var supplier = await _context.Suppliers
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.SupplierId == dto.SupplierId.Value);
+                if (supplier == null)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Validation failed",
+                        Errors = new() { "Không tìm thấy nhà cung cấp." }
+                    });
+                }
+                if (supplier.Status != 1)
+                {
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Supplier is inactive",
+                        Errors = new List<string>
+                        {
+                            $"Nhà cung cấp '{supplier.SupplierName}' hiện đang ngừng hoạt động (inactive).",
+                            "Vui lòng chọn NCC khác đang hoạt động hoặc kích hoạt lại NCC trước khi tạo phiếu nhập."
+                        }
+                    });
+                }
+            }
+
             var itemValidationErrors = new List<string>();
             for (int i = 0; i < dto.Items.Count; i++)
             {
@@ -465,7 +495,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                                 Status = 1,
                                 SalesChannelLinked = 0,
                                 CreatedAt = currentTime,
-                                CreatedBy = currentUserId
+                                CreatedBy = currentUserId,
+                                BranchId = resolvedBranchId
                             };
                             _context.Products.Add(product);
                             try
@@ -513,7 +544,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                                 Status = 1,
                                 SalesChannelLinked = 0,
                                 CreatedAt = currentTime,
-                                CreatedBy = currentUserId
+                                CreatedBy = currentUserId,
+                                BranchId = resolvedBranchId
                             };
                             _context.Products.Add(product);
                             try
@@ -945,67 +977,26 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                var currentUserId = GetCurrentUserId();
-
-                // ============================================================
-                // QUY TẮC MỚI: Xử lý theo trạng thái hiện tại
-                // ============================================================
+                // Phiếu đã COMPLETED (đã cập nhật tồn kho + ảnh hưởng sổ cái) → không cho phép hủy.
+                // Nếu cần điều chỉnh phải tạo phiếu xuất/điều chỉnh ngược.
                 if (stockTicket.Status == "COMPLETED")
                 {
-                    // COMPLETED: Cần rollback tồn kho (trừ lại)
-                    // Nhưng phải kiểm tra an toàn: không cho phép ActualStock < 0
-
-                    var unsafeItems = new List<string>();
-
-                    foreach (var item in stockTicket.StockTicketItems)
+                    await transaction.RollbackAsync();
+                    return BadRequest(new ApiResponse<object>
                     {
-                        var branchProduct = await _context.BranchProducts
-                            .FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
-
-                        if (branchProduct != null)
+                        Success = false,
+                        Message = "Cannot cancel completed ticket",
+                        Errors = new List<string>
                         {
-                            // Kiểm tra: nếu trừ kho sẽ âm không?
-                            if (branchProduct.ActualStock < item.Discrepancy ||
-                                branchProduct.AvailableStock < item.Discrepancy)
-                            {
-                                unsafeItems.Add(branchProduct.Product?.ProductName ?? item.BranchProductId.ToString());
-                            }
+                            "Phiếu nhập kho đã hoàn thành, không thể hủy.",
+                            "Vui lòng tạo phiếu điều chỉnh/xuất kho ngược nếu cần."
                         }
-                    }
-
-                    if (unsafeItems.Any())
-                    {
-                        await transaction.RollbackAsync();
-                        return BadRequest(new ApiResponse<object>
-                        {
-                            Success = false,
-                            Message = "Cannot cancel - insufficient stock",
-                            Errors = new List<string>
-                            {
-                                "Không thể hủy vì hàng đã được xuất khỏi kho.",
-                                $"Sản phẩm bị ảnh hưởng: {string.Join(", ", unsafeItems)}"
-                            }
-                        });
-                    }
-
-                    // Đủ điều kiện - Thực hiện rollback
-                    foreach (var item in stockTicket.StockTicketItems)
-                    {
-                        var branchProduct = await _context.BranchProducts
-                            .FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
-
-                        if (branchProduct != null)
-                        {
-                            branchProduct.ActualStock -= item.Discrepancy;
-                            branchProduct.AvailableStock -= item.Discrepancy;
-                        }
-                    }
+                    });
                 }
 
-                // Lưu trạng thái TRƯỚC KHI đổi để response message chính xác
-                var wasCompleted = stockTicket.Status == "COMPLETED";
+                var currentUserId = GetCurrentUserId();
 
-                // PENDING hoặc COMPLETED (đã rollback): Đều chuyển sang CANCELLED
+                // PENDING: Chuyển sang CANCELLED
                 stockTicket.Status = "CANCELLED";
                 stockTicket.CancelledAt = DateTime.UtcNow;
                 stockTicket.CancelledBy = currentUserId;
@@ -1025,9 +1016,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
-                    Message = wasCompleted
-                        ? "Inward inventory cancelled and stock rolled back successfully"
-                        : "Inward inventory cancelled successfully (pending ticket, no stock change)",
+                    Message = "Inward inventory cancelled successfully (pending ticket, no stock change)",
                     Data = new
                     {
                         TicketId = stockTicket.StockTicketId,

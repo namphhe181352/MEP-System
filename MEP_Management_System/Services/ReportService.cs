@@ -235,10 +235,14 @@ public class ReportService
         var toDate = request.ToDate.Date.AddDays(1).AddTicks(-1);
 
         // Lấy danh sách sản phẩm trong kho (có filter category/product)
-        // Filter IsActive != -1 để loại sản phẩm bị xóa mềm (không hiển thị mã _DEL_xxx)
+        // Filter IsActive != -1 và Status != -1 để loại sản phẩm bị xóa mềm (không hiển thị mã _DEL_xxx)
+        // Enforce SaaS tenant isolation (BranchId == null cho sản phẩm cũ, BranchId == branchId cho sp mới)
         var productsQuery = _context.BranchProducts
             .Include(bp => bp.Product)
-            .Where(bp => bp.BranchId == branchId.Value && bp.IsActive != -1);
+            .Where(bp => bp.BranchId == branchId.Value && 
+                         bp.IsActive != -1 && 
+                         (bp.Product.Status == null || bp.Product.Status != -1) &&
+                         (bp.Product.BranchId == null || bp.Product.BranchId == branchId.Value));
 
         // Ưu tiên filter theo CategoryId (Guid) - chính xác hơn
         if (request.CategoryId.HasValue && request.CategoryId != Guid.Empty)
