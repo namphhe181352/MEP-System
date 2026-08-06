@@ -62,21 +62,6 @@ public class AdminDashboardController : ControllerBase
             .SumAsync(o => (decimal?)o.TotalAmount) ?? 0m;
         var b2bCommission = Math.Round(b2bCommissionRaw * 0.01m, 2);
 
-        var overdueAlerts = await _context.Invoices
-            .AsNoTracking()
-            .Where(i => i.Status == "PENDING" || i.Status == "Pending")
-            .CountAsync();
-
-        var pendingOrderCount = await _context.Orders
-            .AsNoTracking()
-            .Where(o => o.Status == "PENDING")
-            .CountAsync();
-
-        var pendingExpenseCount = await _context.ExpenseVouchers
-            .AsNoTracking()
-            .Where(ev => ev.Status == "PENDING")
-            .CountAsync();
-
         return Ok(new DashboardOverviewDto
         {
             GeneratedAt = now,
@@ -89,10 +74,7 @@ public class AdminDashboardController : ControllerBase
             ActiveProducts = activeProducts,
             ActiveTenants = activeTenants,
             SubscriptionRevenue = subscriptionRevenue,
-            B2bCommission = b2bCommission,
-            OverdueAlerts = overdueAlerts,
-            PendingOrderCount = pendingOrderCount,
-            PendingExpenseCount = pendingExpenseCount
+            B2bCommission = b2bCommission
         });
     }
 

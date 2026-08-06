@@ -98,7 +98,6 @@ public class DashboardOverviewDto
     public int ActiveTenants { get; set; }
     public decimal SubscriptionRevenue { get; set; }
     public decimal B2bCommission { get; set; }
-    public int OverdueAlerts { get; set; }
 }
 
 public class DashboardCategoryPerformanceDto
