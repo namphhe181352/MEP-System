@@ -19,7 +19,14 @@ public partial class StockTicketItem
 
     public decimal? UnitPrice { get; set; }
 
+    /// <summary>FK tới dòng hàng của phiếu nhập gốc (dùng khi xuất trả NCC).</summary>
+    public Guid? InwardTicketItemId { get; set; }
+
     public virtual BranchProduct BranchProduct { get; set; } = null!;
 
     public virtual StockTicket StockTicket { get; set; } = null!;
+
+    // Self-referencing: dòng hàng nhập gốc (dùng cho xuất trả NCC)
+    public virtual StockTicketItem? InwardTicketItem { get; set; }
+    public virtual ICollection<StockTicketItem> OutwardTicketItems { get; set; } = new List<StockTicketItem>();
 }

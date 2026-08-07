@@ -28,6 +28,24 @@ namespace MEP_Management_System.Services
 
             if (supplier == null) return null;
 
+            // Batch-lookup CostPrice cho các PO items có UnitPrice = 0 (đơn cũ chưa lưu giá)
+            var poProductIds = supplier.PurchaseOrders
+                .SelectMany(po => po.PurchaseOrderItems)
+                .Where(i => i.UnitPrice <= 0)
+                .Select(i => i.ProductId)
+                .Distinct()
+                .ToList();
+
+            Dictionary<Guid, decimal>? productCostPrices = null;
+            if (poProductIds.Count > 0)
+            {
+                productCostPrices = await _context.BranchProducts
+                    .Where(bp => poProductIds.Contains(bp.ProductId) && bp.BranchId == supplier.BranchId)
+                    .GroupBy(bp => bp.ProductId)
+                    .Select(g => new { ProductId = g.Key, CostPrice = g.Max(bp => bp.CostPrice) })
+                    .ToDictionaryAsync(x => x.ProductId, x => x.CostPrice);
+            }
+
             var poDetails = supplier.PurchaseOrders
                 .OrderByDescending(po => po.CreatedAt)
                 .Select(po => new SupplierDebtPoDetailDto
@@ -38,16 +56,82 @@ namespace MEP_Management_System.Services
                     Status = po.Status,
                     ExpectedDeliveryDate = po.ExpectedDeliveryDate?.ToString("yyyy-MM-dd"),
                     CreatedAt = po.CreatedAt?.ToString("yyyy-MM-dd"),
-                    Items = po.PurchaseOrderItems.Select(i => new SupplierDebtPoItemDto
+                    Items = po.PurchaseOrderItems.Select(i =>
                     {
-                        ProductId = i.ProductId,
-                        ProductCode = i.Product != null ? i.Product.ProductCode : "",
-                        ProductName = i.Product != null ? i.Product.ProductName : "",
-                        Quantity = i.Quantity,
-                        UnitPrice = i.UnitPrice,
-                        LineTotal = i.Quantity * i.UnitPrice
+                        var unitPrice = i.UnitPrice > 0 ? i.UnitPrice
+                            : (productCostPrices != null && productCostPrices.TryGetValue(i.ProductId, out var cp) ? cp : 0);
+                        return new SupplierDebtPoItemDto
+                        {
+                            ProductId = i.ProductId,
+                            ProductCode = i.Product != null ? i.Product.ProductCode : "",
+                            ProductName = i.Product != null ? i.Product.ProductName : "",
+                            Quantity = i.Quantity,
+                            UnitPrice = unitPrice,
+                            LineTotal = i.Quantity * unitPrice
+                        };
                     }).ToList()
                 }).ToList();
+
+            // Thêm StockTickets PURCHASE COMPLETED (phiếu nhập kho đã hoàn thành)
+            var stockTickets = await _context.StockTickets
+                .Where(t => t.SupplierId == supplierId
+                    && t.TicketType == "PURCHASE"
+                    && t.Status == "COMPLETED")
+                .Include(t => t.StockTicketItems)
+                    .ThenInclude(i => i.BranchProduct)
+                        .ThenInclude(bp => bp.Product)
+                .OrderByDescending(t => t.CompletedAt)
+                .ToListAsync();
+
+            // Batch-lookup CostPrice cho ST items có UnitPrice = 0
+            var stProductIds = stockTickets
+                .SelectMany(st => st.StockTicketItems)
+                .Where(i => (i.UnitPrice ?? 0) <= 0)
+                .Select(i => i.BranchProduct?.ProductId ?? Guid.Empty)
+                .Where(pid => pid != Guid.Empty && !(productCostPrices?.ContainsKey(pid) ?? false))
+                .Distinct()
+                .ToList();
+
+            if (productCostPrices == null) productCostPrices = new Dictionary<Guid, decimal>();
+            if (stProductIds.Count > 0)
+            {
+                var stCostPrices = await _context.BranchProducts
+                    .Where(bp => stProductIds.Contains(bp.ProductId) && bp.BranchId == supplier.BranchId)
+                    .GroupBy(bp => bp.ProductId)
+                    .Select(g => new { ProductId = g.Key, CostPrice = g.Max(bp => bp.CostPrice) })
+                    .ToDictionaryAsync(x => x.ProductId, x => x.CostPrice);
+                foreach (var kvp in stCostPrices)
+                    productCostPrices[kvp.Key] = kvp.Value;
+            }
+
+            var stDetails = stockTickets.Select(st => new SupplierDebtStDetailDto
+            {
+                StockTicketId = st.StockTicketId,
+                TicketCode = st.TicketCode ?? st.StockTicketId.ToString()[..8].ToUpper(),
+                TotalAmount = st.TotalAmount,
+                Status = st.Status ?? "COMPLETED",
+                CreatedAt = st.CreatedAt?.ToString("yyyy-MM-dd"),
+                CompletedAt = st.CompletedAt?.ToString("yyyy-MM-dd"),
+                Items = st.StockTicketItems.Select(i =>
+                {
+                    var unitPrice = i.UnitPrice ?? 0;
+                    if (unitPrice <= 0 && productCostPrices != null)
+                    {
+                        var pid = i.BranchProduct?.ProductId ?? Guid.Empty;
+                        if (pid != Guid.Empty)
+                            productCostPrices.TryGetValue(pid, out unitPrice);
+                    }
+                    return new SupplierDebtPoItemDto
+                    {
+                        ProductId = i.BranchProduct?.ProductId ?? Guid.Empty,
+                        ProductCode = i.BranchProduct?.Product?.ProductCode ?? "",
+                        ProductName = i.BranchProduct?.Product?.ProductName ?? "",
+                        Quantity = i.Discrepancy,
+                        UnitPrice = unitPrice,
+                        LineTotal = i.Discrepancy * unitPrice
+                    };
+                }).ToList()
+            }).ToList();
 
             return new SupplierDebtDetailResponse
             {
@@ -55,7 +139,8 @@ namespace MEP_Management_System.Services
                 SupplierName = supplier.SupplierName,
                 ContactPhone = supplier.ContactPhone,
                 ContactEmail = supplier.ContactEmail,
-                PurchaseOrders = poDetails
+                PurchaseOrders = poDetails,
+                StockTickets = stDetails
             };
         }
 

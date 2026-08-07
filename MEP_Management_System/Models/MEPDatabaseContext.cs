@@ -1188,6 +1188,7 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasColumnName("created_at");
             entity.Property(e => e.UserId).HasColumnName("user_id");
             entity.Property(e => e.SupplierId).HasColumnName("supplier_id");
+            entity.Property(e => e.InwardTicketId).HasColumnName("inward_ticket_id");
             entity.Property(e => e.TotalAmount)
                 .HasPrecision(15, 2)
                 .HasColumnName("total_amount");
@@ -1239,6 +1240,12 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasForeignKey(d => d.CancelledBy)
                 .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("stock_tickets_cancelled_by_fkey");
+
+            // Self-referencing: phiếu xuất → phiếu nhập gốc
+            entity.HasOne(d => d.InwardTicket).WithMany(p => p.OutwardTickets)
+                .HasForeignKey(d => d.InwardTicketId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("stock_tickets_inward_ticket_id_fkey");
         });
 
         modelBuilder.Entity<StockTicketItem>(entity =>
@@ -1258,9 +1265,13 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasPrecision(10, 2)
                 .HasColumnName("discrepancy");
             entity.Property(e => e.StockTicketId).HasColumnName("stock_ticket_id");
+            entity.Property(e => e.InwardTicketItemId).HasColumnName("inward_ticket_item_id");
             entity.Property(e => e.SystemQuantity)
                 .HasPrecision(10, 2)
                 .HasColumnName("system_quantity");
+            entity.Property(e => e.UnitPrice)
+                .HasPrecision(15, 2)
+                .HasColumnName("unit_price");
 
             entity.HasOne(d => d.BranchProduct).WithMany(p => p.StockTicketItems)
                 .HasForeignKey(d => d.BranchProductId)
@@ -1270,6 +1281,12 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
             entity.HasOne(d => d.StockTicket).WithMany(p => p.StockTicketItems)
                 .HasForeignKey(d => d.StockTicketId)
                 .HasConstraintName("stock_ticket_items_stock_ticket_id_fkey");
+
+            // Self-referencing: dòng xuất → dòng nhập gốc
+            entity.HasOne(d => d.InwardTicketItem).WithMany(p => p.OutwardTicketItems)
+                .HasForeignKey(d => d.InwardTicketItemId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("stock_ticket_items_inward_ticket_item_id_fkey");
         });
 
         modelBuilder.Entity<Supplier>(entity =>
