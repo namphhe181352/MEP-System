@@ -385,7 +385,7 @@ namespace MEP_Management_System.Controllers
                 {
                     var assignment = await _context.StaffAssignments
                         .Where(sa => sa.UserId == user.UserId)
-                        .OrderBy(sa => sa.AssignedAt)
+                        .OrderByDescending(sa => sa.AssignedAt)
                         .FirstOrDefaultAsync();
 
                     if (assignment == null)
