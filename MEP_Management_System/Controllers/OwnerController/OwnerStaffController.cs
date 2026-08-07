@@ -647,14 +647,14 @@ public class OwnerStaffController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(dto.DefaultRoleType))
         {
-            var validRoles = new[] { "SalesStaff", "InventoryStaff", "Staff" };
+            var validRoles = new[] { "SalesStaff", "InventoryStaff" };
             if (!validRoles.Contains(dto.DefaultRoleType.Trim(), StringComparer.OrdinalIgnoreCase))
             {
                 return BadRequest(new ApiResponse<object>
                 {
                     Success = false,
                     Message = "DefaultRoleType không hợp lệ.",
-                    Errors = new List<string> { "Chỉ được phép: SalesStaff, InventoryStaff, Staff." }
+                    Errors = new List<string> { "Chỉ được phép: SalesStaff, InventoryStaff." }
                 });
             }
 
