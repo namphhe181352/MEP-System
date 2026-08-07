@@ -71,6 +71,7 @@ public class StockMovementReportDto
 public class StockMovementItemDto
 {
     public Guid ProductId { get; set; }
+    public Guid BranchProductId { get; set; }
     public string ProductCode { get; set; } = null!;
     public string ProductName { get; set; } = null!;
     public string CategoryName { get; set; } = null!;

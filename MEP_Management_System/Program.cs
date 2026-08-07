@@ -40,6 +40,7 @@ builder.Services.AddScoped<ReportService>();
 //builder.Services.AddScoped<IProductService, ProductService>(); // Removed: using static ProductService methods directly
 //builder.Services.AddScoped<IInvoiceService, InvoiceService>(); // Removed: InvoiceService is now static
 builder.Services.AddScoped<ISupplierDebtService, SupplierDebtService>();
+builder.Services.AddScoped<InventoryLedgerService>();
 builder.Services.AddScoped<CustomerDebtService>();
 builder.Services.AddScoped<InwardInventoryQueryService>();
 builder.Services.AddScoped<StockPrintTemplateService>();

@@ -947,6 +947,14 @@ namespace MEP_Management_System.Controllers.InventoryController
                     if (!latestBranchProducts.TryGetValue(item.BranchProductId, out var bp))
                         continue;
 
+                    // Snapshot unit_price từ BQ CostPrice cho WRITE_OFF / TRANSFER nếu chưa có
+                    if ((item.UnitPrice ?? 0) <= 0
+                        && stockTicket.TicketType != "RETURN_SUPPLIER")
+                    {
+                        item.UnitPrice = bp.CostPrice;
+                    }
+                    var effectiveUnitPrice = item.UnitPrice ?? bp.CostPrice;
+
                     // Atomic UPDATE: trừ tồn kho trực tiếp trong DB, có kiểm tra tồn >= SL xuất
                     try
                     {
@@ -992,6 +1000,25 @@ namespace MEP_Management_System.Controllers.InventoryController
                         item.SystemQuantity = updatedBp.ActualStock + item.Discrepancy;
                         item.ActualQuantity = updatedBp.ActualStock;
                     }
+
+                    // Ghi inventory_ledger (qty_change âm cho xuất kho)
+                    var ledger = new InventoryLedger
+                    {
+                        LedgerId = Guid.NewGuid(),
+                        BranchId = stockTicket.BranchId,
+                        BranchProductId = item.BranchProductId,
+                        DocType = stockTicket.TicketType ?? "WRITE_OFF",
+                        DocId = stockTicket.StockTicketId,
+                        DocCode = stockTicket.TicketCode,
+                        TransactionTime = DateTime.UtcNow,
+                        QtyChange = -item.Discrepancy, // ÂM cho xuất kho
+                        UnitCostPrice = Math.Round(effectiveUnitPrice, 4),
+                        TotalCostValue = Math.Round(-item.Discrepancy * effectiveUnitPrice, 4),
+                        StockAfter = updatedBp?.ActualStock ?? 0,
+                        AvgCostAfter = Math.Round(updatedBp?.CostPrice ?? effectiveUnitPrice, 4),
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _context.InventoryLedgers.Add(ledger);
                 }
 
                 // Chuyển trạng thái sang COMPLETED
