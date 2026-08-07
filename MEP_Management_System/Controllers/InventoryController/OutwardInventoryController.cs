@@ -881,6 +881,32 @@ namespace MEP_Management_System.Controllers.InventoryController
                 stockTicket.CompletedAt = DateTime.UtcNow;
                 stockTicket.ConfirmedBy = currentUserId;
 
+                // ============================================================
+                // TRỪ NỢ NCC: Tạo SupplierPayment khi xuất trả hàng cho NCC
+                // ============================================================
+                if (stockTicket.SupplierId != null && stockTicket.TicketType == "RETURN_SUPPLIER")
+                {
+                    var refundAmount = stockTicket.StockTicketItems
+                        .Sum(i => i.Discrepancy * (i.UnitPrice ?? 0));
+
+                    if (refundAmount > 0)
+                    {
+                        var supplierPayment = new SupplierPayment
+                        {
+                            PaymentId = Guid.NewGuid(),
+                            SupplierId = stockTicket.SupplierId.Value,
+                            Amount = refundAmount,
+                            PaymentDate = DateTime.UtcNow,
+                            PaymentMethod = "RETURN_REFUND",
+                            Note = $"Trả hàng NCC - Phiếu xuất: {stockTicket.TicketCode}",
+                            RecordedBy = currentUserId!.Value,
+                            CreatedAt = DateTime.UtcNow,
+                            IsDeleted = 0
+                        };
+                        _context.SupplierPayments.Add(supplierPayment);
+                    }
+                }
+
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 

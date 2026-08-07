@@ -1261,6 +1261,9 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
             entity.Property(e => e.SystemQuantity)
                 .HasPrecision(10, 2)
                 .HasColumnName("system_quantity");
+            entity.Property(e => e.UnitPrice)
+                .HasPrecision(15, 2)
+                .HasColumnName("unit_price");
 
             entity.HasOne(d => d.BranchProduct).WithMany(p => p.StockTicketItems)
                 .HasForeignKey(d => d.BranchProductId)
