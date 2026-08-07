@@ -21,6 +21,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? BrandName { get; set; }
 
         public string? CategoryName { get; set; }
+
         public Guid? SupplierId { get; set; }
         public string? SupplierName { get; set; }
         public string? ItemType { get; set; }
@@ -100,7 +101,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? ItemType { get; set; }
         public string? BrandName { get; set; }
         public string? CategoryName { get; set; }
-        public Guid? SupplierId { get; set; }
+
         public List<ProductMediaDto> Medias { get; set; } = new();
     }
 
@@ -115,6 +116,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? BrandName { get; set; }
         public string? CategoryName { get; set; }
         public Guid? SupplierId { get; set; }
+
         public decimal CostPrice { get; set; }
         public decimal SalePrice { get; set; }
         public decimal ActualStock { get; set; }
@@ -148,6 +150,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? BrandName { get; set; }
         public string? Status { get; set; }
         public Guid? SupplierId { get; set; }
+
     }
     #endregion Product Search DTOs
     /// <summary>
@@ -226,6 +229,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
     /// </summary>
     public class QuickInwardCreateDto
     {
+
         public Guid? SupplierId { get; set; }
         public string? SupplierName { get; set; }
         public string? Reason { get; set; }
@@ -262,6 +266,8 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? CategoryName { get; set; }
         public string? Barcode { get; set; }
         public decimal SalePrice { get; set; }
+        public Guid? SupplierId { get; set; }
+
     }
 
     /// <summary>Response trả về sau khi tạo phiếu nhập thành công.</summary>
@@ -306,9 +312,9 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
     public class OutwardInventoryCreateDto
     {
         public OutwardInventoryType OutwardType { get; set; }
+        public Guid? SupplierId { get; set; }
         public string Reason { get; set; } = null!;
         public string? Note { get; set; }
-        public Guid? SupplierId { get; set; }
         /// <summary>FK tới phiếu nhập gốc (dùng khi xuất trả NCC).</summary>
         public Guid? InwardTicketId { get; set; }
         public List<OutwardInventoryItemDto> Items { get; set; } = new();
@@ -406,6 +412,11 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
     public class InwardInventoryItemDto
     {
         /// <summary>
+        /// SupplierId cho sản phẩm đã tồn tại — gán tại phiếu nhập kho.
+        /// </summary>
+        public Guid? SupplierId { get; set; }
+
+        /// <summary>
         /// ID linh hoạt: Có thể là BranchProductId, ProductId (Guid)
         /// hoặc ProductCode (string, ví dụ: SP-001) từ Frontend.
         /// Để trống nếu là sản phẩm mới (điền productCode + productName trực tiếp).
@@ -439,12 +450,18 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public decimal CostPrice { get; set; }
 
         public string? Note { get; set; }
+
+        /// <summary>
+        /// SupplierId cho sản phẩm đã tồn tại — gán tại phiếu nhập kho.
+        /// </summary>
+
     }
 
     public class InwardInventoryCreateDto
     {
         public InwardInventoryType InwardType { get; set; }
         public Guid? SupplierId { get; set; }
+
         public string Reason { get; set; } = null!;
         public string? Note { get; set; }
         public List<InwardInventoryItemDto> Items { get; set; } = new();
@@ -485,7 +502,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? UserName { get; set; }
         public string? Reason { get; set; }
         public string? Note { get; set; }
-        public Guid? SupplierId { get; set; }
+
         public DateTime? CreatedAt { get; set; }
 
         // === Audit trail ===
@@ -497,6 +514,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
 
         public List<InwardInventoryItemResponseDto> Items { get; set; } = new();
         public decimal CostPrice { get; set; }
+        public Guid? SupplierId { get; set; }
     }
 
     public class BulkToggleStatusRequest
