@@ -52,7 +52,6 @@ namespace MEP_Management_System.Controllers.InventoryController
         private static string GetTicketTypeFromReason(string reason)
         {
             var r = (reason ?? "").Trim().ToLower();
-            if (r == "trả ncc" || r == "tra ncc" || r == "return_supplier") return "RETURN_SUPPLIER";
             if (r == "xuất hủy" || r == "xuat huy" || r == "write_off") return "WRITE_OFF";
             if (r == "điều chuyển" || r == "dieu chuyen" || r == "transfer") return "TRANSFER";
             return null;
@@ -71,8 +70,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 using var workbook = new XLWorkbook();
                 var worksheet = workbook.Worksheets.Add("XuatKho");
 
-                // Header: MaSanPham | TenSanPham | SoLuong | DonGiaXuat (tuỳ chọn) | LyDo | GhiChu
-                string[] headers = { "MaSanPham", "TenSanPham", "SoLuong", "DonGiaXuat (tuỳ chọn)", "LyDo", "GhiChu" };
+                // Header: MaSanPham | TenSanPham | SoLuong | LyDo | GhiChu
+                string[] headers = { "MaSanPham", "TenSanPham", "SoLuong", "LyDo", "GhiChu" };
                 for (int i = 0; i < headers.Length; i++)
                 {
                     worksheet.Cell(1, i + 1).Value = headers[i];
@@ -80,12 +79,12 @@ namespace MEP_Management_System.Controllers.InventoryController
                     worksheet.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
                 }
 
-                // Sample data với 3 loại LyDo (sẽ tạo 3 phiếu riêng khi commit)
+                // Sample data
                 var sampleData = new object[]
                 {
-                    new object[] { "SP-001", "Sản phẩm mẫu 1", 2, 150000, "Trả NCC", "Trả hàng lỗi" },
-                    new object[] { "SP-002", "Sản phẩm mẫu 2", 1, 80000, "Xuất hủy", "Hàng hỏng" },
-                    new object[] { "SP-003", "Sản phẩm mẫu 3", 5, 50000, "Điều chuyển", "Chuyển chi nhánh 2" }
+                    new object[] { "SP-001", "Sản phẩm mẫu 1", 2, "Xuất hủy", "Hàng hỏng" },
+                    new object[] { "SP-002", "Sản phẩm mẫu 2", 1, "Xuất hủy", "Hết hạn sử dụng" },
+                    new object[] { "SP-003", "Sản phẩm mẫu 3", 5, "Điều chuyển", "Chuyển chi nhánh 2" }
                 };
 
                 for (int row = 0; row < sampleData.Length; row++)
@@ -176,9 +175,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 for (int row = 2; row <= (worksheet.LastRowUsed()?.RowNumber() ?? 0); row++)
                 {
                     var maSanPham = worksheet.Cell(row, headers["MaSanPham"]).GetString().Trim();
+                    var tenSanPhamExcel = headers.ContainsKey("TenSanPham") ? worksheet.Cell(row, headers["TenSanPham"]).GetString().Trim() : "";
                     var soLuongStr = worksheet.Cell(row, headers["SoLuong"]).GetString().Trim();
-                    var donGiaStr = headers.ContainsKey("DonGiaXuat (tuỳ chọn)") ? worksheet.Cell(row, headers["DonGiaXuat (tuỳ chọn)"]).GetString().Trim() : 
-                                    (headers.ContainsKey("DonGiaXuat") ? worksheet.Cell(row, headers["DonGiaXuat"]).GetString().Trim() : "");
                     var lyDo = worksheet.Cell(row, headers["LyDo"]).GetString().Trim();
                     var ghiChu = headers.ContainsKey("GhiChu") ? worksheet.Cell(row, headers["GhiChu"]).GetString().Trim() : "";
 
@@ -190,20 +188,10 @@ namespace MEP_Management_System.Controllers.InventoryController
                         errors.Add(new OutwardExcelErrorDto { RowNumber = row, MaSanPham = maSanPham, ErrorMessage = "SoLuong phải là số nguyên dương." });
                         continue;
                     }
-                    decimal? donGia = null;
-                    if (!string.IsNullOrEmpty(donGiaStr))
-                    {
-                        if (!decimal.TryParse(donGiaStr, out decimal parsedDonGia) || parsedDonGia < 0)
-                        {
-                            errors.Add(new OutwardExcelErrorDto { RowNumber = row, MaSanPham = maSanPham, ErrorMessage = "DonGiaXuat phải là số không âm." });
-                            continue;
-                        }
-                        donGia = parsedDonGia;
-                    }
                     var ticketType = GetTicketTypeFromReason(lyDo);
                     if (ticketType == null)
                     {
-                        errors.Add(new OutwardExcelErrorDto { RowNumber = row, MaSanPham = maSanPham, ErrorMessage = $"LyDo '{lyDo}' không hợp lệ. Chỉ chấp nhận: Trả NCC / Xuất hủy / Điều chuyển." });
+                        errors.Add(new OutwardExcelErrorDto { RowNumber = row, MaSanPham = maSanPham, ErrorMessage = $"LyDo '{lyDo}' không hợp lệ. Chỉ chấp nhận: Xuất hủy / Điều chuyển." });
                         continue;
                     }
 
@@ -211,8 +199,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                     {
                         RowNumber = row,
                         MaSanPham = maSanPham,
+                        TenSanPham = tenSanPhamExcel,
                         SoLuong = soLuong,
-                        DonGiaXuat = donGia,
+                        DonGiaXuat = null,
                         LyDo = lyDo,
                         TicketType = ticketType,
                         GhiChu = ghiChu
@@ -232,13 +221,58 @@ namespace MEP_Management_System.Controllers.InventoryController
                 {
                     if (!existingCodes.Contains(item.MaSanPham))
                     {
-                        errors.Add(new OutwardExcelErrorDto { RowNumber = item.RowNumber, MaSanPham = item.MaSanPham, ErrorMessage = $"Mã sản phẩm '{item.MaSanPham}' không tồn tại." });
+                        errors.Add(new OutwardExcelErrorDto { RowNumber = item.RowNumber, MaSanPham = item.MaSanPham, ErrorMessage = $"Mã sản phẩm '{item.MaSanPham}' không tồn tại trong hệ thống." });
                         validRows.Remove(item);
+                        continue;
                     }
-                    else
+
+                    var dbProduct = productLookup[item.MaSanPham];
+                    item.ProductId = dbProduct.ProductId;
+
+                    // Cross-validate Tên sản phẩm từ Excel với DB
+                    var excelName = (item.TenSanPham ?? "").Trim();
+                    var dbName = (dbProduct.ProductName ?? "").Trim();
+                    if (!string.IsNullOrEmpty(excelName) && !excelName.Equals(dbName, StringComparison.OrdinalIgnoreCase))
                     {
-                        item.ProductId = productLookup[item.MaSanPham].ProductId;
-                        item.TenSanPham = productLookup[item.MaSanPham].ProductName;
+                        errors.Add(new OutwardExcelErrorDto
+                        {
+                            RowNumber = item.RowNumber,
+                            MaSanPham = item.MaSanPham,
+                            ErrorMessage = $"Mã sản phẩm '{item.MaSanPham}' có tên trong file Excel là '{excelName}', không khớp với tên trên hệ thống ('{dbName}'). Vui lòng kiểm tra lại"
+                        });
+                        validRows.Remove(item);
+                        continue;
+                    }
+
+                    item.TenSanPham = dbName;
+                }
+
+                // Kiểm tra sản phẩm đã tồn tại trong kho của chi nhánh chưa
+                if (validRows.Count > 0)
+                {
+                    var validProductIds = validRows.Select(x => x.ProductId).Where(pid => pid != Guid.Empty).Distinct().ToList();
+                    var branchProducts = await _context.BranchProducts
+                        .Where(bp => validProductIds.Contains(bp.ProductId) && bp.BranchId == branchId)
+                        .Select(bp => bp.ProductId)
+                        .ToListAsync();
+                    var branchProductIds = new HashSet<Guid>(branchProducts);
+
+                    foreach (var item in validRows.ToList())
+                    {
+                        if (item.ProductId == null || item.ProductId == Guid.Empty || !branchProductIds.Contains(item.ProductId.Value))
+                        {
+                            var productName = existingProducts
+                                .Where(p => p.ProductId == item.ProductId)
+                                .Select(p => p.ProductName)
+                                .FirstOrDefault() ?? item.MaSanPham;
+                            errors.Add(new OutwardExcelErrorDto
+                            {
+                                RowNumber = item.RowNumber,
+                                MaSanPham = item.MaSanPham,
+                                ErrorMessage = $"Sản phẩm '{productName}' (mã: {item.MaSanPham}) chưa có trong kho của chi nhánh. Vui lòng nhập kho trước."
+                            });
+                            validRows.Remove(item);
+                        }
                     }
                 }
 

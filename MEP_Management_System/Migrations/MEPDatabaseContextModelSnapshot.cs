@@ -2508,6 +2508,10 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<Guid?>("InwardTicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("inward_ticket_id");
+
                     b.Property<string>("Notes")
                         .HasColumnType("text")
                         .HasColumnName("notes");
@@ -2549,6 +2553,8 @@ namespace MEP_Management_System.Migrations
 
                     b.HasIndex("ConfirmedBy");
 
+                    b.HasIndex("InwardTicketId");
+
                     b.HasIndex("SupplierId");
 
                     b.HasIndex("UserId");
@@ -2581,6 +2587,10 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("numeric(10,2)")
                         .HasColumnName("discrepancy");
 
+                    b.Property<Guid?>("InwardTicketItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("inward_ticket_item_id");
+
                     b.Property<Guid>("StockTicketId")
                         .HasColumnType("uuid")
                         .HasColumnName("stock_ticket_id");
@@ -2591,12 +2601,16 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("system_quantity");
 
                     b.Property<decimal?>("UnitPrice")
-                        .HasColumnType("numeric");
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)")
+                        .HasColumnName("unit_price");
 
                     b.HasKey("TicketItemId")
                         .HasName("stock_ticket_items_pkey");
 
                     b.HasIndex("BranchProductId");
+
+                    b.HasIndex("InwardTicketItemId");
 
                     b.HasIndex("StockTicketId");
 
@@ -3844,6 +3858,12 @@ namespace MEP_Management_System.Migrations
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("stock_tickets_confirmed_by_fkey");
 
+                    b.HasOne("MEP_Management_System.Models.StockTicket", "InwardTicket")
+                        .WithMany("OutwardTickets")
+                        .HasForeignKey("InwardTicketId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("stock_tickets_inward_ticket_id_fkey");
+
                     b.HasOne("MEP_Management_System.Models.Supplier", "Supplier")
                         .WithMany("StockTickets")
                         .HasForeignKey("SupplierId")
@@ -3862,6 +3882,8 @@ namespace MEP_Management_System.Migrations
 
                     b.Navigation("ConfirmedByUser");
 
+                    b.Navigation("InwardTicket");
+
                     b.Navigation("Supplier");
 
                     b.Navigation("User");
@@ -3875,6 +3897,12 @@ namespace MEP_Management_System.Migrations
                         .IsRequired()
                         .HasConstraintName("stock_ticket_items_branch_product_id_fkey");
 
+                    b.HasOne("MEP_Management_System.Models.StockTicketItem", "InwardTicketItem")
+                        .WithMany("OutwardTicketItems")
+                        .HasForeignKey("InwardTicketItemId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("stock_ticket_items_inward_ticket_item_id_fkey");
+
                     b.HasOne("MEP_Management_System.Models.StockTicket", "StockTicket")
                         .WithMany("StockTicketItems")
                         .HasForeignKey("StockTicketId")
@@ -3883,6 +3911,8 @@ namespace MEP_Management_System.Migrations
                         .HasConstraintName("stock_ticket_items_stock_ticket_id_fkey");
 
                     b.Navigation("BranchProduct");
+
+                    b.Navigation("InwardTicketItem");
 
                     b.Navigation("StockTicket");
                 });
@@ -4156,7 +4186,14 @@ namespace MEP_Management_System.Migrations
 
             modelBuilder.Entity("MEP_Management_System.Models.StockTicket", b =>
                 {
+                    b.Navigation("OutwardTickets");
+
                     b.Navigation("StockTicketItems");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.StockTicketItem", b =>
+                {
+                    b.Navigation("OutwardTicketItems");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.Supplier", b =>

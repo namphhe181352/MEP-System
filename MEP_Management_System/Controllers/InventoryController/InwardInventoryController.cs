@@ -1255,24 +1255,127 @@ th {{ background: #f0f0f0; }}
                 CancelReason = stockTicket.CancelReason,
                 CostPrice = stockTicket.TicketType == "CUSTOMER_RETURN"
                     ? 0
-                    : stockTicket.StockTicketItems?.Sum(i => i.UnitPrice ?? 0) ?? 0,
-                Items = stockTicket.StockTicketItems?.Select(item => new InwardInventoryItemResponseDto
+                    : stockTicket.StockTicketItems?.Sum(i =>
+                        (i.UnitPrice ?? 0) > 0 ? (i.UnitPrice ?? 0) : (i.BranchProduct?.CostPrice ?? 0)
+                      ) ?? 0,
+                Items = stockTicket.StockTicketItems?.Select(item =>
                 {
-                    TicketItemId = item.TicketItemId,
+                    var effectivePrice = (item.UnitPrice ?? 0) > 0
+                        ? (item.UnitPrice ?? 0)
+                        : (item.BranchProduct?.CostPrice ?? 0);
+                    return new InwardInventoryItemResponseDto
+                    {
+                        TicketItemId = item.TicketItemId,
+                        BranchProductId = item.BranchProductId,
+                        ProductId = item.BranchProduct?.ProductId ?? Guid.Empty,
+                        ProductCode = item.BranchProduct?.Product?.ProductCode ?? string.Empty,
+                        ProductName = item.BranchProduct?.Product?.ProductName ?? string.Empty,
+                        SystemQuantity = item.SystemQuantity,
+                        Quantity = item.Discrepancy,
+                        ActualQuantity = item.ActualQuantity,
+                        CostPrice = stockTicket.TicketType == "CUSTOMER_RETURN"
+                            ? 0
+                            : effectivePrice,
+                        UnitPrice = effectivePrice,
+                        UnitName = item.BranchProduct?.Product?.BaseUnit
+                    };
+                }).ToList() ?? new()
+            };
+        }
+
+        #region Return-to-Supplier Support
+
+        /// <summary>Lấy danh sách phiếu nhập đã hoàn thành của 1 NCC (để chọn khi xuất trả).</summary>
+        [HttpGet("by-supplier/{supplierId:guid}")]
+        [HasPermission("STOCK_VIEW")]
+        public async Task<IActionResult> GetBySupplier(Guid supplierId, [FromQuery] Guid? branchId)
+        {
+            var jwtBranchId = _currentBranch.GetBranchId();
+            var targetBranchId = (HasGlobalAccess() ? branchId : null) ?? jwtBranchId;
+            if (targetBranchId == null || targetBranchId == Guid.Empty)
+                return BadRequest(new ApiResponse<object> { Success = false, Message = "Không xác định được chi nhánh." });
+
+            var tickets = await _context.StockTickets
+                .Where(st => st.SupplierId == supplierId
+                    && st.Status == "COMPLETED"
+                    && st.TicketType == "PURCHASE"
+                    && st.BranchId == targetBranchId.Value)
+                .OrderByDescending(st => st.CreatedAt)
+                .Select(st => new InwardTicketForReturnDto
+                {
+                    StockTicketId = st.StockTicketId,
+                    TicketCode = st.TicketCode ?? string.Empty,
+                    CreatedAt = st.CreatedAt,
+                    TotalAmount = st.TotalAmount,
+                    ItemsCount = st.StockTicketItems.Count
+                })
+                .ToListAsync();
+
+            return Ok(new ApiResponse<List<InwardTicketForReturnDto>>
+            {
+                Success = true,
+                Message = "Lấy danh sách phiếu nhập thành công.",
+                Data = tickets
+            });
+        }
+
+        /// <summary>Lấy danh sách sản phẩm còn có thể trả của 1 phiếu nhập.</summary>
+        [HttpGet("{id:guid}/returnable-items")]
+        [HasPermission("STOCK_VIEW")]
+        public async Task<IActionResult> GetReturnableItems(Guid id)
+        {
+            var inwardTicket = await _context.StockTickets
+                .Include(st => st.StockTicketItems)
+                    .ThenInclude(si => si.BranchProduct)
+                        .ThenInclude(bp => bp.Product)
+                .FirstOrDefaultAsync(st => st.StockTicketId == id
+                    && st.Status == "COMPLETED"
+                    && st.TicketType == "PURCHASE");
+
+            if (inwardTicket == null)
+                return NotFound(new ApiResponse<object> { Success = false, Message = "Không tìm thấy phiếu nhập hoặc phiếu chưa hoàn thành." });
+
+            var inwardItemIds = inwardTicket.StockTicketItems.Select(si => si.TicketItemId).ToList();
+
+            // Tính tổng số lượng đã trả cho từng dòng nhập
+            var returnedQuantities = await _context.StockTicketItems
+                .Where(si => si.InwardTicketItemId != null && inwardItemIds.Contains(si.InwardTicketItemId.Value)
+                    && si.StockTicket!.Status != "CANCELLED")
+                .GroupBy(si => si.InwardTicketItemId!.Value)
+                .Select(g => new { InwardTicketItemId = g.Key, TotalReturned = g.Sum(si => si.Discrepancy) })
+                .ToListAsync();
+
+            var returnedDict = returnedQuantities.ToDictionary(r => r.InwardTicketItemId, r => r.TotalReturned);
+
+            var items = inwardTicket.StockTicketItems.Select(item =>
+            {
+                var totalReturned = returnedDict.GetValueOrDefault(item.TicketItemId, 0m);
+                var maxReturnable = item.Discrepancy - totalReturned;
+                return new ReturnableItemDto
+                {
+                    InwardTicketItemId = item.TicketItemId,
                     BranchProductId = item.BranchProductId,
                     ProductId = item.BranchProduct?.ProductId ?? Guid.Empty,
                     ProductCode = item.BranchProduct?.Product?.ProductCode ?? string.Empty,
                     ProductName = item.BranchProduct?.Product?.ProductName ?? string.Empty,
-                    SystemQuantity = item.SystemQuantity,
-                    Quantity = item.Discrepancy,
-                    ActualQuantity = item.ActualQuantity,
-                    CostPrice = stockTicket.TicketType == "CUSTOMER_RETURN"
-                        ? 0
-                        : (item.UnitPrice ?? 0),
-                    UnitPrice = item.UnitPrice,
-                    UnitName = item.BranchProduct?.Product?.BaseUnit
-                }).ToList() ?? new()
-            };
+                    UnitName = item.BranchProduct?.Product?.BaseUnit,
+                    OriginalQuantity = item.Discrepancy,
+                    UnitPrice = item.UnitPrice ?? 0,
+                    MaxReturnableQuantity = maxReturnable > 0 ? maxReturnable : 0,
+                    ActualStock = item.BranchProduct?.ActualStock ?? 0
+                };
+            })
+            .Where(i => i.MaxReturnableQuantity > 0)
+            .ToList();
+
+            return Ok(new ApiResponse<List<ReturnableItemDto>>
+            {
+                Success = true,
+                Message = "Lấy danh sách sản phẩm có thể trả thành công.",
+                Data = items
+            });
         }
+
+        #endregion
     }
 }

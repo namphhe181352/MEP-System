@@ -16,6 +16,9 @@ public partial class StockTicket
 
     public Guid? SupplierId { get; set; }
 
+    /// <summary>FK tới phiếu nhập gốc (dùng khi xuất trả NCC).</summary>
+    public Guid? InwardTicketId { get; set; }
+
     public decimal TotalAmount { get; set; }
 
     /// <summary>Loại phiếu: STOCK_CHECK / WRITE_OFF / TRANSFER / RETURN_SUPPLIER (theo UC 2.5).</summary>
@@ -43,6 +46,10 @@ public partial class StockTicket
     public virtual ICollection<StockTicketItem> StockTicketItems { get; set; } = new List<StockTicketItem>();
 
     public virtual Supplier? Supplier { get; set; }
+
+    // Self-referencing: phiếu nhập gốc (dùng cho xuất trả NCC)
+    public virtual StockTicket? InwardTicket { get; set; }
+    public virtual ICollection<StockTicket> OutwardTickets { get; set; } = new List<StockTicket>();
 
     public virtual User User { get; set; } = null!;
 
