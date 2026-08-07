@@ -312,6 +312,57 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("customers", (string)null);
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.DailyStockSnapshot", b =>
+                {
+                    b.Property<Guid>("SnapshotId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("snapshot_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_id");
+
+                    b.Property<Guid>("BranchProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_product_id");
+
+                    b.Property<decimal>("ClosingQuantity")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("closing_quantity");
+
+                    b.Property<decimal>("ClosingValue")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("closing_value");
+
+                    b.Property<decimal>("CostPrice")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("cost_price");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<DateOnly>("SnapshotDate")
+                        .HasColumnType("date")
+                        .HasColumnName("snapshot_date");
+
+                    b.HasKey("SnapshotId")
+                        .HasName("daily_stock_snapshots_pkey");
+
+                    b.HasIndex("SnapshotDate", "BranchId", "BranchProductId")
+                        .IsUnique()
+                        .HasDatabaseName("uk_daily_snapshot");
+
+                    b.ToTable("daily_stock_snapshots", (string)null);
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.ExpenseCategory", b =>
                 {
                     b.Property<Guid>("CategoryId")
@@ -638,6 +689,84 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("inventory_check_tickets", (string)null);
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.InventoryLedger", b =>
+                {
+                    b.Property<Guid>("LedgerId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("ledger_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<decimal>("AvgCostAfter")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("avg_cost_after");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_id");
+
+                    b.Property<Guid>("BranchProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_product_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("DocCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("doc_code");
+
+                    b.Property<Guid>("DocId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("doc_id");
+
+                    b.Property<string>("DocType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("doc_type");
+
+                    b.Property<decimal>("QtyChange")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("qty_change");
+
+                    b.Property<decimal>("StockAfter")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("stock_after");
+
+                    b.Property<decimal>("TotalCostValue")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("total_cost_value");
+
+                    b.Property<DateTime>("TransactionTime")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("transaction_time");
+
+                    b.Property<decimal>("UnitCostPrice")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("unit_cost_price");
+
+                    b.HasKey("LedgerId")
+                        .HasName("inventory_ledger_pkey");
+
+                    b.HasIndex("BranchId", "TransactionTime")
+                        .HasDatabaseName("ix_ledger_branch_time");
+
+                    b.HasIndex("BranchId", "BranchProductId", "TransactionTime")
+                        .HasDatabaseName("ix_ledger_branch_product_time");
+
+                    b.ToTable("inventory_ledger", (string)null);
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.InventoryTransferDetail", b =>
                 {
                     b.Property<Guid>("DetailId")
@@ -827,6 +956,11 @@ namespace MEP_Management_System.Migrations
 
                     b.Property<decimal?>("ConvertValue")
                         .HasColumnType("numeric");
+
+                    b.Property<decimal>("CostPrice")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("cost_price");
 
                     b.Property<Guid>("InvoiceId")
                         .HasColumnType("uuid")

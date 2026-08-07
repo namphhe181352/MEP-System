@@ -21,6 +21,9 @@ public partial class InvoiceItem
     /// <summary>Hệ số quy đổi tại thời điểm bán (ví dụ: 100 = 1 Cuộn = 100 Mét).</summary>
     public decimal? ConvertValue { get; set; }
 
+    /// <summary>Giá vốn snapshot tại thời điểm bán hàng (NUMERIC 18,4).</summary>
+    public decimal CostPrice { get; set; }
+
     public virtual BranchProduct BranchProduct { get; set; } = null!;
 
     public virtual Invoice Invoice { get; set; } = null!;

@@ -586,11 +586,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     else
                     {
                         actualBranchProductId = branchProduct.BranchProductId;
-                        if (item.CostPrice > 0)
-                        {
-                            branchProduct.CostPrice = item.CostPrice;
-                        }
-                        else if (branchProduct.CostPrice <= 0)
+                        // Chỉ set CostPrice lần đầu cho SP mới (CostPrice <= 0), không ghi đè giá vốn hiện tại
+                        if (branchProduct.CostPrice <= 0)
                         {
                             branchProduct.CostPrice = effectiveCostPrice;
                         }
@@ -910,6 +907,25 @@ namespace MEP_Management_System.Controllers.InventoryController
                         item.ActualQuantity = updatedBp.ActualStock;
                         item.SystemQuantity = updatedBp.ActualStock - item.Discrepancy;
                     }
+
+                    // Ghi inventory_ledger
+                    var ledger = new InventoryLedger
+                    {
+                        LedgerId = Guid.NewGuid(),
+                        BranchId = stockTicket.BranchId,
+                        BranchProductId = item.BranchProductId,
+                        DocType = stockTicket.TicketType ?? "PURCHASE",
+                        DocId = stockTicket.StockTicketId,
+                        DocCode = stockTicket.TicketCode,
+                        TransactionTime = DateTime.UtcNow,
+                        QtyChange = item.Discrepancy,
+                        UnitCostPrice = Math.Round(unitPrice, 4),
+                        TotalCostValue = Math.Round(item.Discrepancy * unitPrice, 4),
+                        StockAfter = updatedBp?.ActualStock ?? 0,
+                        AvgCostAfter = Math.Round(updatedBp?.CostPrice ?? unitPrice, 4),
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _context.InventoryLedgers.Add(ledger);
                 }
 
                 // Chuyển trạng thái sang COMPLETED

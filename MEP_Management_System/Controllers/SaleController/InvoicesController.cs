@@ -521,6 +521,33 @@ public class InvoicesController : ControllerBase
                     await transaction.RollbackAsync();
                     return BadRequest(ApiErrorResponse.Create("MSG-59", $"Thanh toán thất bại. Sản phẩm trong giỏ hàng đã hết hàng hoặc không đủ số lượng. Available: {item.BranchProduct.AvailableStock}"));
                 }
+
+                // Snapshot cost_price + ghi inventory_ledger
+                var costPrice = item.BranchProduct.CostPrice;
+                item.CostPrice = Math.Round(costPrice, 4);
+
+                // Đọc lại tồn kho sau khi trừ
+                var updatedBp = await _context.BranchProducts
+                    .FirstOrDefaultAsync(bp2 => bp2.BranchProductId == item.BranchProductId);
+                var stockAfter = updatedBp?.ActualStock ?? 0;
+
+                var ledgerEntry = new InventoryLedger
+                {
+                    LedgerId = Guid.NewGuid(),
+                    BranchId = invoice.Order.BranchId,
+                    BranchProductId = item.BranchProductId,
+                    DocType = "SALE",
+                    DocId = invoice.InvoiceId,
+                    DocCode = invoice.InvoiceCode,
+                    TransactionTime = DateTime.UtcNow,
+                    QtyChange = -actualQty,
+                    UnitCostPrice = Math.Round(costPrice, 4),
+                    TotalCostValue = Math.Round(-actualQty * costPrice, 4),
+                    StockAfter = stockAfter,
+                    AvgCostAfter = Math.Round(costPrice, 4),
+                    CreatedAt = DateTime.UtcNow
+                };
+                _context.InventoryLedgers.Add(ledgerEntry);
             }
 
             invoice.Status = "Completed";

@@ -121,7 +121,7 @@ public class ReportsController : ControllerBase
     {
         try
         {
-            var result = await _reportService.GetStockMovementReportAsync(request, User);
+            var result = await _reportService.GetStockMovementFromLedgerAsync(request, User);
 
             return Ok(new ApiResponse<StockMovementReportDto>
             {
@@ -341,6 +341,176 @@ public class ReportsController : ControllerBase
         if (currentStock <= minimumStock * 0.75m)
             return "Warning";
         return "Low";
+    }
+
+    /// <summary>
+    /// GET /api/reports/stock-ledger/{branchProductId}
+    /// Thẻ kho chi tiết - lịch sử biến động của 1 sản phẩm trong khoảng thời gian.
+    /// </summary>
+    [HttpGet("stock-ledger/{branchProductId:guid}")]
+    public async Task<IActionResult> GetStockLedger(
+        Guid branchProductId,
+        [FromQuery] DateTime? fromDate,
+        [FromQuery] DateTime? toDate)
+    {
+        var branchId = await ResolveBranchIdAsync();
+        if (branchId == null)
+            return BadRequest(new ApiResponse<object> { Success = false, Message = "Không xác định được chi nhánh." });
+
+        var from = fromDate?.Date ?? DateTime.UtcNow.AddDays(-30).Date;
+        var to = (toDate?.Date ?? DateTime.UtcNow.Date).AddDays(1).AddTicks(-1);
+
+        var bp = await _context.BranchProducts
+            .Include(x => x.Product)
+            .FirstOrDefaultAsync(x => x.BranchProductId == branchProductId && x.BranchId == branchId);
+
+        if (bp == null)
+            return NotFound(new ApiResponse<object> { Success = false, Message = "Không tìm thấy sản phẩm trong kho." });
+
+        // === Bước 1: Tính Tồn đầu kỳ (trước fromDate) ===
+        decimal openingStock = 0;
+        var ledgerBefore = await _context.InventoryLedgers
+            .Where(l => l.BranchProductId == branchProductId && l.BranchId == branchId && l.TransactionTime < from)
+            .SumAsync(l => (decimal?)l.QtyChange) ?? 0;
+        openingStock = ledgerBefore;
+
+        // Fallback nếu ledger trống
+        if (ledgerBefore == 0 && await _context.InventoryLedgers.CountAsync() == 0)
+        {
+            var stBefore = await _context.StockTicketItems
+                .Where(sti => sti.BranchProductId == branchProductId && sti.StockTicket.BranchId == branchId
+                    && sti.StockTicket.Status == "COMPLETED" && sti.StockTicket.CreatedAt < from)
+                .SumAsync(sti => (decimal?)(sti.StockTicket.TicketType == "PURCHASE" || sti.StockTicket.TicketType == "CUSTOMER_RETURN" ? sti.Discrepancy : -sti.Discrepancy)) ?? 0;
+
+            var invBefore = await _context.InvoiceItems
+                .Where(ii => ii.BranchProductId == branchProductId && ii.Invoice.Order.BranchId == branchId
+                    && ii.Invoice.Status == "Completed" && ii.Invoice.CreatedAt < from)
+                .SumAsync(ii => (decimal?)(-(ii.Quantity * (ii.ConvertValue ?? 1m)))) ?? 0;
+
+            openingStock = stBefore + invBefore;
+        }
+
+        // === Bước 2: Lấy giao dịch TRONG KỲ (fromDate -> toDate) ===
+        var entries = new List<(DateTime Time, string Doc, string Type, decimal Price, decimal Qty)>();
+        DateTime safeDt(DateTime? d) => d ?? DateTime.UtcNow;
+
+        var ledgerIn = await _context.InventoryLedgers
+            .Where(l => l.BranchProductId == branchProductId && l.BranchId == branchId
+                && l.TransactionTime >= from && l.TransactionTime <= to)
+            .OrderBy(l => l.TransactionTime)
+            .Select(l => new { l.TransactionTime, l.DocCode, l.DocType, l.UnitCostPrice, l.QtyChange })
+            .ToListAsync();
+
+        if (ledgerIn.Count > 0)
+        {
+            foreach (var e in ledgerIn)
+                entries.Add((e.TransactionTime, e.DocCode ?? "", e.DocType, e.UnitCostPrice, e.QtyChange));
+        }
+        else
+        {
+            // Fallback từ bảng gốc
+            var stIn = await _context.StockTicketItems
+                .Where(sti => sti.BranchProductId == branchProductId && sti.StockTicket.BranchId == branchId
+                    && sti.StockTicket.Status == "COMPLETED"
+                    && sti.StockTicket.CreatedAt >= from && sti.StockTicket.CreatedAt <= to)
+                .OrderBy(sti => sti.StockTicket.CreatedAt)
+                .Select(sti => new { Time = sti.StockTicket.CreatedAt, Doc = sti.StockTicket.TicketCode ?? "", Type = sti.StockTicket.TicketType ?? "", Price = sti.UnitPrice ?? sti.BranchProduct.CostPrice, Qty = sti.StockTicket.TicketType == "PURCHASE" || sti.StockTicket.TicketType == "CUSTOMER_RETURN" ? sti.Discrepancy : -sti.Discrepancy })
+                .ToListAsync();
+            foreach (var e in stIn) entries.Add((safeDt(e.Time), e.Doc, e.Type, e.Price, e.Qty));
+
+            var invIn = await _context.InvoiceItems
+                .Where(ii => ii.BranchProductId == branchProductId && ii.Invoice.Order.BranchId == branchId
+                    && ii.Invoice.Status == "Completed"
+                    && ii.Invoice.CreatedAt >= from && ii.Invoice.CreatedAt <= to)
+                .OrderBy(ii => ii.Invoice.CreatedAt)
+                .Select(ii => new { Time = ii.Invoice.CreatedAt, Doc = ii.Invoice.InvoiceCode ?? "", Price = ii.CostPrice > 0 ? ii.CostPrice : ii.BranchProduct.CostPrice, Qty = -(ii.Quantity * (ii.ConvertValue ?? 1m)) })
+                .ToListAsync();
+            foreach (var e in invIn) entries.Add((safeDt(e.Time), e.Doc, "SALE", e.Price, e.Qty));
+
+            entries = entries.OrderBy(e => e.Time).ToList();
+        }
+
+        // === Bước 3: Tính running stock + build response ===
+        var running = openingStock;
+        var resultEntries = entries.Select(e =>
+        {
+            running += e.Qty;
+            return new
+            {
+                TransactionTime = e.Time,
+                DocCode = e.Doc,
+                DocType = e.Type,
+                UnitCostPrice = e.Price,
+                QtyIn = e.Qty > 0 ? e.Qty : 0m,
+                QtyOut = e.Qty < 0 ? -e.Qty : 0m,
+                StockAfter = running
+            };
+        }).ToList();
+
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Message = "Lấy thẻ kho thành công.",
+            Data = new
+            {
+                productCode = bp.Product?.ProductCode ?? "",
+                productName = bp.Product?.ProductName ?? "",
+                unit = bp.Product?.BaseUnit ?? "",
+                fromDate = from,
+                toDate = to,
+                openingStock,
+                entries = resultEntries,
+                totalInQty = resultEntries.Sum(e => e.QtyIn),
+                totalOutQty = resultEntries.Sum(e => e.QtyOut),
+                closingStock = running
+            }
+        });
+    }
+
+    /// <summary>
+    /// POST /api/reports/snapshot-daily
+    /// Chốt tồn kho cuối ngày - lưu closing_quantity, cost_price, closing_value cho toàn bộ sản phẩm.
+    /// </summary>
+    [HttpPost("snapshot-daily")]
+    public async Task<IActionResult> CreateDailySnapshot([FromQuery] Guid? branchIdOverride)
+    {
+        var branchId = (IsOwner() ? branchIdOverride : null) ?? await ResolveBranchIdAsync();
+        if (branchId == null)
+            return BadRequest(new ApiResponse<object> { Success = false, Message = "Không xác định được chi nhánh." });
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        // Xóa snapshot cũ nếu có (cùng ngày + branch)
+        var existing = await _context.DailyStockSnapshots
+            .Where(s => s.SnapshotDate == today && s.BranchId == branchId.Value)
+            .ToListAsync();
+        _context.DailyStockSnapshots.RemoveRange(existing);
+
+        var branchProducts = await _context.BranchProducts
+            .Where(bp => bp.BranchId == branchId.Value && bp.IsActive != 0)
+            .ToListAsync();
+
+        var snapshots = branchProducts.Select(bp => new DailyStockSnapshot
+        {
+            SnapshotId = Guid.NewGuid(),
+            SnapshotDate = today,
+            BranchId = branchId.Value,
+            BranchProductId = bp.BranchProductId,
+            ClosingQuantity = bp.ActualStock,
+            CostPrice = Math.Round(bp.CostPrice, 4),
+            ClosingValue = Math.Round(bp.ActualStock * bp.CostPrice, 4),
+            CreatedAt = DateTime.UtcNow
+        }).ToList();
+
+        _context.DailyStockSnapshots.AddRange(snapshots);
+        await _context.SaveChangesAsync();
+
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Message = $"Đã chốt tồn kho ngày {today:dd/MM/yyyy} - {snapshots.Count} sản phẩm.",
+            Data = new { snapshotDate = today, totalProducts = snapshots.Count }
+        });
     }
 
     #endregion
