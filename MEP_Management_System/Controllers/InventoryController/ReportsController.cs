@@ -324,6 +324,52 @@ public class ReportsController : ControllerBase
 
     #endregion
 
+    /// <summary>
+    /// Thẻ kho chi tiết (Drill-down)
+    /// </summary>
+    [HttpGet("stock-ledger/{branchProductId}")]
+    public async Task<IActionResult> GetStockLedger(Guid branchProductId, [FromQuery] StockLedgerRequestDto request)
+    {
+        try
+        {
+            var result = await _reportService.GetStockLedgerAsync(branchProductId, request, User);
+
+            return Ok(new ApiResponse<StockLedgerDto>
+            {
+                Success = true,
+                Message = "Thẻ kho chi tiết đã được tải.",
+                Data = result
+            });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Không tìm thấy thông tin chi nhánh.",
+                Errors = new() { ex.Message }
+            });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new ApiResponse<object>
+            {
+                Success = false,
+                Message = ex.Message,
+                Errors = new() { ex.Message }
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Lỗi máy chủ khi tải thẻ kho.",
+                Errors = new() { ex.Message }
+            });
+        }
+    }
+
     #region Helper Methods
 
     private int GetWeekNumber(DateTime date)

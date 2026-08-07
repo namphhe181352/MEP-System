@@ -61,7 +61,7 @@ namespace MEP_Management_System.DTOs.AdminDTOs
     public class AdminUserRoleUpdateDto
     {
         [Required]
-        public List<Guid> RoleIds { get; set; } = new List<Guid>();
+        public Guid RoleId { get; set; }
     }
 
     public class AdminUserStatusUpdateDto

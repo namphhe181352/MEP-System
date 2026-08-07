@@ -492,6 +492,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                                 BrandName = item.NewProduct.BrandName,
                                 CategoryName = item.NewProduct.CategoryName,
                                 Barcode = item.NewProduct.Barcode,
+                                SupplierId = item.SupplierId ?? item.NewProduct.SupplierId,
                                 Status = 1,
                                 SalesChannelLinked = 0,
                                 CreatedAt = currentTime,
@@ -906,6 +907,17 @@ namespace MEP_Management_System.Controllers.InventoryController
                     {
                         item.ActualQuantity = updatedBp.ActualStock;
                         item.SystemQuantity = updatedBp.ActualStock - item.Discrepancy;
+
+                        // Gán SupplierId cho Product nếu chưa có
+                        if (stockTicket.SupplierId.HasValue)
+                        {
+                            var product = await _context.Products
+                                .FirstOrDefaultAsync(p => p.ProductId == updatedBp.ProductId);
+                            if (product != null && product.SupplierId == null)
+                            {
+                                product.SupplierId = stockTicket.SupplierId;
+                            }
+                        }
                     }
 
                     // Ghi inventory_ledger
