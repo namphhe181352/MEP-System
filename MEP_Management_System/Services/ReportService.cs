@@ -1199,5 +1199,121 @@ public class ReportService
 
         return result;
     }
-}
+    /// <summary>
+    /// Báo cáo Thẻ kho chi tiết cho một sản phẩm (Stock Ledger)
+    /// </summary>
+    public async Task<StockLedgerDto> GetStockLedgerAsync(Guid branchProductId, StockLedgerRequestDto request, ClaimsPrincipal currentUser)
+    {
+        var branchId = await ResolveBranchIdAsync(currentUser);
+        if (branchId == null) throw new UnauthorizedAccessException("Không xác định được chi nhánh.");
 
+        var bp = await _context.BranchProducts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => (x.BranchProductId == branchProductId || x.ProductId == branchProductId) && x.BranchId == branchId.Value);
+
+        if (bp == null) throw new KeyNotFoundException("Sản phẩm không thuộc cửa hàng.");
+
+        var fromDate = request.FromDate?.Date ?? DateTime.MinValue;
+        var toDate = request.ToDate?.Date.AddDays(1).AddTicks(-1) ?? DateTime.MaxValue;
+
+        var allEntries = new List<StockLedgerEntryDto>();
+
+        // 1. Stock Tickets
+        var tickets = await _context.StockTicketItems
+            .Include(sti => sti.StockTicket)
+            .Where(sti => sti.BranchProductId == bp.BranchProductId
+                && (sti.StockTicket.Status == "COMPLETED" || sti.StockTicket.Status == "Completed")
+                && sti.StockTicket.CreatedAt != null)
+            .Select(sti => new
+            {
+                CreatedAt = sti.StockTicket.CreatedAt!.Value,
+                TicketCode = sti.StockTicket.TicketCode,
+                TicketType = sti.StockTicket.TicketType,
+                UnitPrice = sti.UnitPrice,
+                Discrepancy = sti.Discrepancy
+            })
+            .ToListAsync();
+
+        foreach (var t in tickets)
+        {
+            var isOut = t.TicketType == "RETURN_SUPPLIER" || t.TicketType == "WRITE_OFF" || t.TicketType == "TRANSFER" || (t.TicketType == "BALANCE_ADJUST" && t.Discrepancy < 0);
+            var isIn = t.TicketType == "PURCHASE" || t.TicketType == "CUSTOMER_RETURN" || (t.TicketType == "BALANCE_ADJUST" && t.Discrepancy > 0);
+
+            decimal qtyIn = isIn ? Math.Abs(t.Discrepancy) : 0;
+            decimal qtyOut = isOut ? Math.Abs(t.Discrepancy) : 0;
+
+            allEntries.Add(new StockLedgerEntryDto
+            {
+                TransactionTime = t.CreatedAt,
+                DocCode = t.TicketCode ?? "",
+                DocType = t.TicketType ?? "",
+                UnitCostPrice = t.UnitPrice,
+                QtyIn = qtyIn,
+                QtyOut = qtyOut
+            });
+        }
+
+        // 2. Orders (Sales)
+        var orders = await _context.OrderItems
+            .Include(oi => oi.Order)
+            .Where(oi => oi.BranchProductId == bp.BranchProductId
+                && (oi.Order.Status == "COMPLETED" || oi.Order.Status == "Completed")
+                && oi.Order.CreatedAt != null)
+            .Select(oi => new
+            {
+                CreatedAt = oi.Order.CreatedAt!.Value,
+                TicketCode = oi.Order.OrderCode,
+                Quantity = oi.Quantity
+            })
+            .ToListAsync();
+
+        foreach (var o in orders)
+        {
+            allEntries.Add(new StockLedgerEntryDto
+            {
+                TransactionTime = o.CreatedAt,
+                DocCode = o.TicketCode ?? "",
+                DocType = "SALE",
+                UnitCostPrice = bp.CostPrice,
+                QtyIn = 0,
+                QtyOut = o.Quantity
+            });
+        }
+
+        // Sort ASC
+        allEntries = allEntries.OrderBy(x => x.TransactionTime).ToList();
+
+        decimal currentRunningStock = 0;
+        decimal openingStock = 0;
+        var periodEntries = new List<StockLedgerEntryDto>();
+        decimal totalInQty = 0;
+        decimal totalOutQty = 0;
+
+        foreach (var entry in allEntries)
+        {
+            currentRunningStock += entry.QtyIn;
+            currentRunningStock -= entry.QtyOut;
+            entry.StockAfter = currentRunningStock;
+
+            if (entry.TransactionTime < fromDate)
+            {
+                openingStock = currentRunningStock;
+            }
+            else if (entry.TransactionTime <= toDate)
+            {
+                periodEntries.Add(entry);
+                totalInQty += entry.QtyIn;
+                totalOutQty += entry.QtyOut;
+            }
+        }
+
+        return new StockLedgerDto
+        {
+            OpeningStock = openingStock,
+            ClosingStock = openingStock + totalInQty - totalOutQty,
+            TotalInQty = totalInQty,
+            TotalOutQty = totalOutQty,
+            Entries = periodEntries.OrderBy(x => x.TransactionTime).Take(request.PageSize).ToList()
+        };
+    }
+}
