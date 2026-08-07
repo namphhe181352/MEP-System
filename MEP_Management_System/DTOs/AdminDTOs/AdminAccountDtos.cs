@@ -114,12 +114,12 @@ public class AdminUpdateAccountRequest
 }
 
 /// <summary>
-/// Request gán roles cho user.
+/// Request gán role cho user — chỉ 1 role duy nhất.
 /// </summary>
 public class AdminAssignRolesRequest
 {
     [Required]
-    public List<Guid> RoleIds { get; set; } = new();
+    public Guid RoleId { get; set; }
 }
 
 /// <summary>

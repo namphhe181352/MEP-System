@@ -492,6 +492,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                                 BrandName = item.NewProduct.BrandName,
                                 CategoryName = item.NewProduct.CategoryName,
                                 Barcode = item.NewProduct.Barcode,
+                                SupplierId = item.SupplierId ?? item.NewProduct.SupplierId,
                                 Status = 1,
                                 SalesChannelLinked = 0,
                                 CreatedAt = currentTime,
@@ -873,6 +874,17 @@ namespace MEP_Management_System.Controllers.InventoryController
                         // Cập nhật ActualQuantity trong ticket item (tồn sau khi nhập)
                         item.ActualQuantity = branchProduct.ActualStock;
                         item.SystemQuantity = branchProduct.ActualStock - item.Discrepancy;
+
+                        // Gán SupplierId cho Product nếu chưa có
+                        if (stockTicket.SupplierId.HasValue)
+                        {
+                            var product = await _context.Products
+                                .FirstOrDefaultAsync(p => p.ProductId == branchProduct.ProductId);
+                            if (product != null && product.SupplierId == null)
+                            {
+                                product.SupplierId = stockTicket.SupplierId;
+                            }
+                        }
                     }
                 }
 
