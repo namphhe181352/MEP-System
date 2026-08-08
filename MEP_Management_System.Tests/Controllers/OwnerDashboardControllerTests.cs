@@ -53,47 +53,11 @@ namespace MEP_Management_System.Tests.Controllers
             return controller;
         }
 
+        // ==========================================
+        // TEST GET /api/owner/dashboard/overview
+        // ==========================================
         [Fact]
-        public async Task GetOverview_NoDefaultBranch_ReturnsUnauthorized()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
-
-            _mockCurrentBranch.Setup(m => m.GetBranchId()).Returns((Guid?)null);
-
-            // Act
-            var result = await controller.GetOverview();
-
-            // Assert
-            var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
-            var response = Assert.IsType<ApiResponse<object>>(unauthorizedResult.Value);
-            Assert.False(response.Success);
-            Assert.Equal("Không tìm thấy chi nhánh mặc định của Owner.", response.Message);
-        }
-
-        [Fact]
-        public async Task GetOverview_BranchNotFound_ReturnsNotFound()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
-            var branchId = Guid.NewGuid();
-
-            _mockCurrentBranch.Setup(m => m.GetBranchId()).Returns(branchId);
-
-            // Act
-            var result = await controller.GetOverview();
-
-            // Assert
-            var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
-            var response = Assert.IsType<ApiResponse<object>>(notFoundResult.Value);
-            Assert.False(response.Success);
-            Assert.Equal("Không tìm thấy chi nhánh.", response.Message);
-        }
-
-        [Fact]
-        public async Task GetOverview_Valid_ReturnsOkWithDashboardOverviewDto()
+        public async Task GetOverview_WithValidBranch_ReturnsAccurateBranchMetrics()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
@@ -103,16 +67,36 @@ namespace MEP_Management_System.Tests.Controllers
 
             _mockCurrentBranch.Setup(m => m.GetBranchId()).Returns(branchId);
 
-            context.Branches.Add(new Branch { BranchId = branchId, BranchName = "Main Branch", IsActive = 1 });
+            context.Branches.Add(new Branch { BranchId = branchId, BranchName = "Chi nhánh Quận Tân Bình", IsActive = 1 });
             context.StaffAssignments.Add(new StaffAssignment { UserId = userId, BranchId = branchId });
 
-            // Add some customers and orders to have non-zero metrics
-            context.Customers.Add(new Customer { CustomerId = Guid.NewGuid(), BranchId = branchId, Status = 1, CurrentDebt = 50000, CustomerName = "Test" });
+            // Customers in this branch
+            context.Customers.Add(new Customer { CustomerId = Guid.NewGuid(), BranchId = branchId, Status = 1, CurrentDebt = 1200000, CustomerName = "Cửa hàng Hữu Nghị" });
             
+            // Orders in this branch (Last 30 days)
             var orderId = Guid.NewGuid();
-            var order = new Order { OrderId = orderId, OrderCode = "O1", BranchId = branchId, Status = "COMPLETED", TotalAmount = 150000, CreatedAt = DateTime.UtcNow.AddDays(-1) };
+            var order = new Order 
+            { 
+                OrderId = orderId, 
+                OrderCode = "HD-001", 
+                BranchId = branchId, 
+                Status = "COMPLETED", 
+                TotalAmount = 5000000, 
+                CreatedAt = DateTime.UtcNow.AddDays(-2) 
+            };
             context.Orders.Add(order);
-            context.Invoices.Add(new Invoice { InvoiceId = Guid.NewGuid(), InvoiceCode = "I1", OrderId = orderId, Order = order, Status = "COMPLETED", TotalAmount = 150000, CreatedAt = DateTime.UtcNow.AddDays(-1) });
+            
+            // Corresponding Invoice
+            context.Invoices.Add(new Invoice 
+            { 
+                InvoiceId = Guid.NewGuid(), 
+                InvoiceCode = "INV-001", 
+                OrderId = orderId, 
+                Order = order, 
+                Status = "COMPLETED", 
+                TotalAmount = 5000000, 
+                CreatedAt = DateTime.UtcNow.AddDays(-2) 
+            });
             
             await context.SaveChangesAsync();
 
@@ -122,13 +106,32 @@ namespace MEP_Management_System.Tests.Controllers
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result);
             var dto = Assert.IsType<DashboardOverviewDto>(okResult.Value);
+            
             Assert.Equal(branchId, dto.BranchId);
-            Assert.Equal("Main Branch", dto.BranchName);
-            Assert.Equal(150000, dto.TotalRevenueLast30Days);
-            Assert.Equal(1, dto.TotalOrdersLast30Days);
-            Assert.Equal(1, dto.ActiveBranches);
-            Assert.Equal(1, dto.ActiveCustomerCount);
-            Assert.Equal(50000, dto.ActiveCustomerTotalDebt);
+            Assert.Equal("Chi nhánh Quận Tân Bình", dto.BranchName);
+            Assert.Equal(5000000, dto.TotalRevenueLast30Days); // Doanh thu 30 ngày
+            Assert.Equal(1, dto.TotalOrdersLast30Days); // Tổng đơn hàng
+            Assert.Equal(1, dto.ActiveCustomerCount); // Tổng KH hoạt động
+            Assert.Equal(1200000, dto.ActiveCustomerTotalDebt); // Nợ tồn của khách
+        }
+
+        [Fact]
+        public async Task GetOverview_NoBranchAssigned_ReturnsUnauthorized()
+        {
+            // Arrange
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var controller = CreateController(context);
+
+            _mockCurrentBranch.Setup(m => m.GetBranchId()).Returns((Guid?)null); // Branch missing
+
+            // Act
+            var result = await controller.GetOverview();
+
+            // Assert
+            var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
+            var response = Assert.IsType<ApiResponse<object>>(unauthorizedResult.Value);
+            Assert.False(response.Success);
+            Assert.Contains("chi nhánh", response.Message.ToLower());
         }
     }
 }

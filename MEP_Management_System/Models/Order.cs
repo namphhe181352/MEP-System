@@ -7,7 +7,7 @@ public partial class Order
 {
     public Guid OrderId { get; set; }
 
-    public string OrderCode { get; set; } = null!;
+    public string OrderCode { get; set; } = "";
 
     public Guid BranchId { get; set; }
 
@@ -30,7 +30,7 @@ public partial class Order
     public string? PaymentMethod { get; set; }
 
     /// <summary>Trạng thái: PENDING / COMPLETED / CANCELLED.</summary>
-    public string Status { get; set; } = null!;
+    public string Status { get; set; } = "";
 
     public string? Note { get; set; }
 

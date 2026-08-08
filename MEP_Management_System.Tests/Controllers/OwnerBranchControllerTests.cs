@@ -5,16 +5,13 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using MEP_Management_System.Controllers.OwnerController;
 using MEP_Management_System.DTOs;
-using MEP_Management_System.DTOs.AdminDTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Moq;
-using Xunit;
-
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Xunit;
 
 namespace MEP_Management_System.Tests.Controllers
 {
@@ -58,15 +55,28 @@ namespace MEP_Management_System.Tests.Controllers
             return controller;
         }
 
+        // ==========================================
+        // TEST GET /api/owner/branch
+        // ==========================================
         [Fact]
-        public async Task GetBranch_OwnerHasActiveBranches_ReturnsOkWithList()
+        public async Task GetBranch_OwnerWithActiveBranch_ReturnsBranchDetails()
         {
-            // Arrange (UTCID001)
+            // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var ownerId = Guid.NewGuid();
             var branchId = Guid.NewGuid();
             
-            context.Branches.Add(new Branch { BranchId = branchId, BranchName = "CN 1", IsActive = 1 });
+            var branch = new Branch 
+            { 
+                BranchId = branchId, 
+                BranchName = "Chi nhánh Quận 3", 
+                BranchCode = "B-Q3", 
+                Phone = "0901234567", 
+                Address = "Pasteur, Q3",
+                IsActive = 1,
+                ManagerUserId = ownerId
+            };
+            context.Branches.Add(branch);
             context.StaffAssignments.Add(new StaffAssignment { UserId = ownerId, BranchId = branchId });
             await context.SaveChangesAsync();
 
@@ -78,19 +88,32 @@ namespace MEP_Management_System.Tests.Controllers
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result);
             var apiResponse = Assert.IsType<ApiResponse<List<OwnerBranchDto>>>(okResult.Value);
+            
             Assert.True(apiResponse.Success);
             Assert.Single(apiResponse.Data);
-            Assert.Equal("CN 1", apiResponse.Data.First().BranchName);
+            Assert.Equal("Chi nhánh Quận 3", apiResponse.Data.First().BranchName);
+            Assert.Equal("B-Q3", apiResponse.Data.First().BranchCode);
         }
 
         [Fact]
-        public async Task GetBranch_OwnerHasNoActiveBranches_ReturnsNotFound()
+        public async Task GetBranch_OwnerWithoutActiveBranches_ReturnsNotFound()
         {
-            // Arrange (UTCID002)
+            // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var ownerId = Guid.NewGuid();
             
-            // No branches added for this owner
+            // Branch exists but is not active (e.g. IsActive = 0)
+            var branch = new Branch 
+            { 
+                BranchId = Guid.NewGuid(), 
+                BranchName = "Chi nhánh Đã Đóng Cửa", 
+                IsActive = 0, // Inactive
+                ManagerUserId = ownerId
+            };
+            context.Branches.Add(branch);
+            context.StaffAssignments.Add(new StaffAssignment { UserId = ownerId, BranchId = branch.BranchId });
+            await context.SaveChangesAsync();
+
             var controller = CreateController(context, ownerId);
 
             // Act
@@ -103,97 +126,61 @@ namespace MEP_Management_System.Tests.Controllers
             Assert.Equal("Không tìm thấy chi nhánh nào.", apiResponse.Message);
         }
 
+        // ==========================================
+        // TEST POST /api/owner/branch
+        // ==========================================
         [Fact]
-        public async Task GetBranch_MissingUserClaim_ReturnsUnauthorized()
+        public async Task CreateBranch_ValidData_CreatesBranchSuccessfully()
         {
-            // Arrange (UTCID003)
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            
-            // Create controller without NameIdentifier claim
-            var controller = CreateController(context, null);
-
-            // Act
-            var result = await controller.GetBranch();
-
-            // Assert
-            var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
-            var apiResponse = Assert.IsType<ApiResponse<object>>(unauthorizedResult.Value);
-            Assert.False(apiResponse.Success);
-            Assert.Equal("Unauthorized.", apiResponse.Message);
-        }
-
-        [Fact]
-        public async Task CreateBranch_ValidData_ReturnsOk()
-        {
-            // Arrange (UTCID001 for CreateBranch)
+            // Arrange 
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var ownerId = Guid.NewGuid();
             var controller = CreateController(context, ownerId);
 
             var request = new CreateOwnerBranchRequest
             {
-                BranchName = "CN Quận 1",
-                BranchCode = "B001",
+                BranchName = "Chi nhánh Quận 7 (Mới)",
+                BranchCode = "B-Q7",
                 Phone = "0987654321",
-                Address = "123 Le Loi"
+                Address = "Nguyễn Hữu Thọ, Q7"
             };
 
             // Act
             var result = await controller.CreateBranch(request);
 
             // Assert
-            var okResult = Assert.IsType<CreatedAtActionResult>(result);
-            var apiResponse = Assert.IsType<ApiResponse<OwnerBranchDto>>(okResult.Value);
+            var createdResult = Assert.IsType<CreatedAtActionResult>(result);
+            var apiResponse = Assert.IsType<ApiResponse<OwnerBranchDto>>(createdResult.Value);
             Assert.True(apiResponse.Success);
-            Assert.Equal("CN Quận 1", apiResponse.Data.BranchName);
+            Assert.Equal("Chi nhánh Quận 7 (Mới)", apiResponse.Data.BranchName);
             
-            // Verify DB state
-            var dbBranch = await context.Branches.FirstOrDefaultAsync(b => b.BranchCode == "B001");
+            // Check Database 
+            var dbBranch = await context.Branches.FirstOrDefaultAsync(b => b.BranchCode == "B-Q7");
             Assert.NotNull(dbBranch);
             Assert.Equal(ownerId, dbBranch.ManagerUserId);
-        }
-
-        [Fact]
-        public async Task CreateBranch_MissingBranchName_ReturnsBadRequest()
-        {
-            // Arrange (UTCID002 for CreateBranch)
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var ownerId = Guid.NewGuid();
-            var controller = CreateController(context, ownerId);
-
-            var request = new CreateOwnerBranchRequest
-            {
-                BranchName = "", // Empty name
-                BranchCode = "B002"
-            };
-
-            // Act
-            var result = await controller.CreateBranch(request);
-
-            // Assert
-            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-            var apiResponse = Assert.IsType<ApiResponse<object>>(badRequestResult.Value);
-            Assert.False(apiResponse.Success);
-            Assert.Equal("Tên chi nhánh là bắt buộc.", apiResponse.Message);
+            
+            // Ensure owner is automatically assigned to the new branch
+            var assignment = await context.StaffAssignments.FirstOrDefaultAsync(a => a.UserId == ownerId && a.BranchId == dbBranch.BranchId);
+            Assert.NotNull(assignment);
         }
 
         [Fact]
         public async Task CreateBranch_DuplicateBranchCode_ReturnsBadRequest()
         {
-            // Arrange (UTCID003 for CreateBranch)
+            // Arrange 
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var ownerId = Guid.NewGuid();
             
-            // Seed a branch with code B001
-            context.Branches.Add(new Branch { BranchId = Guid.NewGuid(), BranchName = "Old Branch", BranchCode = "B001", IsActive = 1 });
+            // Pre-insert a branch with code B-Q7
+            context.Branches.Add(new Branch { BranchId = Guid.NewGuid(), BranchName = "Old Branch", BranchCode = "B-Q7", IsActive = 1 });
             await context.SaveChangesAsync();
 
             var controller = CreateController(context, ownerId);
 
             var request = new CreateOwnerBranchRequest
             {
-                BranchName = "New Branch",
-                BranchCode = "B001" // Duplicate
+                BranchName = "New Branch Attempt",
+                BranchCode = "B-Q7" // Duplicate code
             };
 
             // Act

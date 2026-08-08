@@ -6,8 +6,7 @@ namespace MEP_Management_System.Models;
 public partial class Branch
 {
     public Guid BranchId { get; set; }
-
-    public string BranchName { get; set; } = null!;
+    public string BranchName { get; set; } = "";
 
     public string? BranchCode { get; set; }
 

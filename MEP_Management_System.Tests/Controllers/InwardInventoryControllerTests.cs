@@ -69,27 +69,26 @@ namespace MEP_Management_System.Tests.Controllers
             };
 
             if (branchId.HasValue)
-            {
                 _mockBranchAccessor.Setup(m => m.GetBranchId()).Returns(branchId.Value);
-            }
             else
-            {
                 _mockBranchAccessor.Setup(m => m.GetBranchId()).Returns((Guid?)null);
-            }
 
             return controller;
         }
 
+        // ==========================================
+        // TEST GET /api/inventory/inward
+        // ==========================================
         [Fact]
-        public async Task GetInwardInventories_ValidBranch_ReturnsOk()
+        public async Task GetInwardInventories_ValidBranch_ReturnsPaginatedList()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var branchId = Guid.NewGuid();
-            var controller = CreateController(context, Guid.NewGuid(), branchId);
-
             var userId = Guid.NewGuid();
-            context.Users.Add(new User { UserId = userId, Username = "test", Email = "test@test.com", FullName = "Test", PasswordHash = "hash" });
+            var controller = CreateController(context, userId, branchId);
+
+            context.Users.Add(new User { UserId = userId, Username = "manager", Email = "manager@mep.vn", FullName = "Quản lý kho", PasswordHash = "hash" });
             
             var ticket = new StockTicket 
             { 
@@ -97,49 +96,67 @@ namespace MEP_Management_System.Tests.Controllers
                 BranchId = branchId, 
                 UserId = userId,
                 TicketType = "PURCHASE", 
-                Status = "PENDING", 
+                Status = "PENDING", // Chờ duyệt
+                Notes = "Nhập hàng iphone",
                 CreatedAt = DateTime.UtcNow 
             };
             context.StockTickets.Add(ticket);
             await context.SaveChangesAsync();
 
             // Act
-            var result = await controller.GetInwardInventories(status: null, ticketType: null, fromDate: null, toDate: null, pageNumber: 1, pageSize: 10, branchId: branchId);
+            var result = await controller.GetInwardInventories(status: "PENDING", ticketType: null, fromDate: null, toDate: null, pageNumber: 1, pageSize: 10, branchId: branchId);
 
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result);
             var apiResponse = Assert.IsType<ApiResponse<PaginatedResponse<InwardInventoryResponseDto>>>(okResult.Value);
             Assert.True(apiResponse.Success);
             Assert.Single(apiResponse.Data.Items);
-            Assert.Equal("PENDING", apiResponse.Data.Items.First().Status);
+            Assert.Equal("Nhập hàng iphone", apiResponse.Data.Items.First().Notes);
         }
 
+        // ==========================================
+        // TEST POST /api/inventory/inward
+        // ==========================================
         [Fact]
-        public async Task GetInwardInventories_NoBranch_ReturnsEmptyList()
+        public async Task CreateInwardInventory_ValidItems_CreatesTicketAndItems()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context, Guid.NewGuid(), null);
+            var branchId = Guid.NewGuid();
+            var userId = Guid.NewGuid();
+            var controller = CreateController(context, userId, branchId);
 
-            var ticket = new StockTicket 
-            { 
-                StockTicketId = Guid.NewGuid(), 
-                BranchId = Guid.NewGuid(), 
-                TicketType = "PURCHASE", 
-                Status = "PENDING", 
-                CreatedAt = DateTime.UtcNow 
-            };
-            context.StockTickets.Add(ticket);
+            context.Users.Add(new User { UserId = userId, Username = "staff", Email = "staff@mep.vn", FullName = "Nhân viên kho", PasswordHash = "hash" });
+            
+            var product = new Product { ProductId = Guid.NewGuid(), ProductName = "iPhone 15 Pro", SellingPrice = 30000000 };
+            context.Products.Add(product);
             await context.SaveChangesAsync();
 
+            var request = new CreateInwardInventoryDto
+            {
+                Notes = "Nhập hàng test",
+                TicketType = "PURCHASE",
+                Details = new List<InwardInventoryDetailDto>
+                {
+                    new InwardInventoryDetailDto { ProductId = product.ProductId, Quantity = 10, Price = 25000000 }
+                }
+            };
+
             // Act
-            var result = await controller.GetInwardInventories(status: null, ticketType: null, fromDate: null, toDate: null, pageNumber: 1, pageSize: 10, branchId: null);
+            var result = await controller.CreateInwardInventory(request, branchId);
 
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result);
-            var apiResponse = Assert.IsType<ApiResponse<PaginatedResponse<InwardInventoryResponseDto>>>(okResult.Value);
+            var apiResponse = Assert.IsType<ApiResponse<InwardInventoryResponseDto>>(okResult.Value);
+            
             Assert.True(apiResponse.Success);
-            Assert.Empty(apiResponse.Data.Items);
+            var createdTicket = await context.StockTickets.Include(t => t.StockTicketDetails).FirstOrDefaultAsync(t => t.StockTicketId == apiResponse.Data.StockTicketId);
+            
+            Assert.NotNull(createdTicket);
+            Assert.Equal("PENDING", createdTicket.Status); // Ticket must be pending when created
+            Assert.Single(createdTicket.StockTicketDetails);
+            Assert.Equal(10, createdTicket.StockTicketDetails.First().Quantity);
+            Assert.Equal(25000000, createdTicket.StockTicketDetails.First().Price);
         }
     }
 }

@@ -7,7 +7,7 @@ public partial class Supplier
 {
     public Guid SupplierId { get; set; }
 
-    public string SupplierName { get; set; } = null!;
+    public string SupplierName { get; set; } = "";
 
     public string? ContactPhone { get; set; }
 

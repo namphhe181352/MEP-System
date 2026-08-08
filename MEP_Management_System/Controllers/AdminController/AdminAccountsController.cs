@@ -915,22 +915,15 @@ public class AdminAccountsController : ControllerBase
             }
         }
 
-        var existing = user.StaffAssignments.FirstOrDefault();
-        if (existing != null)
+        // Xoa tat ca StaffAssignment cu, tao moi de dam bao chi co 1 assignment active
+        _context.StaffAssignments.RemoveRange(user.StaffAssignments);
+        _context.StaffAssignments.Add(new StaffAssignment
         {
-            existing.BranchId = branch.BranchId;
-            existing.AssignedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
-        }
-        else
-        {
-            _context.StaffAssignments.Add(new StaffAssignment
-            {
-                AssignmentId = Guid.NewGuid(),
-                UserId = user.UserId,
-                BranchId = branch.BranchId,
-                AssignedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
-            });
-        }
+            AssignmentId = Guid.NewGuid(),
+            UserId = user.UserId,
+            BranchId = branch.BranchId,
+            AssignedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
+        });
 
         user.DefaultBranchId = branch.BranchId;
 

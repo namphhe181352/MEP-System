@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using AutoMapper;
 using MEP_Management_System.Controllers;
 using MEP_Management_System.DTOs;
+using MEP_Management_System.DTOs.AuthenticationDTOs;
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
 using MEP_Management_System.Services.Email;
@@ -35,9 +36,9 @@ namespace MEP_Management_System.Tests.Controllers
             _mockEmailService = new Mock<IEmailService>();
 
             var mockConfig = new Mock<IConfiguration>();
-            mockConfig.Setup(c => c["Jwt:Key"]).Returns("ThisIsAVerySecretKeyForJwtAuthentication123!");
-            mockConfig.Setup(c => c["Jwt:Issuer"]).Returns("TestIssuer");
-            mockConfig.Setup(c => c["Jwt:Audience"]).Returns("TestAudience");
+            mockConfig.Setup(c => c["Jwt:Key"]).Returns("ThisIsAVerySecretKeyForJwtAuthentication123!_MustBeLongEnough");
+            mockConfig.Setup(c => c["Jwt:Issuer"]).Returns("MEP_System_Test");
+            mockConfig.Setup(c => c["Jwt:Audience"]).Returns("MEP_System_Clients");
             _jwtHelper = new JwtHelper(mockConfig.Object);
         }
 
@@ -46,116 +47,125 @@ namespace MEP_Management_System.Tests.Controllers
             return new authController(context, _mockMapper.Object, _jwtHelper, _mockEmailService.Object);
         }
 
+        // ==========================================
+        // TEST SELF REGISTRATION (DISABLED)
+        // ==========================================
         [Fact]
-        public async Task RegisterStart_EmailAlreadyExists_ReturnsBadRequest()
+        public async Task RegisterVerify_Returns410Gone_BecauseSelfRegistrationIsDisabled()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var controller = CreateController(context);
 
-            context.Users.Add(new User { UserId = Guid.NewGuid(), Email = "test@test.com", Username = "test", PasswordHash = "hash", FullName = "Test" });
-            await context.SaveChangesAsync();
-
-            var request = new RegisterStartDto { Email = "test@test.com" };
-
-            // Act
-            var result = await controller.RegisterStart(request);
-
-            // Assert
-            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.NotNull(badRequestResult.Value);
-            var valueType = badRequestResult.Value.GetType();
-            var message = valueType.GetProperty("message")?.GetValue(badRequestResult.Value, null) as string;
-            Assert.Equal("Email này đã được đăng ký tài khoản.", message);
-        }
-
-        [Fact]
-        public async Task RegisterStart_ValidEmail_ReturnsOkAndSendsEmail()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
-
-            var request = new RegisterStartDto { Email = "newuser@test.com" };
-
-            _mockEmailService.Setup(e => e.SendOtpEmailAsync(It.IsAny<string>(), It.IsAny<string>()))
-                             .Returns(Task.CompletedTask);
-
-            // Act
-            var result = await controller.RegisterStart(request);
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            _mockEmailService.Verify(e => e.SendOtpEmailAsync("newuser@test.com", It.IsAny<string>()), Times.Once);
-            
-            var otpInDb = await context.OtpVerifications.FirstOrDefaultAsync(o => o.Email == "newuser@test.com");
-            Assert.NotNull(otpInDb);
-            Assert.Equal("REGISTER", otpInDb.Purpose);
-        }
-
-        [Fact]
-        public async Task RegisterVerify_InvalidOtp_ReturnsBadRequest()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
-
-            var request = new RegisterVerifyDto { Email = "newuser@test.com", OtpCode = "123456", Password = "Password123!", FullName = "New User", BranchName = "Branch 1" };
+            var request = new RegisterVerifyDto 
+            { 
+                Email = "hacker.wannabe@mep.vn", 
+                OtpCode = "123456", 
+                Password = "Password123!", 
+                FullName = "Hacker", 
+                BranchName = "Chi nhánh Ảo" 
+            };
 
             // Act
             var result = await controller.RegisterVerify(request);
 
             // Assert
-            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-            var valueType = badRequestResult.Value.GetType();
-            var message = valueType.GetProperty("message")?.GetValue(badRequestResult.Value, null) as string;
-            Assert.Equal("Mã OTP không chính xác hoặc đã hết hạn.", message);
+            var goneResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(StatusCodes.Status410Gone, goneResult.StatusCode);
+            
+            var valueType = goneResult.Value.GetType();
+            var message = valueType.GetProperty("message")?.GetValue(goneResult.Value, null) as string;
+            
+            Assert.NotNull(message);
+            Assert.Contains("ngừng hoạt động", message); // Feature disabled
+            Assert.Contains("Admin", message); // Needs admin
         }
 
+        // ==========================================
+        // TEST LOGIN (RBAC FLOW)
+        // ==========================================
         [Fact]
-        public async Task RegisterVerify_ValidOtp_ReturnsOkAndCreatesUserAndBranch()
+        public async Task Login_ValidOwner_ReturnsTokenAndRoles_WithBranchAssigned()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var controller = CreateController(context);
 
-            context.OtpVerifications.Add(new OtpVerification
-            {
-                OtpId = Guid.NewGuid(),
-                Email = "newuser@test.com",
-                OtpCode = "123456",
-                Purpose = "REGISTER",
-                IsUsed = 0,
-                ExpiredAt = DateTime.UtcNow.AddMinutes(10)
-            });
-            await context.SaveChangesAsync();
+            var roleOwner = new Role { RoleId = Guid.NewGuid(), RoleName = "Owner" };
+            context.Roles.Add(roleOwner);
+            
+            var branchId = Guid.NewGuid();
+            var branch = new Branch { BranchId = branchId, BranchName = "MEP Tân Bình", IsActive = 1 };
+            context.Branches.Add(branch);
 
-            var request = new RegisterVerifyDto { Email = "newuser@test.com", OtpCode = "123456", Password = "Password123!", FullName = "New User", BranchName = "Branch 1" };
+            // Using BCrypt for password hashing as used in the controller
+            var passwordHash = BCrypt.Net.BCrypt.HashPassword("RealPass123!");
+            
+            var ownerUser = new User 
+            { 
+                UserId = Guid.NewGuid(), 
+                FullName = "Lý Hải", 
+                Email = "hai.ly@mep.vn", 
+                Username = "hai.ly", 
+                PasswordHash = passwordHash,
+                IsActive = 1,
+                IsVerified = true,
+                Status = "ACTIVE"
+            };
+            ownerUser.Roles.Add(roleOwner);
+            context.Users.Add(ownerUser);
+            
+            context.StaffAssignments.Add(new StaffAssignment { UserId = ownerUser.UserId, BranchId = branchId });
+            await context.SaveChangesAsync();
+            
+            _mockMapper.Setup(m => m.Map<UserResponseDto>(It.IsAny<User>()))
+                .Returns(new UserResponseDto { UserId = ownerUser.UserId, Email = ownerUser.Email, FullName = ownerUser.FullName });
+
+            var request = new LoginDto { Email = "hai.ly@mep.vn", Password = "RealPass123!" };
 
             // Act
-            var result = await controller.RegisterVerify(request);
+            var result = await controller.Login(request);
 
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result);
+            var valueType = okResult.Value.GetType();
             
-            var userInDb = await context.Users.FirstOrDefaultAsync(u => u.Email == "newuser@test.com");
-            Assert.NotNull(userInDb);
-            Assert.Equal("New User", userInDb.FullName);
-            Assert.True(userInDb.IsVerified);
+            var rolesObj = valueType.GetProperty("roles")?.GetValue(okResult.Value, null) as List<string>;
+            var dataObj = valueType.GetProperty("data")?.GetValue(okResult.Value, null) as UserResponseDto;
+            var msg = valueType.GetProperty("message")?.GetValue(okResult.Value, null) as string;
 
-            var branchInDb = await context.Branches.FirstOrDefaultAsync(b => b.BranchName == "Branch 1");
-            Assert.NotNull(branchInDb);
-            Assert.Equal(userInDb.UserId, branchInDb.ManagerUserId);
+            Assert.Equal("Đăng nhập thành công!", msg);
+            Assert.NotNull(rolesObj);
+            Assert.Contains("Owner", rolesObj);
+            
+            Assert.NotNull(dataObj);
+            Assert.Equal("hai.ly@mep.vn", dataObj.Email);
+            Assert.NotNull(dataObj.Token); // JWT Token generated
         }
 
         [Fact]
-        public async Task Login_InvalidEmail_ReturnsBadRequest()
+        public async Task Login_LockedAccount_ReturnsBadRequest()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var controller = CreateController(context);
 
-            var request = new LoginDto { Email = "notfound@test.com", Password = "Password123!" };
+            var passwordHash = BCrypt.Net.BCrypt.HashPassword("RealPass123!");
+            var lockedUser = new User 
+            { 
+                UserId = Guid.NewGuid(), 
+                FullName = "Bị Khóa", 
+                Email = "locked@mep.vn", 
+                Username = "locked", 
+                PasswordHash = passwordHash,
+                IsActive = 0, // LOCKED
+                IsVerified = true,
+                Status = "SUSPENDED"
+            };
+            context.Users.Add(lockedUser);
+            await context.SaveChangesAsync();
+
+            var request = new LoginDto { Email = "locked@mep.vn", Password = "RealPass123!" };
 
             // Act
             var result = await controller.Login(request);
@@ -164,7 +174,40 @@ namespace MEP_Management_System.Tests.Controllers
             var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
             var valueType = badRequestResult.Value.GetType();
             var message = valueType.GetProperty("message")?.GetValue(badRequestResult.Value, null) as string;
-            Assert.Equal("Email này chưa được đăng ký.", message);
+            
+            Assert.Contains("khóa", message);
+        }
+
+        [Fact]
+        public async Task Login_WrongPassword_ReturnsBadRequest()
+        {
+            // Arrange
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var controller = CreateController(context);
+
+            var passwordHash = BCrypt.Net.BCrypt.HashPassword("RealPass123!");
+            var user = new User 
+            { 
+                UserId = Guid.NewGuid(), 
+                Email = "valid@mep.vn", 
+                PasswordHash = passwordHash,
+                IsActive = 1,
+                IsVerified = true
+            };
+            context.Users.Add(user);
+            await context.SaveChangesAsync();
+
+            var request = new LoginDto { Email = "valid@mep.vn", Password = "WrongPassword!" };
+
+            // Act
+            var result = await controller.Login(request);
+
+            // Assert
+            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+            var valueType = badRequestResult.Value.GetType();
+            var message = valueType.GetProperty("message")?.GetValue(badRequestResult.Value, null) as string;
+            
+            Assert.Equal("Mật khẩu không chính xác.", message);
         }
     }
 }

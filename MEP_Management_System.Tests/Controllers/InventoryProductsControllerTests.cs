@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
-using AutoMapper;
 using MEP_Management_System.Controllers.InventoryController;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
@@ -21,7 +20,7 @@ namespace MEP_Management_System.Tests.Controllers
     public class InventoryProductsControllerTests
     {
         private DbContextOptions<MEPDatabaseContext> _dbContextOptions;
-        private IMapper _mapper;
+        private Mock<ICurrentBranchAccessor> _mockBranchAccessor;
 
         public InventoryProductsControllerTests()
         {
@@ -30,29 +29,22 @@ namespace MEP_Management_System.Tests.Controllers
                 .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
                 .Options;
 
-            var config = new MapperConfiguration(cfg =>
-            {
-                // Basic mock mapping
-                cfg.CreateMap<ProductUpsertDto, Product>()
-                    .ForMember(dest => dest.BaseUnit, opt => opt.MapFrom(src => src.Unit));
-                cfg.CreateMap<Product, ProductUpsertDto>()
-                    .ForMember(dest => dest.Unit, opt => opt.MapFrom(src => src.BaseUnit));
-            });
-            _mapper = config.CreateMapper();
+            _mockBranchAccessor = new Mock<ICurrentBranchAccessor>();
         }
 
-        private ProductsController CreateController(MEPDatabaseContext context, Guid branchId, Guid? userId = null)
+        private InventoryProductsController CreateController(MEPDatabaseContext context, Guid? userId = null, Guid? branchId = null, string role = "Owner")
         {
-            var mockBranchAccessor = new Mock<ICurrentBranchAccessor>();
-            mockBranchAccessor.Setup(m => m.GetBranchId()).Returns(branchId);
-
-            var controller = new ProductsController(context, _mapper, mockBranchAccessor.Object);
+            var controller = new InventoryProductsController(context, _mockBranchAccessor.Object);
 
             var claims = new List<Claim>();
             if (userId.HasValue)
             {
                 claims.Add(new Claim(ClaimTypes.NameIdentifier, userId.Value.ToString()));
                 claims.Add(new Claim("userId", userId.Value.ToString()));
+            }
+            if (!string.IsNullOrEmpty(role))
+            {
+                claims.Add(new Claim(ClaimTypes.Role, role));
             }
 
             var identity = new ClaimsIdentity(claims, "TestAuthType");
@@ -63,88 +55,86 @@ namespace MEP_Management_System.Tests.Controllers
                 HttpContext = new DefaultHttpContext { User = claimsPrincipal }
             };
 
+            if (branchId.HasValue)
+                _mockBranchAccessor.Setup(m => m.GetBranchId()).Returns(branchId.Value);
+            else
+                _mockBranchAccessor.Setup(m => m.GetBranchId()).Returns((Guid?)null);
+
             return controller;
         }
 
+        // ==========================================
+        // TEST GET /api/inventory/products
+        // ==========================================
         [Fact]
-        public async Task GetProducts_ReturnsProducts()
+        public async Task GetProducts_ReturnsProductsFromSpecificBranch_Only()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
-            var branchId = Guid.NewGuid();
-            var controller = CreateController(context, branchId);
-
-            var product = new Product { ProductId = Guid.NewGuid(), ProductCode = "P001", ProductName = "Test Product", BaseUnit = "Cái" };
-            context.Products.Add(product);
-            context.BranchProducts.Add(new BranchProduct { BranchProductId = Guid.NewGuid(), BranchId = branchId, ProductId = product.ProductId, Product = product, IsActive = 1 });
-            await context.SaveChangesAsync();
-
-            var queryParams = new ProductParameters { PageNumber = 1, PageSize = 10 };
-
-            // Act
-            var result = await controller.GetProducts(queryParams);
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            var response = Assert.IsType<ApiResponse<PaginatedResponse<ProductUpsertDto>>>(okResult.Value);
-            Assert.True(response.Success);
-            Assert.Single(response.Data!.Items);
-        }
-
-        [Fact]
-        public async Task CreateProduct_ValidData_ReturnsCreated()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var branchId = Guid.NewGuid();
-            var controller = CreateController(context, branchId, Guid.NewGuid());
-
-            var dto = new ProductUpsertDto 
-            { 
-                ProductCode = "P002", 
-                ProductName = "New Product", 
-                Unit = "Cái",
-                ActualStock = 10,
-                AvailableStock = 10
-            };
-
-            // Act
-            var result = await controller.CreateProduct(dto);
-
-            // Assert
-            var createdResult = Assert.IsType<CreatedAtActionResult>(result);
-            var response = Assert.IsType<ApiResponse<ProductUpsertDto>>(createdResult.Value);
-            Assert.True(response.Success);
+            var branch1Id = Guid.NewGuid();
+            var branch2Id = Guid.NewGuid(); // Another branch
+            var userId = Guid.NewGuid();
             
-            var savedProduct = await context.Products.FirstOrDefaultAsync(p => p.ProductCode == "P002");
-            Assert.NotNull(savedProduct);
-        }
+            // Using controller assigned to branch 1
+            var controller = CreateController(context, userId, branch1Id);
 
-        [Fact]
-        public async Task DeleteProduct_ReturnsOk()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var branchId = Guid.NewGuid();
-            var controller = CreateController(context, branchId);
-
-            var product = new Product { ProductId = Guid.NewGuid(), ProductCode = "P003", ProductName = "Test", Status = 1, BaseUnit = "Cái" };
-            var branchProduct = new BranchProduct { BranchProductId = Guid.NewGuid(), BranchId = branchId, ProductId = product.ProductId, Product = product, IsActive = 1 };
+            var productA = new Product { ProductId = Guid.NewGuid(), ProductName = "Bàn phím cơ Akko", SellingPrice = 1200000, Status = "ACTIVE" };
+            var productB = new Product { ProductId = Guid.NewGuid(), ProductName = "Chuột Logitech G102", SellingPrice = 450000, Status = "ACTIVE" };
+            context.Products.AddRange(productA, productB);
             
-            context.Products.Add(product);
-            context.BranchProducts.Add(branchProduct);
+            // Product A is in Branch 1 (Stock = 5)
+            context.BranchProducts.Add(new BranchProduct { BranchId = branch1Id, ProductId = productA.ProductId, StockQuantity = 5 });
+            // Product B is in Branch 2 (Stock = 20), should NOT be visible to Branch 1 query
+            context.BranchProducts.Add(new BranchProduct { BranchId = branch2Id, ProductId = productB.ProductId, StockQuantity = 20 });
+            
             await context.SaveChangesAsync();
 
             // Act
-            var result = await controller.DeleteProduct(product.ProductId);
+            var result = await controller.GetProducts(search: null, categoryId: null, status: null, pageNumber: 1, pageSize: 10, branchId: branch1Id);
 
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result);
-            var response = Assert.IsType<ApiResponse<object>>(okResult.Value);
-            Assert.True(response.Success);
+            var apiResponse = Assert.IsType<ApiResponse<PaginatedResponse<InventoryProductDto>>>(okResult.Value);
+            
+            Assert.True(apiResponse.Success);
+            Assert.Single(apiResponse.Data.Items); // Should only return product A
+            
+            var returnedItem = apiResponse.Data.Items.First();
+            Assert.Equal("Bàn phím cơ Akko", returnedItem.ProductName);
+            Assert.Equal(5, returnedItem.StockQuantity);
+        }
 
-            var updatedBp = await context.BranchProducts.FindAsync(branchProduct.BranchProductId);
-            Assert.Equal((short)0, updatedBp!.IsActive);
+        [Fact]
+        public async Task GetLowStockProducts_ReturnsOnlyProductsUnderThreshold()
+        {
+            // Arrange
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var branchId = Guid.NewGuid();
+            var controller = CreateController(context, Guid.NewGuid(), branchId);
+
+            var p1 = new Product { ProductId = Guid.NewGuid(), ProductName = "Màn hình Dell 24 inch", Status = "ACTIVE" };
+            var p2 = new Product { ProductId = Guid.NewGuid(), ProductName = "Cáp HDMI 2m", Status = "ACTIVE" };
+            context.Products.AddRange(p1, p2);
+            
+            // p1 has 2 items left, p2 has 50 items left
+            // Default threshold is usually around 10
+            context.BranchProducts.Add(new BranchProduct { BranchId = branchId, ProductId = p1.ProductId, StockQuantity = 2 });
+            context.BranchProducts.Add(new BranchProduct { BranchId = branchId, ProductId = p2.ProductId, StockQuantity = 50 });
+            await context.SaveChangesAsync();
+
+            // Act
+            // GetLowStock endpoint usually exists, or using standard GetProducts with a lowStock filter
+            // Depending on controller implementation:
+            var result = await controller.GetProducts(search: null, categoryId: null, status: "LOW_STOCK", pageNumber: 1, pageSize: 10, branchId: branchId);
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var apiResponse = Assert.IsType<ApiResponse<PaginatedResponse<InventoryProductDto>>>(okResult.Value);
+            
+            // It should only return p1
+            Assert.True(apiResponse.Success);
+            Assert.Single(apiResponse.Data.Items);
+            Assert.Equal("Màn hình Dell 24 inch", apiResponse.Data.Items.First().ProductName);
         }
     }
 }

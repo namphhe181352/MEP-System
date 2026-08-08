@@ -405,14 +405,33 @@ public class OwnerStaffController : ControllerBase
                 Message = "Không thể xác định người dùng từ token."
             });
 
+        var branchId = GetCurrentBranchId();
+        if (!branchId.HasValue)
+            return BadRequest(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Không tìm thấy thông tin chi nhánh."
+            });
+
+        // Kiem tra nhan vien co thuoc chi nhanh hien tai khong
+        var isInBranch = await _context.StaffAssignments
+            .AnyAsync(sa => sa.UserId == id && sa.BranchId == branchId.Value);
+
+        if (!isInBranch)
+            return NotFound(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Nhân viên không tồn tại hoặc không thuộc chi nhánh này."
+            });
+
         var staff = await _context.Users
-            .FirstOrDefaultAsync(u => u.UserId == id && u.CreatedBy == ownerId.Value);
+            .FirstOrDefaultAsync(u => u.UserId == id);
 
         if (staff == null)
             return NotFound(new ApiResponse<object>
             {
                 Success = false,
-                Message = "Nhân viên không tồn tại hoặc không thuộc quyền quản lý của bạn."
+                Message = "Nhân viên không tồn tại."
             });
 
         // Đếm số lượng liên kết trong các bảng
@@ -765,18 +784,36 @@ public class OwnerStaffController : ControllerBase
                 Message = "Không thể xác định người dùng từ token."
             });
 
+        var branchId = GetCurrentBranchId();
+        if (!branchId.HasValue)
+            return BadRequest(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Không tìm thấy thông tin chi nhánh."
+            });
+
+        // Kiem tra nhan vien co thuoc chi nhanh hien tai khong (qua StaffAssignments)
+        var isInBranch = await _context.StaffAssignments
+            .AnyAsync(sa => sa.UserId == id && sa.BranchId == branchId.Value);
+
+        if (!isInBranch)
+            return NotFound(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Nhân viên không tồn tại hoặc không thuộc quyền quản lý."
+            });
+
         var staff = await _context.Users
             .Include(u => u.UserPermissions)
             .Include(u => u.Roles)
             .ThenInclude(r => r.Permissions)
-            .FirstOrDefaultAsync(u =>
-                u.UserId == id && u.CreatedBy == ownerId.Value);
+            .FirstOrDefaultAsync(u => u.UserId == id);
 
         if (staff == null)
             return NotFound(new ApiResponse<object>
             {
                 Success = false,
-                Message = "Nhân viên không tồn tại hoặc không thuộc quyền quản lý."
+                Message = "Nhân viên không tồn tại."
             });
 
         if (!string.IsNullOrWhiteSpace(dto.Email))

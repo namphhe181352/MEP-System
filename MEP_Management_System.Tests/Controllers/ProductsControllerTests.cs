@@ -3,17 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
-using AutoMapper;
-using MEP_Management_System.Controllers.InventoryController;
+using MEP_Management_System.Controllers;
 using MEP_Management_System.DTOs;
-using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
-using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Moq;
 using Xunit;
 
 namespace MEP_Management_System.Tests.Controllers
@@ -21,8 +17,6 @@ namespace MEP_Management_System.Tests.Controllers
     public class ProductsControllerTests
     {
         private DbContextOptions<MEPDatabaseContext> _dbContextOptions;
-        private Mock<ICurrentBranchAccessor> _mockBranchAccessor;
-        private Mock<IMapper> _mockMapper;
 
         public ProductsControllerTests()
         {
@@ -30,23 +24,16 @@ namespace MEP_Management_System.Tests.Controllers
                 .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
                 .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
                 .Options;
-            
-            _mockBranchAccessor = new Mock<ICurrentBranchAccessor>();
-            _mockMapper = new Mock<IMapper>();
         }
 
-        private ProductsController CreateController(MEPDatabaseContext context, Guid? userId = null, Guid? branchId = null, string role = "Owner")
+        private MEP_Management_System.Controllers.AdminController.ProductsController CreateController(MEPDatabaseContext context, Guid? userId = null)
         {
-            var controller = new ProductsController(context, _mockMapper.Object, _mockBranchAccessor.Object);
+            var controller = new MEP_Management_System.Controllers.AdminController.ProductsController(context);
 
             var claims = new List<Claim>();
             if (userId.HasValue)
             {
                 claims.Add(new Claim(ClaimTypes.NameIdentifier, userId.Value.ToString()));
-            }
-            if (!string.IsNullOrEmpty(role))
-            {
-                claims.Add(new Claim(ClaimTypes.Role, role));
             }
 
             var identity = new ClaimsIdentity(claims, "TestAuthType");
@@ -57,81 +44,47 @@ namespace MEP_Management_System.Tests.Controllers
                 HttpContext = new DefaultHttpContext { User = claimsPrincipal }
             };
 
-            if (branchId.HasValue)
-            {
-                _mockBranchAccessor.Setup(m => m.GetBranchId()).Returns(branchId.Value);
-            }
-            else
-            {
-                _mockBranchAccessor.Setup(m => m.GetBranchId()).Returns((Guid?)null);
-            }
-
             return controller;
         }
 
+        // ==========================================
+        // TEST POST /api/admin/products (Global Product Catalog)
+        // ==========================================
         [Fact]
-        public async Task GetProducts_NoValidBranch_ReturnsBadRequest()
+        public async Task CreateProduct_ValidData_CreatesMasterProductInCatalog()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context, Guid.NewGuid(), null); // branchId is null
+            var controller = CreateController(context, Guid.NewGuid());
 
-            var queryParams = new ProductParameters { PageSize = 10, PageNumber = 1 };
-
-            // Act
-            var result = await controller.GetProducts(queryParams);
-
-            // Assert
-            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-            var apiResponse = Assert.IsType<ApiResponse<object>>(badRequestResult.Value);
-            Assert.False(apiResponse.Success);
-            Assert.Equal("Không tìm thấy chi nhánh hợp lệ.", apiResponse.Message);
-        }
-
-        [Fact]
-        public async Task GetProducts_InvalidPagination_ReturnsBadRequest()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context, Guid.NewGuid(), Guid.NewGuid());
-
-            var queryParams = new ProductParameters { PageSize = 0, PageNumber = 1 }; // Invalid PageSize
-
-            // Act
-            var result = await controller.GetProducts(queryParams);
-
-            // Assert
-            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-            var apiResponse = Assert.IsType<ApiResponse<object>>(badRequestResult.Value);
-            Assert.False(apiResponse.Success);
-            Assert.Equal("Invalid pagination parameters", apiResponse.Message);
-        }
-
-        [Fact]
-        public async Task GetProducts_ValidData_ReturnsOk()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var branchId = Guid.NewGuid();
-            var controller = CreateController(context, Guid.NewGuid(), branchId);
-
-            var product = new Product { ProductId = Guid.NewGuid(), ProductName = "Test Product", ProductCode = "P001", BaseUnit = "Cái" };
-            context.Products.Add(product);
-            context.BranchProducts.Add(new BranchProduct { BranchProductId = Guid.NewGuid(), BranchId = branchId, ProductId = product.ProductId, Product = product });
+            var categoryId = Guid.NewGuid();
+            context.ProductCategories.Add(new ProductCategory { CategoryId = categoryId, CategoryName = "Nước Giải Khát", IsActive = 1 });
             await context.SaveChangesAsync();
 
-            var queryParams = new ProductParameters { PageSize = 10, PageNumber = 1 };
-
-            _mockMapper.Setup(m => m.Map<IEnumerable<ProductUpsertDto>>(It.IsAny<IEnumerable<BranchProduct>>()))
-                       .Returns(new List<ProductUpsertDto> { new ProductUpsertDto { ProductName = "Test Product", ProductCode = "P001" } });
+            var request = new MEP_Management_System.DTOs.AdminDTOs.CreateProductDto
+            {
+                ProductName = "Nước Ngọt Coca Cola 330ml",
+                ProductCode = "SP-COCA-330",
+                BaseUnit = "Lon",
+                CostPrice = 8000,
+                SellingPrice = 12000,
+                CategoryId = categoryId
+            };
 
             // Act
-            var result = await controller.GetProducts(queryParams);
+            var result = await controller.CreateProduct(request);
 
             // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            var apiResponse = Assert.IsType<ApiResponse<PaginatedResponse<ProductUpsertDto>>>(okResult.Value);
+            var okResult = Assert.IsType<CreatedAtActionResult>(result);
+            var apiResponse = Assert.IsType<ApiResponse<MEP_Management_System.DTOs.AdminDTOs.ProductDto>>(okResult.Value);
+            
             Assert.True(apiResponse.Success);
+            Assert.Equal("Nước Ngọt Coca Cola 330ml", apiResponse.Data.ProductName);
+            
+            var dbProduct = await context.Products.FirstOrDefaultAsync(p => p.ProductCode == "SP-COCA-330");
+            Assert.NotNull(dbProduct);
+            Assert.Equal(12000, dbProduct.SellingPrice);
+            Assert.Equal(categoryId, dbProduct.CategoryId);
         }
     }
 }

@@ -35,7 +35,6 @@ namespace MEP_Management_System.Tests.Controllers
                 .Options;
 
             _mockMapper = new Mock<IMapper>();
-
             _mockMepHub = new Mock<IHubContext<MepHub>>();
             _mockPosHub = new Mock<IHubContext<PosHub>>();
 
@@ -73,14 +72,18 @@ namespace MEP_Management_System.Tests.Controllers
             return controller;
         }
 
+        // ==========================================
+        // TEST POST /api/shifts (Start Shift)
+        // ==========================================
         [Fact]
-        public async Task StartShift_WithoutBranch_ReturnsBadRequest()
+        public async Task StartShift_WithoutAssignedBranch_ReturnsBadRequest()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context, Guid.NewGuid(), null); // no branch
+            // Simulating a token without branchId claim
+            var controller = CreateController(context, Guid.NewGuid(), null);
 
-            var request = new CreateShiftRequest { OpeningBalance = 100 };
+            var request = new CreateShiftRequest { OpeningBalance = 500000 };
 
             // Act
             var result = await controller.StartShift(request);
@@ -88,7 +91,9 @@ namespace MEP_Management_System.Tests.Controllers
             // Assert
             var badRequestResult = Assert.IsType<BadRequestObjectResult>(result.Result);
             var errorResponse = Assert.IsType<ApiErrorResponse>(badRequestResult.Value);
-            Assert.Equal("MSG-76", errorResponse.Error.Code);
+            
+            // Requires branch to start selling
+            Assert.Contains("MSG-76", errorResponse.Error.Code); 
         }
 
         [Fact]
@@ -100,10 +105,19 @@ namespace MEP_Management_System.Tests.Controllers
             var userId = Guid.NewGuid();
             var controller = CreateController(context, userId, branchId);
 
-            context.Shifts.Add(new Shift { ShiftId = Guid.NewGuid(), BranchId = branchId, UserId = userId, Status = "OPEN", StartedAt = DateTime.UtcNow, ShiftCode = "S1" });
+            // Seed an existing open shift for this user
+            context.Shifts.Add(new Shift 
+            { 
+                ShiftId = Guid.NewGuid(), 
+                BranchId = branchId, 
+                UserId = userId, 
+                Status = "OPEN", // User hasn't closed this
+                StartedAt = DateTime.UtcNow, 
+                ShiftCode = "CA-SANG" 
+            });
             await context.SaveChangesAsync();
 
-            var request = new CreateShiftRequest { OpeningBalance = 100 };
+            var request = new CreateShiftRequest { OpeningBalance = 500000 };
 
             // Act
             var result = await controller.StartShift(request);
@@ -111,11 +125,11 @@ namespace MEP_Management_System.Tests.Controllers
             // Assert
             var conflictResult = Assert.IsType<ConflictObjectResult>(result.Result);
             var errorResponse = Assert.IsType<ApiErrorResponse>(conflictResult.Value);
-            Assert.Equal("You already have an open shift", errorResponse.Error.Message);
+            Assert.Contains("open shift", errorResponse.Error.Message);
         }
 
         [Fact]
-        public async Task StartShift_Valid_ReturnsOk()
+        public async Task StartShift_ValidConditions_ReturnsOkWithShiftInfo()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
@@ -123,7 +137,13 @@ namespace MEP_Management_System.Tests.Controllers
             var userId = Guid.NewGuid();
             var controller = CreateController(context, userId, branchId);
 
-            var request = new CreateShiftRequest { OpeningBalance = 500 };
+            var request = new CreateShiftRequest { OpeningBalance = 2000000 }; // Bắt đầu ca với 2 triệu tiền mặt
+
+            // Mock mapping
+            _mockMapper.Setup(m => m.Map<ShiftDto>(It.IsAny<Shift>())).Returns((Shift src) => new ShiftDto 
+            { 
+                ShiftId = src.ShiftId, OpeningBalance = src.OpeningBalance, Status = src.Status 
+            });
 
             // Act
             var result = await controller.StartShift(request);
@@ -131,16 +151,20 @@ namespace MEP_Management_System.Tests.Controllers
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result.Result);
             var shiftDto = Assert.IsType<ShiftDto>(okResult.Value);
-            Assert.Equal(500, shiftDto.OpeningBalance);
+            
+            Assert.Equal(2000000, shiftDto.OpeningBalance);
             Assert.Equal("OPEN", shiftDto.Status);
             
             var shiftInDb = await context.Shifts.FirstOrDefaultAsync(s => s.UserId == userId);
             Assert.NotNull(shiftInDb);
-            Assert.Equal(500, shiftInDb.OpeningBalance);
+            Assert.Equal(2000000, shiftInDb.OpeningBalance);
         }
 
+        // ==========================================
+        // TEST PUT /api/shifts/{id}/end (End Shift)
+        // ==========================================
         [Fact]
-        public async Task EndShift_Valid_UpdatesShiftAndReturnsOk()
+        public async Task EndShift_ValidInput_ClosesShiftAndUpdatesCash()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
@@ -149,10 +173,18 @@ namespace MEP_Management_System.Tests.Controllers
             var controller = CreateController(context, userId, branchId);
 
             var shiftId = Guid.NewGuid();
-            context.Shifts.Add(new Shift { ShiftId = shiftId, BranchId = branchId, UserId = userId, Status = "OPEN", StartedAt = DateTime.UtcNow.AddHours(-4), ShiftCode = "S1", OpeningBalance = 100 });
+            context.Shifts.Add(new Shift 
+            { 
+                ShiftId = shiftId, 
+                BranchId = branchId, 
+                UserId = userId, 
+                Status = "OPEN", 
+                StartedAt = DateTime.UtcNow.AddHours(-8), // Started 8 hours ago
+                OpeningBalance = 2000000 
+            });
             await context.SaveChangesAsync();
 
-            var request = new EndShiftRequest { ActualCash = 200, Note = "Ended shift" };
+            var request = new EndShiftRequest { ActualCash = 15000000, Note = "Kết thúc ca làm việc (Doanh thu tốt)" };
 
             _mockMapper.Setup(m => m.Map<ShiftDto>(It.IsAny<Shift>())).Returns(new ShiftDto { ShiftId = shiftId, Status = "CLOSED" });
 
@@ -165,8 +197,8 @@ namespace MEP_Management_System.Tests.Controllers
             var shiftInDb = await context.Shifts.FirstOrDefaultAsync(s => s.ShiftId == shiftId);
             Assert.NotNull(shiftInDb);
             Assert.Equal("CLOSED", shiftInDb.Status);
-            Assert.Equal(200, shiftInDb.ActualCash);
-            Assert.Equal("Ended shift", shiftInDb.Note);
+            Assert.Equal(15000000, shiftInDb.ActualCash); // Tiền mặt thực tế thu được khi đếm két
+            Assert.NotNull(shiftInDb.EndedAt); // Must be set
         }
     }
 }

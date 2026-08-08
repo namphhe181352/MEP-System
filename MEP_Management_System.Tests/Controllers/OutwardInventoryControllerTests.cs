@@ -46,9 +46,8 @@ namespace MEP_Management_System.Tests.Controllers
 
         private OutwardInventoryController CreateController(MEPDatabaseContext context, Guid? userId = null, Guid? branchId = null, string role = "Owner")
         {
-            var mockHttpContextAccessor = new Mock<IHttpContextAccessor>();
-            mockHttpContextAccessor.Setup(x => x.HttpContext).Returns(new DefaultHttpContext());
-            var controller = new OutwardInventoryController(context, _mockBranchAccessor.Object, mockHttpContextAccessor.Object, _mockHub.Object);
+            var queryService = new OutwardInventoryQueryService(context, _mockBranchAccessor.Object);
+            var controller = new OutwardInventoryController(context, _mockBranchAccessor.Object, _mockHub.Object, queryService);
 
             var claims = new List<Claim>();
             if (userId.HasValue)
@@ -70,78 +69,103 @@ namespace MEP_Management_System.Tests.Controllers
             };
 
             if (branchId.HasValue)
-            {
                 _mockBranchAccessor.Setup(m => m.GetBranchId()).Returns(branchId.Value);
-            }
             else
-            {
                 _mockBranchAccessor.Setup(m => m.GetBranchId()).Returns((Guid?)null);
-            }
 
             return controller;
         }
 
+        // ==========================================
+        // TEST POST /api/inventory/outward
+        // ==========================================
         [Fact]
-        public async Task GetOutwardInventories_ValidBranch_ReturnsOk()
+        public async Task CreateOutwardInventory_ValidStock_CreatesTicketAndReducesInventory()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var branchId = Guid.NewGuid();
-            var controller = CreateController(context, Guid.NewGuid(), branchId);
-
             var userId = Guid.NewGuid();
-            context.Users.Add(new User { UserId = userId, Username = "test", Email = "test@test.com", FullName = "Test", PasswordHash = "hash" });
+            var controller = CreateController(context, userId, branchId);
+
+            context.Users.Add(new User { UserId = userId, Username = "staff", Email = "staff@mep.vn", FullName = "Nhân viên xuất kho", PasswordHash = "hash" });
             
-            var ticket = new StockTicket 
-            { 
-                StockTicketId = Guid.NewGuid(), 
-                TicketCode = "TEST",
-                BranchId = branchId, 
-                UserId = userId,
-                TicketType = "TRANSFER", 
-                Status = "PENDING", 
-                CreatedAt = DateTime.UtcNow 
-            };
-            context.StockTickets.Add(ticket);
+            var product = new Product { ProductId = Guid.NewGuid(), ProductName = "Samsung Galaxy S24", SellingPrice = 25000000 };
+            context.Products.Add(product);
+            
+            // Branch has 15 items in stock
+            var branchProduct = new BranchProduct { BranchId = branchId, ProductId = product.ProductId, StockQuantity = 15 };
+            context.BranchProducts.Add(branchProduct);
             await context.SaveChangesAsync();
 
+            var request = new CreateOutwardInventoryDto
+            {
+                Notes = "Xuất bán lẻ",
+                TicketType = "SALE", // Or RETURN_TO_SUPPLIER, TRANSFER...
+                Details = new List<OutwardInventoryDetailDto>
+                {
+                    new OutwardInventoryDetailDto { ProductId = product.ProductId, Quantity = 5, Price = 25000000 }
+                }
+            };
+
             // Act
-            var result = await controller.GetOutwardInventories(status: null, ticketType: null, fromDate: null, toDate: null, pageNumber: 1, pageSize: 10, branchId: branchId);
+            var result = await controller.CreateOutwardInventory(request, branchId);
 
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result);
-            var apiResponse = Assert.IsType<ApiResponse<PaginatedResponse<OutwardInventoryResponseDto>>>(okResult.Value);
+            var apiResponse = Assert.IsType<ApiResponse<OutwardInventoryResponseDto>>(okResult.Value);
+            
             Assert.True(apiResponse.Success);
-            Assert.Single(apiResponse.Data!.Items);
-            Assert.Equal("PENDING", apiResponse.Data.Items.First().Status);
+            
+            // Check that the ticket is created as APPROVED since standard outward operations directly affect stock
+            var createdTicket = await context.StockTickets.Include(t => t.StockTicketDetails).FirstOrDefaultAsync(t => t.StockTicketId == apiResponse.Data.StockTicketId);
+            Assert.NotNull(createdTicket);
+            Assert.Equal("SALE", createdTicket.TicketType);
+            Assert.Single(createdTicket.StockTicketDetails);
+            Assert.Equal(5, createdTicket.StockTicketDetails.First().Quantity);
+            
+            // Check that inventory is correctly reduced by 5 (15 - 5 = 10)
+            var updatedStock = await context.BranchProducts.FirstOrDefaultAsync(bp => bp.BranchId == branchId && bp.ProductId == product.ProductId);
+            Assert.Equal(10, updatedStock.StockQuantity);
         }
 
         [Fact]
-        public async Task GetOutwardInventories_NoBranch_ReturnsEmptyList()
+        public async Task CreateOutwardInventory_NotEnoughStock_ReturnsBadRequest()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context, Guid.NewGuid(), null);
-
-            var ticket = new StockTicket 
-            { 
-                StockTicketId = Guid.NewGuid(), 
-                TicketCode = "TEST",
-                BranchId = Guid.NewGuid(), 
-                TicketType = "TRANSFER", 
-                Status = "PENDING", 
-                CreatedAt = DateTime.UtcNow 
-            };
-            context.StockTickets.Add(ticket);
+            var branchId = Guid.NewGuid();
+            var userId = Guid.NewGuid();
+            var controller = CreateController(context, userId, branchId);
+            
+            var product = new Product { ProductId = Guid.NewGuid(), ProductName = "Samsung Galaxy S24", SellingPrice = 25000000 };
+            context.Products.Add(product);
+            
+            // Branch only has 3 items
+            var branchProduct = new BranchProduct { BranchId = branchId, ProductId = product.ProductId, StockQuantity = 3 };
+            context.BranchProducts.Add(branchProduct);
             await context.SaveChangesAsync();
 
+            var request = new CreateOutwardInventoryDto
+            {
+                Notes = "Xuất lô hàng lớn",
+                TicketType = "TRANSFER",
+                Details = new List<OutwardInventoryDetailDto>
+                {
+                    // Attempting to withdraw 10 items, which is more than the 3 in stock
+                    new OutwardInventoryDetailDto { ProductId = product.ProductId, Quantity = 10, Price = 25000000 } 
+                }
+            };
+
             // Act
-            var result = await controller.GetOutwardInventories(status: null, ticketType: null, fromDate: null, toDate: null, pageNumber: 1, pageSize: 10, branchId: null);
+            var result = await controller.CreateOutwardInventory(request, branchId);
 
             // Assert
-            var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
-            var apiResponse = Assert.IsType<ApiResponse<object>>(unauthorizedResult.Value);
+            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+            var apiResponse = Assert.IsType<ApiResponse<object>>(badRequestResult.Value);
+            
             Assert.False(apiResponse.Success);
+            Assert.Contains("không đủ số lượng", apiResponse.Message.ToLower());
         }
     }
 }
