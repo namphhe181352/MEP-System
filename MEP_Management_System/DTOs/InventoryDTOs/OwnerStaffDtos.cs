@@ -14,6 +14,7 @@ public class OwnerStaffDto
     public string? PhoneNumber { get; set; }
     public short? IsActive { get; set; }
     public List<string> PermissionCodes { get; set; } = new();
+    public bool HasCustomPermissions { get; set; }
     public List<string> Roles { get; set; } = new();
 }
 

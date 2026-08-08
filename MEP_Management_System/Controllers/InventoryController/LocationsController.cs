@@ -39,7 +39,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// GET /api/locations - Lấy danh sách vị trí
         /// </summary>
         [HttpGet]
-        [HasPermission(PermissionConstants.LOCATION_VIEW)]
+        // Lookup API - dung cho dropdown chon vi tri trong form nhap/xuat san pham
         public async Task<IActionResult> GetLocations([FromQuery] bool? activeOnly = true)
         {
             try

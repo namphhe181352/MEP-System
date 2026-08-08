@@ -29,7 +29,6 @@ public class AdminRolesController : ControllerBase
     public async Task<IActionResult> GetRoles()
     {
         var roles = await _context.Roles
-            .Where(r => r.RoleName != "SalesStaff" && r.RoleName != "InventoryStaff" && r.RoleName != "Staff")
             .OrderBy(r => r.RoleName)
             .Select(r => new AdminRoleDto
             {
