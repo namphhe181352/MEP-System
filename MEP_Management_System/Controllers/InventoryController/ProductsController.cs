@@ -55,6 +55,77 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         /// <summary>
+        /// 0. GET /api/products/lookup - Lightweight product list for dropdowns/selectboxes.
+        /// Khong yeu cau quyen cu the, chi can da dang nhap.
+        /// </summary>
+        [HttpGet("lookup")]
+        public async Task<IActionResult> GetProductsLookup(
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 200,
+            [FromQuery] string? searchTerm = null)
+        {
+            try
+            {
+                var branchId = GetCurrentBranchId();
+                if (branchId == null)
+                    return Ok(new ApiResponse<object>
+                    {
+                        Success = true,
+                        Message = "Chưa được gán chi nhánh.",
+                        Data = new { items = new List<object>() }
+                    });
+
+                pageSize = Math.Clamp(pageSize, 1, 500);
+
+                var query = _context.BranchProducts
+                    .Include(bp => bp.Product)
+                    .Where(bp => bp.BranchId == branchId
+                        && bp.IsActive == 1
+                        && bp.Product.Status == 1)
+                    .AsQueryable();
+
+                if (!string.IsNullOrWhiteSpace(searchTerm))
+                {
+                    var term = searchTerm.Trim().ToLower();
+                    query = query.Where(bp =>
+                        bp.Product.ProductCode.ToLower().Contains(term) ||
+                        bp.Product.ProductName.ToLower().Contains(term));
+                }
+
+                var items = await query
+                    .OrderBy(bp => bp.Product.ProductName)
+                    .Skip((pageNumber - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(bp => new
+                    {
+                        branchProductId = bp.BranchProductId,
+                        productId = bp.Product.ProductId,
+                        productCode = bp.Product.ProductCode,
+                        productName = bp.Product.ProductName,
+                        unitName = bp.Product.BaseUnit,
+                        costPrice = bp.CostPrice
+                    })
+                    .ToListAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = "Danh sach san pham.",
+                    Data = new { items }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Loi khi lay danh sach san pham.",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
         /// 1. GET /api/products - List all products with pagination, filtering, and sorting
         /// </summary>
         [HttpGet]
@@ -195,7 +266,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// 1a. GET /api/products/search - Autocomplete tìm sản phẩm (dùng trong form nhập hàng).
         /// </summary>
         [HttpGet("search")]
-        [HasPermission(PermissionConstants.PRODUCT_VIEW)]
+        // Lookup API - cho phep moi authenticated user tim kiem SP cho dropdown
         public async Task<IActionResult> SearchProducts([FromQuery] string term, [FromQuery] int limit = 10)
         {
             try
@@ -214,11 +285,36 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 if (string.IsNullOrWhiteSpace(term))
                 {
+                    // Tra ve danh sach san pham gan day nhat khi khong co search term
+                    var fallbackResults = await _context.BranchProducts
+                        .Include(bp => bp.Product).ThenInclude(p => p.MediaResources)
+                        .Where(bp => bp.BranchId == branchId
+                            && bp.IsActive == 1
+                            && bp.Product.Status == 1)
+                        .OrderByDescending(bp => bp.Product.CreatedAt)
+                        .Take(Math.Clamp(limit, 1, 50))
+                        .Select(bp => new ProductSearchResultDto
+                        {
+                            ProductId = bp.Product.ProductId,
+                            BranchProductId = bp.BranchProductId,
+                            ProductCode = bp.Product.ProductCode,
+                            ProductName = bp.Product.ProductName,
+                            BrandName = bp.Product.BrandName,
+                            CategoryName = bp.Product.CategoryName,
+                            Barcode = bp.Product.Barcode,
+                            Unit = bp.Product.BaseUnit,
+                            ImageUrl = bp.Product.MediaResources
+                                .Where(m => m.IsPrimary == 1)
+                                .Select(m => m.MediaUrl)
+                                .FirstOrDefault()
+                        })
+                        .ToListAsync();
+
                     return Ok(new ApiResponse<object>
                     {
                         Success = true,
-                        Message = "Empty term",
-                        Data = new { items = new List<ProductSearchResultDto>() }
+                        Message = "Danh sach san pham.",
+                        Data = new { items = fallbackResults }
                     });
                 }
 
@@ -281,7 +377,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// 1b. GET /api/products/suggest-new-product - Gợi ý thông tin sản phẩm mới inline
         /// </summary>
         [HttpGet("suggest-new-product")]
-        [HasPermission(PermissionConstants.PRODUCT_VIEW)]
+        // Lookup API - reference data cho forms
         public async Task<IActionResult> SuggestNewProduct([FromQuery] string term)
         {
             try
@@ -1306,7 +1402,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// GET /api/products/categories - Danh sách nhóm hàng (distinct) kèm số SP đang dùng
         /// </summary>
         [HttpGet("categories")]
-        [HasPermission(PermissionConstants.PRODUCT_VIEW)]
+        // Lookup API - reference data cho forms
         public async Task<IActionResult> GetCategories()
         {
             try
@@ -1370,7 +1466,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// GET /api/products/brands - Danh sách thương hiệu (distinct) kèm số SP đang dùng
         /// </summary>
         [HttpGet("brands")]
-        [HasPermission(PermissionConstants.PRODUCT_VIEW)]
+        // Lookup API - reference data cho forms
         public async Task<IActionResult> GetBrands()
         {
             try
@@ -1906,7 +2002,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// GET /api/products/locations - Danh sách vị trí kho (distinct)
         /// </summary>
         [HttpGet("locations")]
-        [HasPermission(PermissionConstants.PRODUCT_VIEW)]
+        // Lookup API - reference data cho forms
         public async Task<IActionResult> GetLocations()
         {
             try
@@ -2158,7 +2254,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// GET /api/products/attribute-types - Danh sách loại thuộc tính
         /// </summary>
         [HttpGet("attribute-types")]
-        [HasPermission(PermissionConstants.PRODUCT_VIEW)]
+        // Lookup API - reference data cho forms
         public async Task<IActionResult> GetAttributeTypes()
         {
             try
