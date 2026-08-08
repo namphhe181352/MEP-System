@@ -51,13 +51,18 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
             return controller;
         }
 
-        [Fact]
-        public async Task RecordPayment_AmountZero_ReturnsBadRequest()
+        [Theory]
+        [InlineData(0, "Amount must be greater than 0.")]
+        [InlineData(-1, "Amount must be greater than 0.")]
+        [InlineData(-100000, "Amount must be greater than 0.")]
+        [InlineData(-5000000, "Amount must be greater than 0.")]
+        [InlineData(-999999999, "Amount must be greater than 0.")]
+        public async Task RecordPayment_InvalidAmount_ReturnsBadRequest(decimal amount, string expectedMessage)
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var controller = CreateController(context, Guid.NewGuid(), Guid.NewGuid());
-            var request = new RecordCustomerPaymentRequest { Amount = 0 };
+            var request = new RecordCustomerPaymentRequest { Amount = amount };
 
             // Act
             var result = await controller.RecordPayment(Guid.NewGuid(), request);
@@ -69,7 +74,7 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
             var message = (string)valueType.GetProperty("message").GetValue(badRequest.Value);
             
             Assert.False(success);
-            Assert.Equal("Amount must be greater than 0.", message);
+            Assert.Equal(expectedMessage, message);
         }
 
         [Fact]
@@ -119,8 +124,18 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
             // Just asserting success is good.
         }
         
-        [Fact]
-        public async Task RecordPayment_AdvanceDeposit_UpdatesAdvanceBalance()
+        [Theory]
+        [InlineData("Công ty CP Xây dựng Hòa Bình", 1000000)]
+        [InlineData("Nhà thầu cơ điện REE", 500000)]
+        [InlineData("Công ty TNHH Cơ điện lạnh Searefico", 15000000)]
+        [InlineData("Tổng công ty Xây dựng số 1 (CC1)", 200000000)]
+        [InlineData("Tập đoàn Xây dựng Delta", 999999999)]
+        [InlineData("Công ty CP Đầu tư Xây dựng Ricons", 50000)]
+        [InlineData("Công ty CP Xây dựng Coteccons", 1000)]
+        [InlineData("Cửa hàng điện nước Minh Quân", 250000)]
+        [InlineData("Xưởng cơ khí Tiến Phát", 3500000)]
+        [InlineData("Nhà thầu thi công PCCC An Phát", 1000000000)]
+        public async Task RecordPayment_AdvanceDeposit_UpdatesAdvanceBalance(string customerName, decimal depositAmount)
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
@@ -128,11 +143,11 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
             var branchId = Guid.NewGuid();
             var customerId = Guid.NewGuid();
             
-            context.Customers.Add(new Customer { CustomerId = customerId, CustomerName = "Thầu xây dựng Hữu Thắng", Status = 1, AdvanceBalance = 0 });
+            context.Customers.Add(new Customer { CustomerId = customerId, CustomerName = customerName, Status = 1, AdvanceBalance = 0 });
             await context.SaveChangesAsync();
 
             var controller = CreateController(context, userId, branchId);
-            var request = new RecordCustomerPaymentRequest { Amount = 1000000, IsAdvance = true };
+            var request = new RecordCustomerPaymentRequest { Amount = depositAmount, IsAdvance = true };
 
             // Act
             var result = await controller.RecordPayment(customerId, request);
@@ -145,7 +160,7 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
             Assert.True(success);
             
             var dbCustomer = await context.Customers.FindAsync(customerId);
-            Assert.Equal(1000000, dbCustomer.AdvanceBalance);
+            Assert.Equal(depositAmount, dbCustomer.AdvanceBalance);
         }
     }
 }

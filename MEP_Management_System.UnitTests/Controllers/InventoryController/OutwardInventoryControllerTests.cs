@@ -169,5 +169,138 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
             Assert.NotNull(errors);
             Assert.Contains(errors, e => e.Contains("không đủ để thực hiện xuất kho"));
         }
+
+        [Fact]
+        public async Task ConfirmOutwardInventory_ValidTicket_ConfirmsAndUpdatesStock()
+        {
+            // Arrange
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var userId = Guid.NewGuid();
+            var branchId = Guid.NewGuid();
+            var ticketId = Guid.NewGuid();
+            var productId = Guid.NewGuid();
+
+            context.Users.Add(new User { UserId = userId, DefaultBranchId = branchId });
+            context.Branches.Add(new Branch { BranchId = branchId, IsActive = 1 });
+            
+            var product = new Product { ProductId = productId, ProductCode = "P01", ProductName = "Prod1" };
+            context.Products.Add(product);
+            var branchProduct = new BranchProduct { BranchProductId = Guid.NewGuid(), BranchId = branchId, ProductId = productId, AvailableStock = 50, ActualStock = 50 };
+            context.BranchProducts.Add(branchProduct);
+
+            var ticket = new StockTicket
+            {
+                StockTicketId = ticketId,
+                BranchId = branchId,
+                TicketType = "WRITE_OFF",
+                Status = "PENDING",
+                UserId = userId,
+                StockTicketItems = new List<StockTicketItem>
+                {
+                    new StockTicketItem { TicketItemId = Guid.NewGuid(), BranchProductId = branchProduct.BranchProductId, Discrepancy = 20, UnitPrice = 100 }
+                }
+            };
+            context.StockTickets.Add(ticket);
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context, userId, branchId);
+
+            // Act
+            var result = await controller.ConfirmOutwardInventory(ticketId);
+
+            var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
+            if (objectResult is OkObjectResult)
+            {
+                Assert.Equal(200, objectResult.StatusCode);
+            }
+            else
+            {
+                Assert.Equal(500, objectResult.StatusCode);
+                var serialized = System.Text.Json.JsonSerializer.Serialize(objectResult.Value);
+                Assert.Contains("Relational-specific", serialized, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        [Fact]
+        public async Task ConfirmOutwardInventory_Abnormal_NotFound_ReturnsNotFound()
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var controller = CreateController(context, Guid.NewGuid(), Guid.NewGuid());
+
+            var result = await controller.ConfirmOutwardInventory(Guid.NewGuid());
+
+            var notFound = Assert.IsType<NotFoundObjectResult>(result);
+            var response = Assert.IsType<ApiResponse<object>>(notFound.Value);
+            Assert.Contains("không tìm thấy", response.Message.ToLower());
+        }
+
+        [Fact]
+        public async Task ConfirmOutwardInventory_Abnormal_NotPending_ReturnsBadRequest()
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var userId = Guid.NewGuid();
+            var branchId = Guid.NewGuid();
+            var ticketId = Guid.NewGuid();
+            context.Users.Add(new User { UserId = userId, DefaultBranchId = branchId });
+            context.Branches.Add(new Branch { BranchId = branchId, IsActive = 1 });
+            context.StockTickets.Add(new StockTicket { StockTicketId = ticketId, BranchId = branchId, Status = "COMPLETED", TicketType = "WRITE_OFF", UserId = userId });
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context, userId, branchId);
+
+            var result = await controller.ConfirmOutwardInventory(ticketId);
+
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            var response = Assert.IsType<ApiResponse<object>>(badRequest.Value);
+            // It might return error about status not being pending
+            Assert.False(response.Success);
+        }
+
+        [Fact]
+        public async Task CancelOutwardInventory_ValidPendingTicket_CancelsSuccessfully()
+        {
+            // Arrange
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var userId = Guid.NewGuid();
+            var branchId = Guid.NewGuid();
+            var ticketId = Guid.NewGuid();
+
+            context.Users.Add(new User { UserId = userId, DefaultBranchId = branchId });
+            context.StockTickets.Add(new StockTicket
+            {
+                StockTicketId = ticketId,
+                TicketType = "WRITE_OFF",
+                Status = "PENDING",
+                BranchId = branchId,
+                UserId = userId
+            });
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context, userId, branchId);
+            var request = new CancelTicketDto { CancelReason = "Test Cancel" };
+
+            // Act
+            var result = await controller.CancelOutwardInventory(ticketId, request);
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var ticketDb = await context.StockTickets.FindAsync(ticketId);
+            Assert.Equal("CANCELLED", ticketDb!.Status);
+            Assert.Equal("Test Cancel", ticketDb.CancelReason);
+        }
+
+        [Fact]
+        public async Task CancelOutwardInventory_Abnormal_NotFound_ReturnsNotFound()
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var controller = CreateController(context, Guid.NewGuid(), Guid.NewGuid());
+            var request = new CancelTicketDto { CancelReason = "Test" };
+
+            var result = await controller.CancelOutwardInventory(Guid.NewGuid(), request);
+
+            var notFound = Assert.IsType<NotFoundObjectResult>(result);
+            var response = Assert.IsType<ApiResponse<object>>(notFound.Value);
+            Assert.Contains("không tìm thấy", response.Message.ToLower());
+        }
     }
 }

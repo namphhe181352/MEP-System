@@ -155,6 +155,7 @@ namespace MEP_Management_System.UnitTests.Controllers.OwnerController
             var controller = CreateController(context, ownerId, branchId);
             
             context.Users.Add(new User { UserId = staffId, CreatedBy = ownerId });
+            context.StaffAssignments.Add(new StaffAssignment { AssignmentId = Guid.NewGuid(), UserId = staffId, BranchId = branchId });
             context.Orders.Add(new Order { OrderId = Guid.NewGuid(), UserId = staffId, OrderCode = "O1", Status = "OK" });
             await context.SaveChangesAsync();
 

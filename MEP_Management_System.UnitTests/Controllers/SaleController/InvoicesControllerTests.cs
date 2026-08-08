@@ -252,5 +252,57 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
             var response = Assert.IsType<MEP_Management_System.DTOs.SaleDTOs.ApiErrorResponse>(badRequest.Value);
             Assert.Contains("Thanh toán chưa đủ", response.Error.Message);
         }
+        [Theory]
+        [InlineData("Draft", -20, 1, 1, 10, 1)] // Status filter
+        [InlineData("Completed", -20, 1, 1, 10, 1)] // Status filter
+        [InlineData(null, -20, 1, 1, 10, 2)] // Date range valid
+        [InlineData(null, -40, -30, 1, 10, 0)] // Date range no match
+        [InlineData(null, -20, 1, 1, 1, 1)] // Page 1 size 1
+        [InlineData(null, -20, 1, 2, 1, 1)] // Page 2 size 1
+        [InlineData(null, -20, 1, -1, 10, 2)] // Invalid page -> valid page
+        public async Task GetInvoices_ReturnsPagedList(string? status, int fromDays, int toDays, int page, int size, int expectedCount)
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var branchId = Guid.NewGuid();
+            var now = DateTime.UtcNow;
+            
+            var testUser = new User { UserId = Guid.NewGuid(), Username = "testuser", FullName = "Test User" };
+            context.Users.Add(testUser);
+            
+            var inv1 = new Invoice { InvoiceId = Guid.NewGuid(), InvoiceCode = "INV-001", Status = "Draft", CreatedAt = now.AddDays(-10) };
+            var order1 = new Order { OrderId = Guid.NewGuid(), BranchId = branchId, UserId = testUser.UserId, User = testUser };
+            inv1.OrderId = order1.OrderId;
+            inv1.Order = order1;
+
+            var inv2 = new Invoice { InvoiceId = Guid.NewGuid(), InvoiceCode = "INV-002", Status = "Completed", CreatedAt = now.AddDays(-2) };
+            var order2 = new Order { OrderId = Guid.NewGuid(), BranchId = branchId, UserId = testUser.UserId, User = testUser };
+            inv2.OrderId = order2.OrderId;
+            inv2.Order = order2;
+
+            context.Orders.AddRange(order1, order2);
+            context.Invoices.AddRange(inv1, inv2);
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context, Guid.NewGuid(), branchId);
+            
+            DateTime? from = now.AddDays(fromDays);
+            DateTime? to = now.AddDays(toDays);
+
+            var dbCount = await context.Invoices.CountAsync();
+            var dbMatchCount = await context.Invoices.Include(i => i.Order).Where(i => i.Order.BranchId == branchId).CountAsync();
+            Assert.Equal(2, dbCount); // Verify they are saved
+            Assert.Equal(2, dbMatchCount); // Verify they match branchId
+
+            var result = await controller.GetInvoices(status, from, to, null, null, page, size);
+
+            var okResult = Assert.IsType<OkObjectResult>(result.Result);
+            var pageResult = Assert.IsType<MEP_Management_System.DTOs.SaleDTOs.PageResultDto<InvoiceDto>>(okResult.Value);
+            
+            Assert.Equal(expectedCount, pageResult.Items.Count());
+        }
+
     }
 }
+
+
+

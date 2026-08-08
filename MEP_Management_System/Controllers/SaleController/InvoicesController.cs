@@ -77,14 +77,18 @@ public class InvoicesController : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         var branchId = GetBranchId();
+        
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 20;
 
         // Build base query directly from Invoices (fix: don't depend on Orders table)
         var baseQuery = _context.Invoices
+            .Include(i => i.Order)
             .AsNoTracking()
             .Where(i => i.Order.BranchId == branchId);
 
         // Count query
-        var countQuery = _context.Invoices.Where(i => i.Order.BranchId == branchId);
+        var countQuery = _context.Invoices.Include(i => i.Order).Where(i => i.Order.BranchId == branchId);
         if (!string.IsNullOrEmpty(status))
             countQuery = countQuery.Where(i => i.Status == status);
         if (dateFrom.HasValue)
@@ -98,56 +102,54 @@ public class InvoicesController : ControllerBase
         var total = await countQuery.CountAsync();
 
         // Fetch invoices + related data in single optimized query
-        var invoiceData = await _context.Invoices
-            .AsNoTracking()
-            .Where(i => i.Order.BranchId == branchId)
-            .Where(i => !string.IsNullOrEmpty(status) ? i.Status == status : true)
-            .Where(i => dateFrom.HasValue ? i.CreatedAt >= dateFrom.Value : true)
-            .Where(i => dateTo.HasValue ? i.CreatedAt <= dateTo.Value : true)
-            .Where(i => customerId.HasValue ? i.Order.CustomerId == customerId.Value : true)
-            .Where(i => staffId.HasValue ? i.Order.UserId == staffId.Value : true)
+        var query = _context.Invoices
+            .Include(i => i.Order)
+            .Where(i => i.Order.BranchId == branchId);
+
+        if (!string.IsNullOrEmpty(status))
+            query = query.Where(i => i.Status == status);
+        if (dateFrom.HasValue)
+            query = query.Where(i => i.CreatedAt >= dateFrom.Value);
+        if (dateTo.HasValue)
+            query = query.Where(i => i.CreatedAt <= dateTo.Value);
+        if (customerId.HasValue)
+            query = query.Where(i => i.Order.CustomerId == customerId.Value);
+        if (staffId.HasValue)
+            query = query.Where(i => i.Order.UserId == staffId.Value);
+
+        // Fetch invoices + related data in single optimized query
+        var invoices = await query
+            .Include(i => i.Order.User)
+            .Include(i => i.Order.Customer)
+            .Include(i => i.InvoiceItems)
+            .Include(i => i.Payments)
             .OrderByDescending(i => i.CreatedAt)
             .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(i => new
-            {
-                Invoice = i,
-                i.OrderId,
-                i.Order.UserId,
-                UserName = i.Order.User != null ? i.Order.User.FullName : null,
-                i.Order.CustomerId,
-                CustomerName = i.Order.Customer != null ? i.Order.Customer.CustomerName : null,
-                DiscountAmount = i.DiscountAmount,
-                DiscountPercent = i.DiscountPercent,
-                i.InvoiceItems,
-                i.Payments
-            })
             .ToListAsync();
 
-        var items = invoiceData.Select(data =>
+        var items = invoices.Select(invoice =>
         {
-            var dto = _mapper.Map<InvoiceDto>(data.Invoice);
-            dto.OrderId = data.OrderId;
-            dto.UserId = data.UserId;
-            dto.UserName = data.UserName;
-            dto.CustomerId = data.CustomerId;
-            dto.CustomerName = data.CustomerName;
-            // AutoMapper tính TotalAmount từ Invoice.InvoiceItems nhưng khi dùng Select() trong EF,
-            // navigation property không được load → InvoiceItems là null → TotalAmount = 0.
-            // Nên phải tính thủ công từ data.InvoiceItems (đã được EF populate riêng).
-            if (data.InvoiceItems != null && data.InvoiceItems.Any())
+            var dto = _mapper.Map<InvoiceDto>(invoice);
+            dto.OrderId = invoice.OrderId;
+            dto.UserId = invoice.Order != null ? invoice.Order.UserId : Guid.Empty;
+            dto.UserName = invoice.Order?.User?.FullName;
+            dto.CustomerId = invoice.Order?.CustomerId;
+            dto.CustomerName = invoice.Order?.Customer?.CustomerName;
+            
+            if (invoice.InvoiceItems != null && invoice.InvoiceItems.Any())
             {
-                var subtotal = data.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
+                var subtotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
                 dto.Subtotal = subtotal;
-                dto.DiscountAmount = data.DiscountAmount;
-                dto.DiscountPercent = data.DiscountPercent;
-                dto.TotalAmount = subtotal - data.DiscountAmount;
-                dto.Items = _mapper.Map<List<DTOs.SaleDTOs.InvoiceItemDto>>(data.InvoiceItems);
+                dto.DiscountAmount = invoice.DiscountAmount;
+                dto.DiscountPercent = invoice.DiscountPercent;
+                dto.TotalAmount = subtotal - invoice.DiscountAmount;
+                dto.Items = _mapper.Map<List<DTOs.SaleDTOs.InvoiceItemDto>>(invoice.InvoiceItems);
             }
-            if (data.Payments != null && data.Payments.Any())
+            if (invoice.Payments != null && invoice.Payments.Any())
             {
-                dto.PaymentMethod = data.Payments.Count > 1
+                dto.PaymentMethod = invoice.Payments.Count > 1
                     ? "Combined"
-                    : data.Payments.First().Method.ToString();
+                    : invoice.Payments.First().Method.ToString();
             }
             return dto;
         }).ToList();

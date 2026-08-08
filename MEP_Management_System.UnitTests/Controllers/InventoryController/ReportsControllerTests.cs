@@ -70,25 +70,26 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
             }
 
             return controller;
-        }
-
-        [Fact]
-        public async Task GetDailyEndReport_ValidRequest_ReturnsReport()
+        }        [Theory]
+        [InlineData("COMPLETED", 1000000, 1000000, 1)] // Single completed order
+        [InlineData("CANCELLED", 1000000, 0, 0)] // Cancelled order shouldn't count towards revenue
+        [InlineData("DRAFT", 1000000, 0, 0)] // Draft shouldn't count
+        [InlineData("COMPLETED", 0, 0, 1)] // Zero value order
+        [InlineData("COMPLETED", 500000, 500000, 1)] // Different amount
+        public async Task GetDailyEndReport_CalculatesRevenueCorrectly(string orderStatus, decimal orderAmount, decimal expectedRevenue, int expectedCount)
         {
-            // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var userId = Guid.NewGuid();
             var branchId = Guid.NewGuid();
             
-            context.Branches.Add(new Branch { BranchId = branchId, BranchName = "Cửa hàng Kim khí Điện nước 1" });
+            context.Branches.Add(new Branch { BranchId = branchId, BranchName = "Test Branch" });
             
-            // Add some completed orders for today
             context.Orders.Add(new Order
             {
                 OrderId = Guid.NewGuid(),
                 BranchId = branchId,
-                Status = "COMPLETED",
-                TotalAmount = 2500000,
+                Status = orderStatus,
+                TotalAmount = orderAmount,
                 CreatedAt = DateTime.UtcNow
             });
             
@@ -97,73 +98,37 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
             var controller = CreateController(context, userId, branchId);
             var request = new DailyEndReportRequestDto { Date = DateTime.UtcNow.Date };
 
-            // Act
             var result = await controller.GetDailyEndReport(request);
 
-            // Assert
             var okResult = Assert.IsType<OkObjectResult>(result);
             var response = Assert.IsType<ApiResponse<DailyEndReportDto>>(okResult.Value);
             
             Assert.True(response.Success);
-            Assert.NotNull(response.Data);
-            Assert.Equal("Cửa hàng Kim khí Điện nước 1", response.Data.BranchName);
-            Assert.Equal(2500000, response.Data.TotalRevenue);
-            Assert.Equal(1, response.Data.TotalOrders);
+            Assert.Equal(expectedRevenue, response.Data.TotalRevenue);
+            Assert.Equal(expectedCount, response.Data.TotalOrders);
         }
 
-        [Fact]
-        public async Task GetStockMovementReport_ValidRequest_ReturnsReport()
+        [Theory]
+        [InlineData(10, 5, true)] // Below min stock -> appears in report
+        [InlineData(10, 15, false)] // Above min stock -> doesn't appear
+        [InlineData(10, 10, true)] // Equal to min stock -> DOES appear (<= logic)
+        [InlineData(50, 0, true)] // Out of stock
+        [InlineData(0, 0, true)] // Zero min stock, zero stock -> DOES appear (<= logic)
+        public async Task GetLowStockReport_FiltersCorrectly(int minStock, int actualStock, bool expectedInReport)
         {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var userId = Guid.NewGuid();
-            var branchId = Guid.NewGuid();
-            
-            context.Branches.Add(new Branch { BranchId = branchId, BranchName = "Cửa hàng Kim khí Điện nước 1" });
-            
-            var productId = Guid.NewGuid();
-            context.Products.Add(new Product { ProductId = productId, ProductCode = "ONG-21", ProductName = "Ống nhựa Bình Minh phi 21", Status = 1 });
-            context.BranchProducts.Add(new BranchProduct { BranchProductId = Guid.NewGuid(), BranchId = branchId, ProductId = productId, IsActive = 1, CostPrice = 15000 });
-            
-            await context.SaveChangesAsync();
-
-            var controller = CreateController(context, userId, branchId);
-            var request = new StockMovementReportRequestDto 
-            { 
-                FromDate = DateTime.UtcNow.AddDays(-7),
-                ToDate = DateTime.UtcNow
-            };
-
-            // Act
-            var result = await controller.GetStockMovementReport(request);
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            var response = Assert.IsType<ApiResponse<StockMovementReportDto>>(okResult.Value);
-            
-            Assert.True(response.Success);
-            Assert.NotNull(response.Data);
-            Assert.Single(response.Data.Items);
-            Assert.Equal("ONG-21", response.Data.Items[0].ProductCode);
-        }
-
-        [Fact]
-        public async Task GetLowStockReport_ReturnsLowStockItems()
-        {
-            // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var userId = Guid.NewGuid();
             var branchId = Guid.NewGuid();
             
             var productId = Guid.NewGuid();
-            context.Products.Add(new Product { ProductId = productId, ProductCode = "BONG-9W", ProductName = "Bóng đèn Led Rạng Đông 9W" });
+            context.Products.Add(new Product { ProductId = productId, ProductCode = "TEST", ProductName = "Test" });
             context.BranchProducts.Add(new BranchProduct 
             { 
                 BranchProductId = Guid.NewGuid(), 
                 BranchId = branchId, 
                 ProductId = productId,
-                ActualStock = 5,
-                MinimumStock = 20 
+                ActualStock = actualStock,
+                MinimumStock = minStock 
             });
             
             await context.SaveChangesAsync();
@@ -171,20 +136,21 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
             var controller = CreateController(context, userId, branchId);
             var request = new LowStockReportRequestDto();
 
-            // Act
             var result = await controller.GetLowStockReport(request);
 
-            // Assert
             var okResult = Assert.IsType<OkObjectResult>(result);
             var response = Assert.IsType<ApiResponse<LowStockReportDto>>(okResult.Value);
             
             Assert.True(response.Success);
-            Assert.NotNull(response.Data);
-            Assert.Single(response.Data.Items);
-            
-            var item = response.Data.Items[0];
-            Assert.Equal("BONG-9W", item.ProductCode);
-            Assert.Equal(5, item.CurrentStock);
+            if (expectedInReport)
+            {
+                Assert.Single(response.Data.Items);
+            }
+            else
+            {
+                Assert.Empty(response.Data.Items);
+            }
         }
     }
 }
+

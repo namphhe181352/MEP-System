@@ -85,19 +85,21 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
 
             context.Users.Add(new User { UserId = userId, Username = "actor" });
             context.Users.Add(new User { UserId = assigneeId, Username = "target" });
-            context.Products.Add(new Product { ProductId = Guid.NewGuid(), ProductCode = "P3", CategoryTaxonomyId = category1 });
-            context.Products.Add(new Product { ProductId = Guid.NewGuid(), ProductCode = "P4", CategoryTaxonomyId = category2 });
+            var p1 = Guid.NewGuid();
+            context.Products.Add(new Product { ProductId = p1, ProductCode = "P3", CategoryTaxonomyId = category1 });
+            context.BranchProducts.Add(new BranchProduct { BranchProductId = Guid.NewGuid(), BranchId = branchId, ProductId = p1 });
             await context.SaveChangesAsync();
 
             var controller = CreateController(context, userId, branchId, role);
             var targetAssignee = assignSelf ? userId : assigneeId;
-            var request = new CreateInventoryCheckDto { ProductIds = new List<Guid> { Guid.NewGuid() }, AssigneeUserId = targetAssignee };
+            var request = new CreateInventoryCheckDto { ProductIds = new List<Guid> { p1 }, AssigneeUserId = targetAssignee };
 
             var result = await controller.CreateInventoryCheck(request);
             if (expectedError != null)
             {
                 var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-                Assert.Contains(expectedError, badRequest.Value?.ToString() ?? "");
+                var response = Assert.IsType<ApiResponse<object>>(badRequest.Value);
+                Assert.Contains(expectedError, response.Message ?? string.Join(",", response.Errors ?? new List<string>()));
             }
             else
             {
@@ -113,8 +115,8 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
             var productId = Guid.NewGuid();
             var targetId = Guid.NewGuid();
 
-            var activeTicket = new InventoryCheckTicket { TicketId = Guid.NewGuid(), BranchId = branchId, Status = "PENDING" };
-            activeTicket.InventoryCheckDetails.Add(new InventoryCheckDetail { DetailId = Guid.NewGuid(), ProductId = productId, TicketId = activeTicket.TicketId });
+            var activeTicket = new InventoryCheckTicket { TicketId = Guid.NewGuid(), BranchId = branchId, Status = InventoryCheckTicketStatus.WaitingForApproval };
+            activeTicket.Details.Add(new InventoryCheckDetail { DetailId = Guid.NewGuid(), ProductId = productId, TicketId = activeTicket.TicketId });
             context.InventoryCheckTickets.Add(activeTicket);
             
             var bp = new BranchProduct { BranchProductId = productId, BranchId = branchId, ProductId = productId };
@@ -127,7 +129,9 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
 
             var result = await controller.CreateInventoryCheck(request);
             var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.Contains("đang được kiểm kê trong phiếu đang mở", badRequest.Value?.ToString() ?? "");
+            var response = Assert.IsType<ApiResponse<object>>(badRequest.Value);
+            var messageOrErrors = response.Message + string.Join(",", response.Errors ?? new List<string>());
+            Assert.Contains("đang nằm trong phiếu kiểm", messageOrErrors);
         }
 
         // =====================================
@@ -135,35 +139,52 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
         // =====================================
 
         [Theory]
-        [InlineData("CONFIRMED", "Chỉ có thể cập nhật phiếu ở trạng thái")]
-        [InlineData("CANCELLED", "Chỉ có thể cập nhật phiếu ở trạng thái")]
-        [InlineData("PENDING", null)] // Success
-        public async Task UpdateInventoryCheck_StatusValidation_ReturnsAppropriateResult(string status, string? expectedError)
+        [InlineData(InventoryCheckTicketStatus.Completed, "Chỉ có thể cập nhật phiếu ở trạng thái Draft")]
+        [InlineData(InventoryCheckTicketStatus.Cancelled, "Chỉ có thể cập nhật phiếu ở trạng thái Draft")]
+        [InlineData(InventoryCheckTicketStatus.Draft, null)] // Success
+        public async Task UpdateInventoryCheck_StatusValidation_ReturnsAppropriateResult(InventoryCheckTicketStatus status, string? expectedError)
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var ticketId = Guid.NewGuid();
             var branchId = Guid.NewGuid();
             var detailId = Guid.NewGuid();
 
-            context.InventoryCheckTickets.Add(new InventoryCheckTicket { TicketId = ticketId, BranchId = branchId, Status = status });
+            var userId = Guid.NewGuid();
+            context.Users.Add(new User { UserId = userId, Username = "Test User" });
+            context.InventoryCheckTickets.Add(new InventoryCheckTicket { TicketId = ticketId, BranchId = branchId, Status = status, CreatedByUserId = userId });
             context.InventoryCheckDetails.Add(new InventoryCheckDetail { DetailId = detailId, TicketId = ticketId, ActualQuantity = 5 });
             await context.SaveChangesAsync();
 
             var controller = CreateController(context, Guid.NewGuid(), branchId);
-            var request = new UpdateInventoryCheckDto { Details = new List<UpdateInventoryCheckDetailDto> { new UpdateInventoryCheckDetailDto { DetailId = detailId, ActualQuantity = 10, Note = "Update" } } };
+            var request = new MEP_Management_System.DTOs.InventoryDTOs.UpdateInventoryCheckDto { Notes = "Update" };
 
             var result = await controller.UpdateInventoryCheck(ticketId, request);
             if (expectedError != null)
             {
                 var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-                Assert.Contains(expectedError, badRequest.Value?.ToString() ?? "");
+                var response = Assert.IsType<ApiResponse<object>>(badRequest.Value);
+                Assert.Contains(expectedError, response.Message ?? string.Join(",", response.Errors ?? new List<string>()));
             }
             else
             {
                 Assert.IsType<OkObjectResult>(result);
-                var detail = await context.InventoryCheckDetails.FindAsync(detailId);
-                Assert.Equal(10, detail!.ActualQuantity);
+                var ticketInDb = await context.InventoryCheckTickets.FindAsync(ticketId);
+                Assert.Equal("Update", ticketInDb!.Notes);
             }
+        }
+
+        [Fact]
+        public async Task UpdateInventoryCheck_Abnormal_NotFound_ReturnsNotFound()
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var controller = CreateController(context, Guid.NewGuid(), Guid.NewGuid());
+            var request = new MEP_Management_System.DTOs.InventoryDTOs.UpdateInventoryCheckDto { Notes = "Update" };
+
+            var result = await controller.UpdateInventoryCheck(Guid.NewGuid(), request);
+
+            var notFound = Assert.IsType<NotFoundObjectResult>(result);
+            var response = Assert.IsType<ApiResponse<object>>(notFound.Value);
+            Assert.Contains("không tồn tại", response.Message.ToLower());
         }
 
         // =====================================
@@ -180,16 +201,19 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
             var ticketId = Guid.NewGuid();
             var branchId = Guid.NewGuid();
 
-            context.InventoryCheckTickets.Add(new InventoryCheckTicket { TicketId = ticketId, BranchId = branchId, Status = initialStatus });
+            var userId = Guid.NewGuid();
+            context.Users.Add(new User { UserId = userId, Username = "Test User" });
+            context.InventoryCheckTickets.Add(new InventoryCheckTicket { TicketId = ticketId, BranchId = branchId, Status = initialStatus, CreatedByUserId = userId });
             await context.SaveChangesAsync();
 
             var controller = CreateController(context, Guid.NewGuid(), branchId);
-            var result = await controller.CancelInventoryCheck(ticketId, new MEP_Management_System.DTOs.InventoryDTOs.CancelInventoryCheckDto { Reason = "Lý do" });
+            var result = await controller.CancelInventoryCheck(ticketId, new MEP_Management_System.Controllers.InventoryController.CancelInventoryCheckDto { Reason = "Lý do" });
 
             if (expectedError != null)
             {
                 var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-                Assert.Contains(expectedError, badRequest.Value?.ToString() ?? "");
+                var response = Assert.IsType<ApiResponse<object>>(badRequest.Value);
+                Assert.Contains(expectedError, response.Message ?? string.Join(",", response.Errors ?? new List<string>()));
             }
             else
             {
@@ -197,6 +221,20 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
                 var t = await context.InventoryCheckTickets.FindAsync(ticketId);
                 Assert.Equal(InventoryCheckTicketStatus.Cancelled, t!.Status);
             }
+        }
+
+        [Fact]
+        public async Task CancelInventoryCheck_Abnormal_NotFound_ReturnsNotFound()
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var controller = CreateController(context, Guid.NewGuid(), Guid.NewGuid());
+            var request = new MEP_Management_System.Controllers.InventoryController.CancelInventoryCheckDto { Reason = "Reason" };
+
+            var result = await controller.CancelInventoryCheck(Guid.NewGuid(), request);
+
+            var notFound = Assert.IsType<NotFoundObjectResult>(result);
+            var response = Assert.IsType<ApiResponse<object>>(notFound.Value);
+            Assert.Contains("không tồn tại", response.Message.ToLower());
         }
 
         // =====================================
@@ -212,11 +250,14 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
             var bpId = Guid.NewGuid();
             var productId = Guid.NewGuid();
 
-            var bp = new BranchProduct { BranchProductId = bpId, BranchId = branchId, ProductId = productId, ActualStock = 10, AvailableStock = 10, CostPrice = 50000 };
+            var bp = new BranchProduct { BranchProductId = bpId, BranchId = branchId, ProductId = productId, ActualStock = 100, AvailableStock = 100, CostPrice = 50000 };
             context.Products.Add(new Product { ProductId = productId, ProductCode = "P1" });
             context.BranchProducts.Add(bp);
             
-            var ticket = new InventoryCheckTicket { TicketId = ticketId, BranchId = branchId, Status = InventoryCheckTicketStatus.WaitingForApproval };
+            var userId = Guid.NewGuid();
+            context.Users.Add(new User { UserId = userId, Username = "Owner User" });
+
+            var ticket = new InventoryCheckTicket { TicketId = ticketId, BranchId = branchId, Status = InventoryCheckTicketStatus.WaitingForApproval, CreatedByUserId = userId };
             ticket.Details.Add(new InventoryCheckDetail
             {
                 DetailId = Guid.NewGuid(),
@@ -229,9 +270,13 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
             context.InventoryCheckTickets.Add(ticket);
             await context.SaveChangesAsync();
 
-            var controller = CreateController(context, branchId, Guid.NewGuid(), "Owner");
+            var controller = CreateController(context, userId, branchId, "Owner");
             var result = await controller.ApproveInventoryCheck(ticketId);
-            
+            if (result is ObjectResult objResult && objResult.StatusCode == 500)
+            {
+                var response = objResult.Value as ApiResponse<object>;
+                Assert.Fail($"500 Error: {response?.Message} - {string.Join(", ", response?.Errors ?? new List<string>())}");
+            }
             Assert.IsType<OkObjectResult>(result);
 
             var ticketInDb = await context.InventoryCheckTickets.FindAsync(ticketId);
@@ -245,5 +290,62 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
             Assert.Equal("WRITE_OFF", stockTicket.TicketType);
             Assert.Equal(20, stockTicket.StockTicketItems.First().Discrepancy);
         }
+
+        [Fact]
+        public async Task ApproveInventoryCheck_Abnormal_NotFound_ReturnsNotFound()
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var controller = CreateController(context, Guid.NewGuid(), Guid.NewGuid(), "Owner");
+
+            var result = await controller.ApproveInventoryCheck(Guid.NewGuid());
+
+            var notFound = Assert.IsType<NotFoundObjectResult>(result);
+            var response = Assert.IsType<ApiResponse<object>>(notFound.Value);
+            Assert.Contains("không tồn tại", response.Message.ToLower());
+        }
+        [Theory]
+        [InlineData("Draft", null, null, 1, 10, 1)] // Status filter
+        [InlineData("Completed", null, null, 1, 10, 1)] // Status filter
+        [InlineData(null, "2024-01-01", "2024-12-31", 1, 10, 2)] // Date range valid
+        [InlineData(null, "2025-01-01", "2025-12-31", 1, 10, 0)] // Date range no match
+        [InlineData(null, null, null, 1, 1, 1)] // Pagination size 1
+        [InlineData(null, null, null, 2, 1, 1)] // Pagination size 1, page 2
+        public async Task GetInventoryChecks_ReturnsFilteredPagedList(string? status, string? fromDate, string? toDate, int page, int size, int expectedCount)
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var branchId = Guid.NewGuid();
+            var userId = Guid.NewGuid();
+            context.Users.Add(new User { UserId = userId, Username = "Test User" });
+            
+            var check1 = new InventoryCheckTicket { TicketId = Guid.NewGuid(), BranchId = branchId, Status = InventoryCheckTicketStatus.Draft, CreatedAt = new DateTime(2024, 6, 1), CreatedByUserId = userId };
+            var check2 = new InventoryCheckTicket { TicketId = Guid.NewGuid(), BranchId = branchId, Status = InventoryCheckTicketStatus.Completed, CreatedAt = new DateTime(2024, 6, 15), CreatedByUserId = userId };
+            context.InventoryCheckTickets.AddRange(check1, check2);
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context, Guid.NewGuid(), branchId);
+            DateTime? from = fromDate != null ? DateTime.Parse(fromDate) : null;
+            DateTime? to = toDate != null ? DateTime.Parse(toDate) : null;
+            var result = await controller.GetInventoryChecks(status, from, to, page, size);
+
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var pageResult = okResult.Value as dynamic;
+            Assert.Equal(expectedCount, System.Linq.Enumerable.Count(pageResult.Data.Items));
+        }
+
+        [Theory]
+        [InlineData(-1, 10)]
+        [InlineData(1, -5)]
+        public async Task GetInventoryChecks_InvalidPagination_ReturnsBadRequest(int page, int size)
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var branchId = Guid.NewGuid();
+            var controller = CreateController(context, Guid.NewGuid(), branchId);
+            
+            var result = await controller.GetInventoryChecks(null, null, null, page, size);
+
+            Assert.IsType<BadRequestObjectResult>(result);
+        }
     }
 }
+
+

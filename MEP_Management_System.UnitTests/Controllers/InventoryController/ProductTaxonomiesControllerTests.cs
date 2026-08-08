@@ -78,10 +78,10 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
         // =====================================
 
         [Theory]
-        [InlineData(null, "Category", "Valid", "Không xác định được chi nhánh")]
-        [InlineData("id", "Category", "DupLocal", "Tên danh mục/thương hiệu này đã tồn tại")]
-        [InlineData("id", "Category", "DupGlobal", "Tên danh mục/thương hiệu này đã tồn tại")]
-        [InlineData("id", "UnknownType", "NewName", "Loại không hợp lệ")] // Example if controller validates Type
+        [InlineData("", "Category", "Valid", "Không xác định được chi nhánh")]
+        [InlineData("id", "Category", "DupGlobal", "Tên đã tồn tại.")]
+        [InlineData("id", "Category", "DupLocal", "Tên đã tồn tại.")]
+        [InlineData("id", "UnknownType", "NewName", "Loại phải là 'Brand' hoặc 'Category'.")] // Example if controller validates Type
         public async Task CreateTaxonomy_InvalidData_ReturnsBadRequest(string branchIdStr, string type, string name, string expectedError)
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
@@ -90,7 +90,7 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
             context.ProductTaxonomies.Add(new ProductTaxonomy { TaxonomyId = Guid.NewGuid(), BranchId = null, Type = "Category", Name = "DupGlobal" });
             await context.SaveChangesAsync();
 
-            var actualBranchId = branchIdStr == null ? (Guid?)null : branchId;
+            var actualBranchId = string.IsNullOrEmpty(branchIdStr) ? (Guid?)null : branchId;
             var controller = CreateController(context, Guid.NewGuid(), actualBranchId);
             // manually mocking type check if not in controller natively
             if (type == "UnknownType") controller.ModelState.AddModelError("Type", "Loại không hợp lệ");
@@ -99,7 +99,8 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
             var result = await controller.CreateTaxonomy(request);
             
             var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.Contains(expectedError, badRequest.Value?.ToString() ?? "");
+            var response = Assert.IsType<ApiResponse<object>>(badRequest.Value);
+            Assert.Contains(expectedError, response.Message ?? string.Join(",", response.Errors ?? new List<string>()));
         }
 
         [Fact]
@@ -126,8 +127,7 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
         // =====================================
 
         [Theory]
-        [InlineData("NotFound", "Tên danh mục")] // ID missing
-        [InlineData("DupLocal", "Tên này đã tồn tại")]
+        [InlineData("DupLocal", "Tên đã tồn tại.")]
         public async Task UpdateTaxonomy_InvalidData_ReturnsAppropriateResult(string scenario, string expectedError)
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
@@ -138,20 +138,26 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
             await context.SaveChangesAsync();
 
             var controller = CreateController(context, Guid.NewGuid(), branchId);
-            var searchId = scenario == "NotFound" ? Guid.NewGuid() : targetId;
-            
             var request = new UpdateProductTaxonomyDto { Name = scenario };
-            var result = await controller.UpdateTaxonomy(searchId, request);
+            var result = await controller.UpdateTaxonomy(targetId, request);
             
-            if (scenario == "NotFound")
-            {
-                Assert.IsType<NotFoundObjectResult>(result);
-            }
-            else
-            {
-                var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-                Assert.Contains(expectedError, badRequest.Value?.ToString() ?? "");
-            }
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            var response = Assert.IsType<ApiResponse<object>>(badRequest.Value);
+            Assert.Contains(expectedError, response.Message ?? string.Join(",", response.Errors ?? new List<string>()));
+        }
+
+        [Fact]
+        public async Task UpdateTaxonomy_Abnormal_NotFound_ReturnsNotFound()
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var controller = CreateController(context, Guid.NewGuid(), Guid.NewGuid());
+            var request = new UpdateProductTaxonomyDto { Name = "Test" };
+
+            var result = await controller.UpdateTaxonomy(Guid.NewGuid(), request);
+
+            var notFound = Assert.IsType<NotFoundObjectResult>(result);
+            var response = Assert.IsType<ApiResponse<object>>(notFound.Value);
+            Assert.Contains("không tìm thấy", response.Message.ToLower());
         }
 
         [Fact]
@@ -175,29 +181,33 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
         // =====================================
 
         [Fact]
-        public async Task DeleteTaxonomy_NotFound_ReturnsNotFound()
+        public async Task DeleteTaxonomy_Abnormal_NotFound_ReturnsNotFound()
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var controller = CreateController(context, Guid.NewGuid(), Guid.NewGuid());
             var result = await controller.DeleteTaxonomy(Guid.NewGuid());
-            Assert.IsType<NotFoundObjectResult>(result);
+            var notFound = Assert.IsType<NotFoundObjectResult>(result);
+            var response = Assert.IsType<ApiResponse<object>>(notFound.Value);
+            Assert.Contains("không tìm thấy", response.Message.ToLower());
         }
 
         [Fact]
         public async Task DeleteTaxonomy_InUseByProducts_ReturnsBadRequest()
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
-            var targetId = Guid.NewGuid();
-            var taxonomy = new ProductTaxonomy { TaxonomyId = targetId, Name = "Brand" };
-            context.ProductTaxonomies.Add(taxonomy);
-            context.Products.Add(new Product { ProductId = Guid.NewGuid(), ProductCode = "P1", CategoryId = targetId });
+            var taxonomyId = Guid.NewGuid();
+            var branchId = Guid.NewGuid();
+            
+            context.ProductTaxonomies.Add(new ProductTaxonomy { TaxonomyId = taxonomyId, BranchId = branchId, Type = "Brand", Name = "Brand1" });
+            context.Products.Add(new Product { ProductId = Guid.NewGuid(), BrandTaxonomyId = taxonomyId });
             await context.SaveChangesAsync();
 
-            var controller = CreateController(context, Guid.NewGuid(), Guid.NewGuid());
-            var result = await controller.DeleteTaxonomy(targetId);
+            var controller = CreateController(context, Guid.NewGuid(), branchId);
+            var result = await controller.DeleteTaxonomy(taxonomyId);
             
             var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.Contains("đang được sử dụng bởi các sản phẩm", badRequest.Value?.ToString() ?? "");
+            var response = Assert.IsType<ApiResponse<object>>(badRequest.Value);
+            Assert.Contains("đang được sử dụng bởi sản phẩm", response.Message ?? string.Join(",", response.Errors ?? new List<string>()));
         }
 
         [Fact]
@@ -217,3 +227,6 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
         }
     }
 }
+
+
+

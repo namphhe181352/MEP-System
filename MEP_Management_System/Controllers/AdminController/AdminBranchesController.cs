@@ -63,6 +63,9 @@ namespace MEP_Management_System.Controllers.AdminController
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
+            if (page < 1) page = 1;
+            if (pageSize < 1) pageSize = 20;
+
             var query = _context.Branches.Include(b => b.ManagerUser).AsQueryable();
 
             if (isActive.HasValue)
