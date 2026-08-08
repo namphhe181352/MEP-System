@@ -939,7 +939,8 @@ public class OwnerStaffController : ControllerBase
             // NHUNG: khong deny quyen VIEW neu user van con quyen thao tac lien quan
             var viewToActionPrefixes = new Dictionary<string, string[]>
             {
-                { "STOCK_VIEW", new[] { "STOCK_INWARD_", "STOCK_OUTWARD_" } },
+                { "STOCK_INWARD_CREATE", new[] { "STOCK_INWARD_" } },
+                { "STOCK_OUTWARD_CREATE", new[] { "STOCK_OUTWARD_" } },
                 { "STOCK_CHECK_VIEW", new[] { "STOCK_CHECK_" } },
                 { "PRODUCT_VIEW", new[] { "PRODUCT_" } },
                 { "SALE_VIEW", new[] { "SALE_", "CUSTOMER_", "PAYMENT_" } },

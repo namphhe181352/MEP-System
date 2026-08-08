@@ -28,6 +28,24 @@ public class AdminRolesController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetRoles()
     {
+        // Cleanup: xoa toan bo quyen cu cua SalesStaff & InventoryStaff
+        var staffRoles = await _context.Roles
+            .Include(r => r.Permissions)
+            .Where(r => r.RoleName == "SalesStaff" || r.RoleName == "Sales Staff"
+                || r.RoleName == "InventoryStaff" || r.RoleName == "Inventory Staff")
+            .ToListAsync();
+
+        bool cleaned = false;
+        foreach (var role in staffRoles)
+        {
+            if (role.Permissions.Any())
+            {
+                role.Permissions.Clear();
+                cleaned = true;
+            }
+        }
+        if (cleaned) await _context.SaveChangesAsync();
+
         var roles = await _context.Roles
             .OrderBy(r => r.RoleName)
             .Select(r => new AdminRoleDto
@@ -68,6 +86,24 @@ public class AdminRolesController : ControllerBase
     [HttpGet("permission-matrix")]
     public async Task<IActionResult> GetRolePermissionMatrix()
     {
+        // Cleanup: xoa toan bo quyen seed cu cua SalesStaff & InventoryStaff
+        var staffRoles = await _context.Roles
+            .Include(r => r.Permissions)
+            .Where(r => r.RoleName == "SalesStaff" || r.RoleName == "Sales Staff"
+                || r.RoleName == "InventoryStaff" || r.RoleName == "Inventory Staff")
+            .ToListAsync();
+
+        bool cleaned = false;
+        foreach (var role in staffRoles)
+        {
+            if (role.Permissions.Any())
+            {
+                role.Permissions.Clear();
+                cleaned = true;
+            }
+        }
+        if (cleaned) await _context.SaveChangesAsync();
+
         var matrix = await _context.Roles
             .Include(r => r.Permissions)
             .OrderBy(r => r.RoleName)
@@ -137,6 +173,35 @@ public class AdminRolesController : ControllerBase
 
         await LogAction(role.RoleId, "UPDATE_ROLE_PERMISSIONS", "role_permissions", "Role", $"Cập nhật quyền cho Role: {role.RoleName}");
         await _context.SaveChangesAsync();
+
+        // Dong bo voi sibling role (vd: "SalesStaff" <-> "Sales Staff")
+        var normalizedName = role.RoleName.Trim();
+        string? siblingName = null;
+        if (normalizedName.Equals("SalesStaff", StringComparison.OrdinalIgnoreCase))
+            siblingName = "Sales Staff";
+        else if (normalizedName.Equals("Sales Staff", StringComparison.OrdinalIgnoreCase))
+            siblingName = "SalesStaff";
+        else if (normalizedName.Equals("InventoryStaff", StringComparison.OrdinalIgnoreCase))
+            siblingName = "Inventory Staff";
+        else if (normalizedName.Equals("Inventory Staff", StringComparison.OrdinalIgnoreCase))
+            siblingName = "InventoryStaff";
+
+        if (siblingName != null)
+        {
+            var siblingRole = await _context.Roles
+                .Include(r => r.Permissions)
+                .FirstOrDefaultAsync(r => r.RoleName == siblingName);
+            if (siblingRole != null)
+            {
+                var siblingPermissions = await _context.Permissions
+                    .Where(p => dto.PermissionIds.Contains(p.PermissionId))
+                    .ToListAsync();
+                siblingRole.Permissions.Clear();
+                foreach (var p in siblingPermissions)
+                    siblingRole.Permissions.Add(p);
+                await _context.SaveChangesAsync();
+            }
+        }
 
         return Ok(new { message = $"Đã cập nhật quyền cho {role.RoleName} thành công." });
     }
