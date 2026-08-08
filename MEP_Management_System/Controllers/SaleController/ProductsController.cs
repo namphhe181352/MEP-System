@@ -13,7 +13,7 @@ namespace MEP_Management_System.Controllers.SaleController;
 
 [ApiController]
 [Route("api/pos/products")]
-[HasPermission(PermissionConstants.PRODUCT_VIEW)]
+[Authorize] // Chi can dang nhap, POS san pham la quyen co ban cua nhan vien ban hang
 [Tags("Quản lý bán hàng (Sale)")]
 public class ProductsController : ControllerBase
 {
