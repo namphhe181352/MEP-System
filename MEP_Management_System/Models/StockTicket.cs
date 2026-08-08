@@ -26,6 +26,8 @@ public partial class StockTicket
 
     public string? Notes { get; set; }
 
+    public string? Reason { get; set; }
+
     // === Audit trail ===
     public DateTime? CompletedAt { get; set; }
     public Guid? ConfirmedBy { get; set; }

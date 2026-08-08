@@ -2512,6 +2512,9 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("text")
                         .HasColumnName("notes");
 
+                    b.Property<string>("Reason")
+                        .HasColumnType("text");
+
                     b.Property<string>("Status")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
@@ -2591,7 +2594,9 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("system_quantity");
 
                     b.Property<decimal?>("UnitPrice")
-                        .HasColumnType("numeric");
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)")
+                        .HasColumnName("unit_price");
 
                     b.HasKey("TicketItemId")
                         .HasName("stock_ticket_items_pkey");
