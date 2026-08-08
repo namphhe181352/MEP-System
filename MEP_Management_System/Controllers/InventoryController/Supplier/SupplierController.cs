@@ -41,7 +41,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         // Quyền truy cập: Owner (Mặc định qua Handler) hoặc có quyền SUPPLIER_VIEW
         // ============================================================
         [HttpGet]
-        [HasPermission(PermissionConstants.SUPPLIER_VIEW)]
+        // Lookup API - dung cho dropdown chon NCC trong form nhap/xuat
         public async Task<IActionResult> GetSuppliers([FromQuery] SupplierQueryParameters p)
         {
             try
@@ -154,7 +154,7 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         // Quyền truy cập: Owner (Mặc định qua Handler) hoặc có quyền SUPPLIER_VIEW
         // ============================================================
         [HttpGet("{id:guid}")]
-        [HasPermission(PermissionConstants.SUPPLIER_VIEW)]
+        // Lookup API - dung cho dropdown chon NCC
         public async Task<IActionResult> GetSupplier(Guid id)
         {
             try

@@ -136,7 +136,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         // Query ?status=CANCELLED hoặc ?status=ALL để xem thêm CANCELLED
         // ============================================================
         [HttpGet]
-        [HasPermission(PermissionConstants.STOCK_VIEW)]
+        [HasPermission(PermissionConstants.STOCK_OUTWARD_CREATE)]
         public async Task<IActionResult> GetOutwardInventories(
             [FromQuery] string? status,
             [FromQuery] string? ticketType,
@@ -256,7 +256,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         // GET /api/outwardinventory/{id}
         // ============================================================
         [HttpGet("{id:guid}")]
-        [HasPermission(PermissionConstants.STOCK_VIEW)]
+        [HasPermission(PermissionConstants.STOCK_OUTWARD_CREATE)]
         public async Task<IActionResult> GetOutwardInventoryById(Guid id)
         {
             try
@@ -601,7 +601,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                         UserId = currentUserId.Value,
                         TicketType = GetTicketTypeName(dto.OutwardType),
                         Status = "PENDING",
-                        Notes = !string.IsNullOrWhiteSpace(dto.Note) ? dto.Note : dto.Reason,
+                        Reason = dto.Reason,
+                        Notes = dto.Note,
                         SupplierId = dto.SupplierId,
                         InwardTicketId = dto.InwardTicketId,
                         CreatedAt = currentTime
@@ -741,8 +742,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     // COMPLETED: CHỈ cho phép sửa Note/Reason, không cho sửa Items
                     if (dto.Note != null)
                         stockTicket.Notes = dto.Note;
-                    else if (dto.Reason != null)
-                        stockTicket.Notes = dto.Reason;
+                    if (dto.Reason != null)
+                        stockTicket.Reason = dto.Reason;
 
                     await _context.SaveChangesAsync();
 
@@ -765,8 +766,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 // PENDING: Cho phép sửa tất cả (Items, Note, Reason, Status)
                 if (dto.Note != null)
                     stockTicket.Notes = dto.Note;
-                else if (dto.Reason != null)
-                    stockTicket.Notes = dto.Reason;
+                if (dto.Reason != null)
+                    stockTicket.Reason = dto.Reason;
 
                 // ============================================================
                 // BUG 2 FIX: Chỉ cho phép set CANCELLED, KHÔNG cho set COMPLETED
@@ -1113,11 +1114,21 @@ namespace MEP_Management_System.Controllers.InventoryController
         // ============================================================
         // POST /api/outwardinventory/{id}/cancel
         // Hủy phiếu xuất kho - Xử lý rollback tồn kho
+        // Quyen huy:
+        // - PENDING: nguoi tao phieu hoac co STOCK_OUTWARD_DELETE hoac Owner
+        // - COMPLETED: chi co STOCK_OUTWARD_DELETE hoac Owner
         // ============================================================
         [HttpPost("{id:guid}/cancel")]
-        [HasPermission(PermissionConstants.STOCK_OUTWARD_DELETE)]
         public async Task<IActionResult> CancelOutwardInventory(Guid id, [FromBody] CancelTicketDto dto)
         {
+            var currentUserId = GetCurrentUserId();
+            if (!currentUserId.HasValue)
+                return Unauthorized(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Không thể xác định người dùng từ token."
+                });
+
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
@@ -1155,6 +1166,32 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 // ============================================================
+                // KIEM TRA QUYEN HUY
+                // ============================================================
+                bool hasDeletePerm = HasGlobalAccess() || User.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_DELETE);
+                bool isCreator = stockTicket.UserId == currentUserId.Value;
+                bool isPending = stockTicket.Status?.ToUpperInvariant() == "PENDING";
+
+                if (isPending && !isCreator && !hasDeletePerm)
+                {
+                    await transaction.RollbackAsync();
+                    return StatusCode(403, new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Bạn không có quyền hủy phiếu này. Chỉ người tạo phiếu hoặc người có quyền hủy mới được thực hiện."
+                    });
+                }
+                if (!isPending && !hasDeletePerm)
+                {
+                    await transaction.RollbackAsync();
+                    return StatusCode(403, new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Bạn không có quyền hủy phiếu này. Chỉ Owner hoặc người có quyền hủy mới được thực hiện."
+                    });
+                }
+
+                // ============================================================
                 // QUY TẮC MỚI: Kiểm tra trạng thái
                 // ============================================================
                 if (stockTicket.Status?.ToUpperInvariant() == "CANCELLED")
@@ -1168,7 +1205,6 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                var currentUserId = GetCurrentUserId();
                 var previousStatus = stockTicket.Status;
 
                 // COMPLETED: đã trừ tồn kho → phải cộng lại
@@ -1247,7 +1283,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         // Tra ve HTML phieu xuat kho
         // ============================================================
         [HttpGet("{id:guid}/print")]
-        [HasPermission(PermissionConstants.STOCK_VIEW)]
+        [HasPermission(PermissionConstants.STOCK_OUTWARD_CREATE)]
         public async Task<IActionResult> Print(Guid id)
         {
             var staffBranchId = _currentBranch.GetBranchId();
@@ -1382,7 +1418,7 @@ th {{ background: #f0f0f0; }}
                 SupplierId = stockTicket.SupplierId,
                 SupplierName = stockTicket.Supplier?.SupplierName,
                 InwardTicketId = stockTicket.InwardTicketId,
-                Reason = stockTicket.Notes,
+                Reason = stockTicket.Reason,
                 Note = stockTicket.Notes,
                 CreatedAt = stockTicket.CreatedAt,
                 CompletedAt = stockTicket.CompletedAt,

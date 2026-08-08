@@ -127,6 +127,7 @@ public class ReturnsController : ControllerBase
         var r = await _context.ReturnOrders
             .Include(r => r.Order).ThenInclude(o => o!.Branch)
             .Include(r => r.Order).ThenInclude(o => o!.Invoice)
+            .Include(r => r.Order).ThenInclude(o => o!.Customer)
             .Include(r => r.User)
             .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product)
             .FirstOrDefaultAsync(r => r.ReturnOrderId == id && r.Order!.BranchId == branchId);
@@ -148,6 +149,7 @@ public class ReturnsController : ControllerBase
             // BR-81: tìm hóa đơn gốc
             var invoice = await _context.Invoices
                 .Include(i => i.Order).ThenInclude(o => o!.Branch)
+                .Include(i => i.Order).ThenInclude(o => o!.Customer)
                 .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct).ThenInclude(bp => bp!.Product).ThenInclude(p => p!.CategoryTaxonomy)
                 .FirstOrDefaultAsync(i => i.InvoiceId == req.InvoiceId && i.Order!.BranchId == branchId);
 
@@ -445,8 +447,11 @@ public class ReturnsController : ControllerBase
         var branchId = GetBranchId();
 
         var ret = await _context.ReturnOrders
-            .Include(r => r.Order)
-            .Include(r => r.ReturnItems)
+            .Include(r => r.Order).ThenInclude(o => o!.Branch)
+            .Include(r => r.Order).ThenInclude(o => o!.Customer)
+            .Include(r => r.Order).ThenInclude(o => o!.Invoice)
+            .Include(r => r.User)
+            .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product)
             .FirstOrDefaultAsync(r => r.ReturnOrderId == id && r.Order!.BranchId == branchId);
 
         if (ret == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Không tìm thấy phiếu đổi trả."));
