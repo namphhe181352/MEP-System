@@ -523,7 +523,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                         UserId = currentUserId.Value,
                         TicketType = GetTicketTypeName(dto.OutwardType),
                         Status = "PENDING",
-                        Notes = !string.IsNullOrWhiteSpace(dto.Note) ? dto.Note : dto.Reason,
+                        Reason = dto.Reason,
+                        Notes = dto.Note,
                         SupplierId = dto.SupplierId,
                         CreatedAt = currentTime
                     };
@@ -661,8 +662,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     // COMPLETED: CHỈ cho phép sửa Note/Reason, không cho sửa Items
                     if (dto.Note != null)
                         stockTicket.Notes = dto.Note;
-                    else if (dto.Reason != null)
-                        stockTicket.Notes = dto.Reason;
+                    if (dto.Reason != null)
+                        stockTicket.Reason = dto.Reason;
 
                     await _context.SaveChangesAsync();
 
@@ -685,8 +686,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 // PENDING: Cho phép sửa tất cả (Items, Note, Reason, Status)
                 if (dto.Note != null)
                     stockTicket.Notes = dto.Note;
-                else if (dto.Reason != null)
-                    stockTicket.Notes = dto.Reason;
+                if (dto.Reason != null)
+                    stockTicket.Reason = dto.Reason;
 
                 // ============================================================
                 // BUG 2 FIX: Chỉ cho phép set CANCELLED, KHÔNG cho set COMPLETED
@@ -1246,7 +1247,7 @@ th {{ background: #f0f0f0; }}
                 BranchId = stockTicket.BranchId,
                 UserId = stockTicket.UserId,
                 UserName = stockTicket.User?.FullName ?? stockTicket.User?.Username,
-                Reason = stockTicket.Notes,
+                Reason = stockTicket.Reason,
                 Note = stockTicket.Notes,
                 CreatedAt = stockTicket.CreatedAt,
                 CompletedAt = stockTicket.CompletedAt,
