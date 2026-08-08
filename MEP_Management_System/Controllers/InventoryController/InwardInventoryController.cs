@@ -136,7 +136,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         // Query ?status=CANCELLED hoặc ?status=ALL để xem thêm CANCELLED
         // ============================================================
         [HttpGet]
-        [HasPermission(PermissionConstants.STOCK_VIEW)]
+        [HasPermission(PermissionConstants.STOCK_INWARD_CREATE)]
         public async Task<IActionResult> GetInwardInventories(
             [FromQuery] string? status,
             [FromQuery] string? ticketType,
@@ -203,10 +203,134 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         // ============================================================
+        // GET /api/inwardinventory/by-supplier/{supplierId}
+        // Lookup API - dung cho dropdown chon phieu nhap tham chieu
+        // trong form Xuat tra nha cung cap.
+        // ============================================================
+        [HttpGet("by-supplier/{supplierId:guid}")]
+        // Lookup API - khong yeu cau quyen cu the, chi can da dang nhap
+        public async Task<IActionResult> GetInwardBySupplier(Guid supplierId)
+        {
+            try
+            {
+                var branchId = _currentBranch.GetBranchId();
+                if (branchId == null)
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không xác định được chi nhánh."
+                    });
+
+                var tickets = await _context.StockTickets
+                    .Where(st => st.BranchId == branchId.Value
+                        && st.SupplierId == supplierId
+                        && st.Status == "COMPLETED"
+                        && (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST"))
+                    .OrderByDescending(st => st.CompletedAt ?? st.CreatedAt)
+                    .Select(st => new
+                    {
+                        stockTicketId = st.StockTicketId,
+                        ticketId = st.StockTicketId,
+                        ticketCode = st.TicketCode ?? "",
+                        createdAt = st.CreatedAt,
+                        itemsCount = st.StockTicketItems.Count
+                    })
+                    .ToListAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = "Danh sach phieu nhap cua nha cung cap.",
+                    Data = tickets
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Loi khi lay danh sach phieu nhap.",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        // ============================================================
+        // GET /api/inwardinventory/{id}/returnable-items
+        // Lookup API - tra ve danh sach san pham co the tra lai
+        // tu mot phieu nhap kho. Dung trong form Xuat tra nha cung cap.
+        // ============================================================
+        [HttpGet("{id:guid}/returnable-items")]
+        // Lookup API - khong yeu cau quyen cu the, chi can da dang nhap
+        public async Task<IActionResult> GetReturnableItems(Guid id)
+        {
+            try
+            {
+                var branchId = _currentBranch.GetBranchId();
+                if (branchId == null)
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không xác định được chi nhánh."
+                    });
+
+                var ticket = await _context.StockTickets
+                    .Include(st => st.StockTicketItems)
+                        .ThenInclude(item => item.BranchProduct)
+                            .ThenInclude(bp => bp.Product)
+                    .FirstOrDefaultAsync(st => st.StockTicketId == id
+                        && st.BranchId == branchId.Value
+                        && st.Status == "COMPLETED"
+                        && (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST"));
+
+                if (ticket == null)
+                    return NotFound(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Phiếu nhập không tồn tại hoặc chưa hoàn thành."
+                    });
+
+                var returnableItems = ticket.StockTicketItems.Select(item =>
+                {
+                    var actualStock = item.BranchProduct?.ActualStock ?? 0;
+                    var maxReturnable = item.ActualQuantity; // Toan bo so luong da nhap deu co the tra
+
+                    return new
+                    {
+                        branchProductId = item.BranchProductId,
+                        inwardTicketItemId = item.TicketItemId,
+                        productCode = item.BranchProduct?.Product?.ProductCode ?? "",
+                        productName = item.BranchProduct?.Product?.ProductName ?? "",
+                        unitName = item.BranchProduct?.Product?.BaseUnit ?? "",
+                        unitPrice = item.UnitPrice ?? item.BranchProduct?.CostPrice ?? 0,
+                        maxReturnableQuantity = maxReturnable,
+                        actualStock = actualStock
+                    };
+                }).Where(x => x.maxReturnableQuantity > 0).ToList();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = "Danh sach san pham co the tra.",
+                    Data = new { items = returnableItems }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Loi khi lay danh sach san pham co the tra.",
+                    Errors = new() { ex.Message }
+                });
+            }
+        }
+
+        // ============================================================
         // GET /api/inwardinventory/{id}
         // ============================================================
         [HttpGet("{id:guid}")]
-        [HasPermission(PermissionConstants.STOCK_VIEW)]
+        [HasPermission(PermissionConstants.STOCK_INWARD_CREATE)]
         public async Task<IActionResult> GetInwardInventoryById(Guid id)
         {
             try
@@ -576,8 +700,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                             ActualStock = 0,
                             ReservedStock = 0,
                             AvailableStock = 0,
-                            IsActive = isNewProduct ? (short)0 : (short)1,
-                            DirectSale = isNewProduct ? (short)0 : (short)1
+                            IsActive = -1, // An khoi danh sach SP cho den khi xac nhan nhap kho
+                            DirectSale = 0
                         };
 
                         _context.BranchProducts.Add(branchProduct);
@@ -866,6 +990,13 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                     if (branchProduct != null)
                     {
+                        // Kich hoat san pham neu dang bi an (IsActive = -1 tu luc tao phieu PENDING)
+                        if (branchProduct.IsActive == -1)
+                        {
+                            branchProduct.IsActive = 1;
+                            branchProduct.DirectSale = 1;
+                        }
+
                         // Cập nhật tồn kho - Nhập kho thì CỘNG
                         branchProduct.ActualStock += item.Discrepancy;
                         branchProduct.AvailableStock += item.Discrepancy;
@@ -934,11 +1065,21 @@ namespace MEP_Management_System.Controllers.InventoryController
         // ============================================================
         // POST /api/inwardinventory/{id}/cancel
         // Hủy phiếu nhập kho - Xử lý rollback an toàn
+        // Quyen huy:
+        // - PENDING: nguoi tao phieu hoac co STOCK_INWARD_DELETE hoac Owner
+        // - COMPLETED: chi co STOCK_INWARD_DELETE hoac Owner
         // ============================================================
         [HttpPost("{id:guid}/cancel")]
-        [HasPermission(PermissionConstants.STOCK_INWARD_DELETE)]
         public async Task<IActionResult> CancelInwardInventory(Guid id, [FromBody] CancelTicketDto dto)
         {
+            var currentUserId = GetCurrentUserId();
+            if (!currentUserId.HasValue)
+                return Unauthorized(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Không thể xác định người dùng từ token."
+                });
+
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
@@ -972,6 +1113,28 @@ namespace MEP_Management_System.Controllers.InventoryController
                         Success = false,
                         Message = "Inward inventory not found",
                         Errors = new() { $"No inward inventory with ID: {id}" }
+                    });
+                }
+
+                // Kiem tra quyen huy
+                bool hasDeletePerm = IsOwner() || User.HasClaim("permission", PermissionConstants.STOCK_INWARD_DELETE);
+                bool isCreator = stockTicket.UserId == currentUserId.Value;
+                bool isPending = stockTicket.Status?.ToUpperInvariant() == "PENDING";
+
+                if (isPending && !isCreator && !hasDeletePerm)
+                {
+                    return StatusCode(403, new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Bạn không có quyền hủy phiếu này. Chỉ người tạo phiếu hoặc người có quyền hủy mới được thực hiện."
+                    });
+                }
+                if (!isPending && !hasDeletePerm)
+                {
+                    return StatusCode(403, new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Bạn không có quyền hủy phiếu này. Chỉ Owner hoặc người có quyền hủy mới được thực hiện."
                     });
                 }
 
@@ -1039,8 +1202,6 @@ namespace MEP_Management_System.Controllers.InventoryController
                         }
                     }
                 }
-
-                var currentUserId = GetCurrentUserId();
 
                 // Lưu trạng thái TRƯỚC KHI đổi để response message chính xác
                 var wasCompleted = stockTicket.Status == "COMPLETED";
@@ -1110,7 +1271,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         // Trả về HTML phiếu nhập kho
         // ============================================================
         [HttpGet("{id:guid}/print")]
-        [HasPermission(PermissionConstants.STOCK_VIEW)]
+        [HasPermission(PermissionConstants.STOCK_INWARD_CREATE)]
         public async Task<IActionResult> Print(Guid id)
         {
             var branchId = _currentBranch.GetBranchId();

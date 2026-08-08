@@ -72,9 +72,11 @@ public class OwnerStaffController : ControllerBase
             PhoneNumber = user.PhoneNumber,
             IsActive = user.IsActive,
             PermissionCodes = user.UserPermissions
+                .Where(up => up.IsGranted != false) // Chi lay quyen duoc cap (true hoac null), bo qua deny
                 .Select(up => up.Permission?.PermissionCode ?? "")
                 .Where(c => !string.IsNullOrEmpty(c))
                 .ToList(),
+            HasCustomPermissions = user.UserPermissions.Any(),
             Roles = user.Roles
                 .Select(r => r.RoleName)
                 .ToList()
@@ -487,6 +489,55 @@ public class OwnerStaffController : ControllerBase
     }
     #endregion
 
+    #region GET /api/owner/staffs/role-permissions
+
+    /// <summary>
+    /// Lấy danh sach quyen mac dinh cua cac Role SalesStaff & InventoryStaff.
+    /// Dung de dong bo voi cau hinh tu Admin.
+    /// </summary>
+    [HttpGet("role-permissions")]
+    public async Task<IActionResult> GetRolePermissions()
+    {
+        var roles = await _context.Roles
+            .Include(r => r.Permissions)
+            .Where(r => r.RoleName == "SalesStaff" || r.RoleName == "InventoryStaff"
+                || r.RoleName == "Sales Staff" || r.RoleName == "Inventory Staff")
+            .ToListAsync();
+
+        var result = new Dictionary<string, List<string>>();
+        foreach (var role in roles)
+        {
+            var key = role.RoleName switch
+            {
+                "Sales Staff" => "SalesStaff",
+                "Inventory Staff" => "InventoryStaff",
+                _ => role.RoleName
+            };
+            if (!result.ContainsKey(key))
+            {
+                result[key] = role.Permissions.Select(p => p.PermissionCode).ToList();
+            }
+            else
+            {
+                // Merge permissions from both role name variants
+                var existing = result[key];
+                foreach (var code in role.Permissions.Select(p => p.PermissionCode))
+                {
+                    if (!existing.Contains(code)) existing.Add(code);
+                }
+            }
+        }
+
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Message = "Danh sach quyen mac dinh cua cac Role.",
+            Data = result
+        });
+    }
+
+    #endregion
+
     #region GET /api/owner/staffs/available-permissions
 
     /// <summary>
@@ -659,10 +710,6 @@ public class OwnerStaffController : ControllerBase
             }
 
             var roleNameToSearch = dto.DefaultRoleType;
-            if (roleNameToSearch.Equals("SalesStaff", StringComparison.OrdinalIgnoreCase))
-                roleNameToSearch = "Sales Staff";
-            if (roleNameToSearch.Equals("InventoryStaff", StringComparison.OrdinalIgnoreCase))
-                roleNameToSearch = "Inventory Staff";
 
             staffRole = await GetOrCreateRoleAsync(roleNameToSearch);
             await _context.Entry(staffRole).Collection(r => r.Permissions).LoadAsync();
@@ -889,8 +936,28 @@ public class OwnerStaffController : ControllerBase
             }
 
             // Add explicit denies (IsGranted = false) for role permissions NOT in the requested list
+            // NHUNG: khong deny quyen VIEW neu user van con quyen thao tac lien quan
+            var viewToActionPrefixes = new Dictionary<string, string[]>
+            {
+                { "STOCK_VIEW", new[] { "STOCK_INWARD_", "STOCK_OUTWARD_" } },
+                { "STOCK_CHECK_VIEW", new[] { "STOCK_CHECK_" } },
+                { "PRODUCT_VIEW", new[] { "PRODUCT_" } },
+                { "SALE_VIEW", new[] { "SALE_", "CUSTOMER_", "PAYMENT_" } },
+                { "SUPPLIER_VIEW", new[] { "SUPPLIER_" } },
+                { "EXPENSE_VIEW", new[] { "EXPENSE_" } },
+                { "STAFF_VIEW", new[] { "STAFF_", "SHIFT_" } },
+            };
+
             foreach (var rolePermCode in rolePermissionCodes.Where(c => !requestedCodes.Contains(c)))
             {
+                // Kiem tra xem co phai la quyen VIEW dang bi deny khong
+                var isViewBeingDenied = viewToActionPrefixes.TryGetValue(rolePermCode, out var actionPrefixes);
+                var hasRelatedAction = isViewBeingDenied && actionPrefixes != null &&
+                    requestedCodes.Any(rc => actionPrefixes.Any(ap => rc.StartsWith(ap)));
+
+                if (hasRelatedAction)
+                    continue; // Khong deny VIEW neu user van co quyen thao tac lien quan
+
                 var perm = await _context.Permissions.FirstOrDefaultAsync(p => p.PermissionCode == rolePermCode);
                 if (perm != null)
                 {

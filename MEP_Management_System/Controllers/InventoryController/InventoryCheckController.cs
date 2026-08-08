@@ -129,7 +129,7 @@ public class InventoryCheckController : ControllerBase
     #region Inventory Check CRUD
 
     [HttpGet]
-    [HasPermission(PermissionConstants.STOCK_CHECK_VIEW)]
+    [HasPermission(PermissionConstants.STOCK_CHECK_CREATE)]
     public async Task<IActionResult> GetInventoryChecks(
         [FromQuery] string? status,
         [FromQuery] DateTime? startDate,
@@ -244,7 +244,7 @@ public class InventoryCheckController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
-    [HasPermission(PermissionConstants.STOCK_CHECK_VIEW)]
+    [HasPermission(PermissionConstants.STOCK_CHECK_CREATE)]
     public async Task<IActionResult> GetInventoryCheckById(Guid id)
     {
         try
