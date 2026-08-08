@@ -84,8 +84,11 @@ namespace MEP_Management_System.Tests.Controllers
             return controller;
         }
 
+        // ==========================================
+        // TEST CREATE INVOICE
+        // ==========================================
         [Fact]
-        public async Task GetInvoices_ValidBranch_ReturnsOk()
+        public async Task CreateInvoice_WithOpenShift_CreatesDraftInvoiceSuccessfully()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
@@ -93,64 +96,17 @@ namespace MEP_Management_System.Tests.Controllers
             var userId = Guid.NewGuid();
             var controller = CreateController(context, userId, branchId);
 
-            var user = new User { UserId = userId, Username = "test", Email = "test@test.com", FullName = "Test", PasswordHash = "hash" };
+            // Shift must be open to create invoice
+            context.Shifts.Add(new Shift { ShiftId = Guid.NewGuid(), BranchId = branchId, UserId = userId, Status = "OPEN", StartedAt = DateTime.UtcNow, ShiftCode = "CA-01" });
+            
+            var user = new User { UserId = userId, Username = "sale1", FullName = "Nhân viên Bán hàng 1" };
             context.Users.Add(user);
-            
-            var orderId = Guid.NewGuid();
-            var order = new Order { OrderId = orderId, OrderCode = "ORD-001", BranchId = branchId, UserId = userId, Status = "Draft", CreatedAt = DateTime.UtcNow, User = user };
-            var invoice = new Invoice { InvoiceId = Guid.NewGuid(), InvoiceCode = "INV-001", OrderId = orderId, Status = "Draft", CreatedAt = DateTime.UtcNow, UserId = userId, Order = order };
-            
-            context.Orders.Add(order);
-            context.Invoices.Add(invoice);
             await context.SaveChangesAsync();
 
-            _mockMapper.Setup(m => m.Map<InvoiceDto>(It.IsAny<Invoice>())).Returns(new InvoiceDto { Status = "Draft" });
+            var request = new CreateInvoiceRequest { Note = "Hóa đơn bàn 5" };
 
-            // Act
-            var result = await controller.GetInvoices(status: null, dateFrom: null, dateTo: null, customerId: null, staffId: null, page: 1, pageSize: 20);
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result.Result);
-            var pageResult = Assert.IsType<PageResultDto<InvoiceDto>>(okResult.Value);
-            Assert.Single(pageResult.Items);
-            Assert.Equal(1, pageResult.TotalCount);
-        }
-
-        [Fact]
-        public async Task CreateInvoice_NoOpenShift_ReturnsBadRequest()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var branchId = Guid.NewGuid();
-            var userId = Guid.NewGuid();
-            var controller = CreateController(context, userId, branchId);
-
-            var request = new CreateInvoiceRequest { Note = "Test" };
-
-            // Act
-            var result = await controller.CreateInvoice(request);
-
-            // Assert
-            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result.Result);
-            var errorResponse = Assert.IsType<ApiErrorResponse>(badRequestResult.Value);
-            Assert.Equal("Vui lòng mở ca bán trước khi tạo đơn hàng", errorResponse.Error.Message);
-        }
-
-        [Fact]
-        public async Task CreateInvoice_WithOpenShift_ReturnsCreated()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var branchId = Guid.NewGuid();
-            var userId = Guid.NewGuid();
-            var controller = CreateController(context, userId, branchId);
-
-            context.Shifts.Add(new Shift { ShiftId = Guid.NewGuid(), BranchId = branchId, UserId = userId, Status = "OPEN", StartedAt = DateTime.UtcNow, ShiftCode = "TEST" });
-            await context.SaveChangesAsync();
-
-            var request = new CreateInvoiceRequest { Note = "Test Invoice" };
-
-            _mockMapper.Setup(m => m.Map<InvoiceDto>(It.IsAny<Invoice>())).Returns(new InvoiceDto { InvoiceId = Guid.NewGuid() });
+            // Mock auto-mapper behavior if the controller relies heavily on it
+            _mockMapper.Setup(m => m.Map<InvoiceDto>(It.IsAny<Invoice>())).Returns((Invoice src) => new InvoiceDto { InvoiceId = src.InvoiceId, Note = src.Note });
 
             // Act
             var result = await controller.CreateInvoice(request);
@@ -158,7 +114,36 @@ namespace MEP_Management_System.Tests.Controllers
             // Assert
             var createdResult = Assert.IsType<CreatedAtActionResult>(result.Result);
             var dto = Assert.IsType<InvoiceDto>(createdResult.Value);
-            Assert.Equal(userId, dto.UserId);
+            
+            Assert.Equal("Hóa đơn bàn 5", dto.Note);
+            
+            // Validate DB insertion
+            var invoiceInDb = await context.Invoices.FirstOrDefaultAsync(i => i.InvoiceId == dto.InvoiceId);
+            Assert.NotNull(invoiceInDb);
+            Assert.Equal("Draft", invoiceInDb.Status);
+        }
+
+        [Fact]
+        public async Task CreateInvoice_NoOpenShift_ReturnsApiErrorResponse()
+        {
+            // Arrange
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var branchId = Guid.NewGuid();
+            var userId = Guid.NewGuid();
+            var controller = CreateController(context, userId, branchId);
+
+            // Do not add any active shift
+            var request = new CreateInvoiceRequest { Note = "Lỗi do chưa mở ca" };
+
+            // Act
+            var result = await controller.CreateInvoice(request);
+
+            // Assert
+            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result.Result);
+            var errorResponse = Assert.IsType<ApiErrorResponse>(badRequestResult.Value);
+            
+            Assert.NotNull(errorResponse.Error);
+            Assert.Contains("mở ca bán", errorResponse.Error.Message);
         }
     }
 }

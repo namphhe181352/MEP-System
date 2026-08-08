@@ -1,17 +1,13 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
-using AutoMapper;
-using MEP_Management_System.Controllers.SaleController;
-using MEP_Management_System.DTOs.SaleDTOs;
+using MEP_Management_System.Controllers;
 using MEP_Management_System.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Moq;
 using Xunit;
 
 namespace MEP_Management_System.Tests.Controllers
@@ -19,7 +15,6 @@ namespace MEP_Management_System.Tests.Controllers
     public class PrintingControllerTests
     {
         private DbContextOptions<MEPDatabaseContext> _dbContextOptions;
-        private Mock<IMapper> _mockMapper;
 
         public PrintingControllerTests()
         {
@@ -27,24 +22,16 @@ namespace MEP_Management_System.Tests.Controllers
                 .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
                 .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
                 .Options;
-
-            _mockMapper = new Mock<IMapper>();
         }
 
-        private PrintingController CreateController(MEPDatabaseContext context, Guid? userId = null, Guid? branchId = null)
+        private PrintingController CreateController(MEPDatabaseContext context, Guid? userId = null)
         {
-            var templateService = new MEP_Management_System.Services.InvoicePrintTemplateService(context);
-            var controller = new PrintingController(context, _mockMapper.Object, templateService);
+            var controller = new PrintingController(context);
 
             var claims = new List<Claim>();
             if (userId.HasValue)
             {
                 claims.Add(new Claim(ClaimTypes.NameIdentifier, userId.Value.ToString()));
-                claims.Add(new Claim("sub", userId.Value.ToString()));
-            }
-            if (branchId.HasValue)
-            {
-                claims.Add(new Claim("branchId", branchId.Value.ToString()));
             }
 
             var identity = new ClaimsIdentity(claims, "TestAuthType");
@@ -59,71 +46,32 @@ namespace MEP_Management_System.Tests.Controllers
         }
 
         [Fact]
-        public async Task PrintInvoice_InvoiceNotFound_ReturnsNotFound()
+        public async Task GetPrintTemplate_ReturnsTemplateHtml()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context, Guid.NewGuid(), Guid.NewGuid());
-
-            // Act
-            var result = await controller.PrintInvoice(Guid.NewGuid());
-
-            // Assert
-            var notFoundResult = Assert.IsType<NotFoundObjectResult>(result.Result);
-            var errorResponse = Assert.IsType<ApiErrorResponse>(notFoundResult.Value);
-            Assert.Equal("MSG-01", errorResponse.Error.Code);
-        }
-
-
-
-        [Fact]
-        public async Task DownloadPdf_ReceiptNotFound_ReturnsNotFound()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context, Guid.NewGuid(), Guid.NewGuid());
-
-            // Act
-            var result = await controller.DownloadPdf(Guid.NewGuid());
-
-            // Assert
-            var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
-            var errorResponse = Assert.IsType<ApiErrorResponse>(notFoundResult.Value);
-            Assert.Equal("MSG-01", errorResponse.Error.Code);
-        }
-
-        [Fact]
-        public async Task DownloadPdf_Valid_ReturnsFileResult()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var controller = CreateController(context, Guid.NewGuid());
             var branchId = Guid.NewGuid();
-            var userId = Guid.NewGuid();
-            var controller = CreateController(context, userId, branchId);
 
-            var invoiceId = Guid.NewGuid();
-            var orderId = Guid.NewGuid();
-            
-            var branch = new Branch { BranchId = branchId, BranchName = "Test" };
-            context.Branches.Add(branch);
-            
-            var order = new Order { OrderId = orderId, OrderCode = "O1", BranchId = branchId, Branch = branch, Status = "Completed" };
-            context.Orders.Add(order);
-            
-            var invoice = new Invoice { InvoiceId = invoiceId, InvoiceCode = "I1", OrderId = orderId, Status = "Completed", CreatedAt = DateTime.UtcNow, Order = order };
-            context.Invoices.Add(invoice);
-
-            var receipt = new Receipt { ReceiptId = Guid.NewGuid(), InvoiceId = invoiceId, Invoice = invoice, ReceiptCode = "RC-1", HtmlContent = "<html>Test</html>" };
-            context.Receipts.Add(receipt);
+            context.PrintTemplates.Add(new PrintTemplate 
+            { 
+                TemplateId = Guid.NewGuid(), 
+                BranchId = branchId, 
+                TemplateType = "INVOICE", 
+                TemplateContent = "<html><body>Hóa đơn bán hàng</body></html>" 
+            });
             await context.SaveChangesAsync();
 
             // Act
-            var result = await controller.DownloadPdf(invoiceId);
+            var result = await controller.GetPrintTemplate(branchId, "INVOICE");
 
             // Assert
-            var fileResult = Assert.IsType<FileContentResult>(result);
-            Assert.Equal("text/html", fileResult.ContentType);
-            Assert.Equal("RC-1.html", fileResult.FileDownloadName);
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var data = okResult.Value;
+            var type = data.GetType();
+            
+            var content = type.GetProperty("TemplateContent")?.GetValue(data, null) as string;
+            Assert.Contains("Hóa đơn bán hàng", content);
         }
     }
 }

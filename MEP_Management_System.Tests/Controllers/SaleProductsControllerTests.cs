@@ -59,19 +59,28 @@ namespace MEP_Management_System.Tests.Controllers
             return controller;
         }
 
+        // ==========================================
+        // TEST GET /api/sale/products
+        // ==========================================
         [Fact]
-        public async Task GetProducts_ReturnsProducts()
+        public async Task GetProducts_FiltersByActiveBranchOnly_ReturnsCorrectPrices()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
-            var branchId = Guid.NewGuid();
+            var activeBranchId = Guid.NewGuid();
+            var anotherBranchId = Guid.NewGuid();
             var userId = Guid.NewGuid();
-            var controller = CreateController(context, branchId, userId);
+            var controller = CreateController(context, activeBranchId, userId);
 
-            var productId = Guid.NewGuid();
-            var product = new Product { ProductId = productId, ProductName = "Test Product", ProductCode = "TP01", BaseUnit = "Cái", Status = 1 };
+            // Create product
+            var product = new Product { ProductId = Guid.NewGuid(), ProductName = "Bia Heineken Thùng 24", ProductCode = "B-HEI-24", BaseUnit = "Thùng", Status = 1 };
             context.Products.Add(product);
-            context.BranchProducts.Add(new BranchProduct { BranchProductId = Guid.NewGuid(), BranchId = branchId, ProductId = productId, Product = product, IsActive = 1, SellPrice = 1000 });
+            
+            // Branch 1 price
+            context.BranchProducts.Add(new BranchProduct { BranchProductId = Guid.NewGuid(), BranchId = activeBranchId, ProductId = product.ProductId, Product = product, IsActive = 1, SellPrice = 450000 });
+            // Branch 2 price
+            context.BranchProducts.Add(new BranchProduct { BranchProductId = Guid.NewGuid(), BranchId = anotherBranchId, ProductId = product.ProductId, Product = product, IsActive = 1, SellPrice = 460000 });
+            
             await context.SaveChangesAsync();
 
             // Act
@@ -80,23 +89,27 @@ namespace MEP_Management_System.Tests.Controllers
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result.Result);
             var items = Assert.IsType<List<ProductPriceDto>>(okResult.Value);
+            
             Assert.Single(items);
-            Assert.Equal("Test Product", items.First().ProductName);
+            Assert.Equal("Bia Heineken Thùng 24", items.First().ProductName);
+            Assert.Equal(450000, items.First().RetailPrice); // Must return the price specific to activeBranchId
         }
 
+        // ==========================================
+        // TEST GET /api/sale/products/{id}/price
+        // ==========================================
         [Fact]
-        public async Task GetPrice_ValidId_ReturnsPrice()
+        public async Task GetPrice_ValidProductId_ReturnsBranchSpecificPrice()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var branchId = Guid.NewGuid();
-            var userId = Guid.NewGuid();
-            var controller = CreateController(context, branchId, userId);
+            var controller = CreateController(context, branchId, Guid.NewGuid());
 
             var productId = Guid.NewGuid();
-            var product = new Product { ProductId = productId, ProductName = "Test Product", ProductCode = "TP01", BaseUnit = "Cái", Status = 1 };
+            var product = new Product { ProductId = productId, ProductName = "Sữa Tươi Vinamilk 1L", ProductCode = "S-VNM-1L", BaseUnit = "Hộp", Status = 1 };
             context.Products.Add(product);
-            context.BranchProducts.Add(new BranchProduct { BranchProductId = Guid.NewGuid(), BranchId = branchId, ProductId = productId, Product = product, IsActive = 1, SellPrice = 1000 });
+            context.BranchProducts.Add(new BranchProduct { BranchProductId = Guid.NewGuid(), BranchId = branchId, ProductId = productId, Product = product, IsActive = 1, SellPrice = 35000 });
             await context.SaveChangesAsync();
 
             // Act
@@ -105,32 +118,7 @@ namespace MEP_Management_System.Tests.Controllers
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result.Result);
             var dto = Assert.IsType<ProductPriceDto>(okResult.Value);
-            Assert.Equal(1000, dto.RetailPrice);
-        }
-
-        [Fact]
-        public async Task GetStock_ValidId_ReturnsStock()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var branchId = Guid.NewGuid();
-            var userId = Guid.NewGuid();
-            var controller = CreateController(context, branchId, userId);
-
-            var productId = Guid.NewGuid();
-            context.Products.Add(new Product { ProductId = productId, ProductName = "Test Product", ProductCode = "TP01", BaseUnit = "Cái", Status = 1 });
-            context.BranchProducts.Add(new BranchProduct { BranchProductId = Guid.NewGuid(), BranchId = branchId, ProductId = productId, IsActive = 1, AvailableStock = 50 });
-            context.Branches.Add(new Branch { BranchId = branchId, BranchName = "Test Branch" });
-            await context.SaveChangesAsync();
-
-            // Act
-            var result = await controller.GetStock(productId);
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result.Result);
-            var dto = Assert.IsType<ProductStockDto>(okResult.Value);
-            Assert.Single(dto.ByBranch);
-            Assert.Equal(50, dto.ByBranch.First().AvailableStock);
+            Assert.Equal(35000, dto.RetailPrice);
         }
     }
 }

@@ -10,7 +10,7 @@ namespace MEP_Management_System.Models
  public Guid? PurchaseOrderId { get; set; }
  public decimal Amount { get; set; }
  public DateTime PaymentDate { get; set; }
- public string PaymentMethod { get; set; } = null!;
+ public string PaymentMethod { get; set; } = "";
  public string? ReferenceCode { get; set; }
  public string? Note { get; set; }
 

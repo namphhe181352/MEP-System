@@ -145,6 +145,17 @@ namespace MEP_Management_System.Controllers
             if (!string.IsNullOrWhiteSpace(request.PhoneNumber))
             {
                 var phoneTrimmed = request.PhoneNumber.Trim();
+
+                // Validate định dạng số điện thoại Việt Nam (10 số, bắt đầu 0[35789])
+                if (!System.Text.RegularExpressions.Regex.IsMatch(phoneTrimmed, @"^0[35789]\d{8}$"))
+                {
+                    return BadRequest(new ApiResponse<AccountProfileDto>
+                    {
+                        Success = false,
+                        Message = "Số điện thoại không hợp lệ. Vui lòng nhập số điện thoại Việt Nam 10 chữ số."
+                    });
+                }
+
                 var existingUser = await _context.Users
                     .AnyAsync(u => u.PhoneNumber == phoneTrimmed && u.UserId != userId.Value);
 
@@ -238,6 +249,16 @@ namespace MEP_Management_System.Controllers
                 {
                     Success = false,
                     Message = "Mật khẩu hiện tại không đúng."
+                });
+            }
+
+            // Kiểm tra mật khẩu mới không được trùng với mật khẩu cũ
+            if (BCrypt.Net.BCrypt.Verify(request.NewPassword, user.PasswordHash))
+            {
+                return BadRequest(new ApiResponse<bool>
+                {
+                    Success = false,
+                    Message = "Mật khẩu mới không được trùng với mật khẩu cũ."
                 });
             }
 

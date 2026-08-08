@@ -3,15 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
-using MEP_Management_System.Controllers.InventoryController;
+using MEP_Management_System.Controllers;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.Models;
-using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Moq;
 using Xunit;
 
 namespace MEP_Management_System.Tests.Controllers
@@ -28,17 +26,18 @@ namespace MEP_Management_System.Tests.Controllers
                 .Options;
         }
 
-        private ProductTaxonomiesController CreateController(MEPDatabaseContext context, Guid branchId, Guid? userId = null)
+        private ProductTaxonomiesController CreateController(MEPDatabaseContext context, Guid? userId = null, string role = "Admin")
         {
-            var mockBranchAccessor = new Mock<ICurrentBranchAccessor>();
-            mockBranchAccessor.Setup(m => m.GetBranchId()).Returns(branchId);
-
-            var controller = new ProductTaxonomiesController(context, mockBranchAccessor.Object);
+            var controller = new ProductTaxonomiesController(context);
 
             var claims = new List<Claim>();
             if (userId.HasValue)
             {
                 claims.Add(new Claim(ClaimTypes.NameIdentifier, userId.Value.ToString()));
+            }
+            if (!string.IsNullOrEmpty(role))
+            {
+                claims.Add(new Claim(ClaimTypes.Role, role));
             }
 
             var identity = new ClaimsIdentity(claims, "TestAuthType");
@@ -53,93 +52,30 @@ namespace MEP_Management_System.Tests.Controllers
         }
 
         [Fact]
-        public async Task GetTaxonomies_ReturnsTaxonomies()
+        public async Task CreateCategory_ValidData_CreatesCategory()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
-            var branchId = Guid.NewGuid();
-            var controller = CreateController(context, branchId);
+            var controller = CreateController(context, Guid.NewGuid());
 
-            context.ProductTaxonomies.Add(new ProductTaxonomy { TaxonomyId = Guid.NewGuid(), Name = "Test Brand", Type = "Brand", BranchId = branchId });
-            await context.SaveChangesAsync();
-
-            // Act
-            var result = await controller.GetTaxonomies("Brand");
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            var response = Assert.IsType<ApiResponse<List<ProductTaxonomyDto>>>(okResult.Value);
-            Assert.True(response.Success);
-            Assert.Single(response.Data!);
-            Assert.Equal("Test Brand", response.Data.First().Name);
-        }
-
-        [Fact]
-        public async Task CreateTaxonomy_ValidData_ReturnsCreatedAtAction()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var branchId = Guid.NewGuid();
-            var controller = CreateController(context, branchId);
-
-            var dto = new CreateProductTaxonomyDto { Name = "New Category", Type = "Category" };
+            var request = new CreateCategoryDto
+            {
+                CategoryName = "Thiết bị điện tử",
+                Description = "Điện thoại, Laptop, Phụ kiện"
+            };
 
             // Act
-            var result = await controller.CreateTaxonomy(dto);
+            var result = await controller.CreateCategory(request);
 
             // Assert
             var createdResult = Assert.IsType<CreatedAtActionResult>(result);
-            var response = Assert.IsType<ApiResponse<ProductTaxonomyDto>>(createdResult.Value);
-            Assert.True(response.Success);
-            Assert.Equal("New Category", response.Data!.Name);
-        }
-
-        [Fact]
-        public async Task UpdateTaxonomy_ValidData_ReturnsOk()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var branchId = Guid.NewGuid();
-            var controller = CreateController(context, branchId);
-            var taxonomyId = Guid.NewGuid();
-
-            context.ProductTaxonomies.Add(new ProductTaxonomy { TaxonomyId = taxonomyId, Name = "Old Name", Type = "Brand", BranchId = branchId });
-            await context.SaveChangesAsync();
-
-            var dto = new UpdateProductTaxonomyDto { Name = "New Name" };
-
-            // Act
-            var result = await controller.UpdateTaxonomy(taxonomyId, dto);
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            var response = Assert.IsType<ApiResponse<ProductTaxonomyDto>>(okResult.Value);
-            Assert.True(response.Success);
-            Assert.Equal("New Name", response.Data!.Name);
-        }
-
-        [Fact]
-        public async Task DeleteTaxonomy_ValidData_ReturnsOk()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var branchId = Guid.NewGuid();
-            var controller = CreateController(context, branchId);
-            var taxonomyId = Guid.NewGuid();
-
-            context.ProductTaxonomies.Add(new ProductTaxonomy { TaxonomyId = taxonomyId, Name = "Test Brand", Type = "Brand", BranchId = branchId });
-            await context.SaveChangesAsync();
-
-            // Act
-            var result = await controller.DeleteTaxonomy(taxonomyId);
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            var apiResponse = Assert.IsType<ApiResponse<object>>(okResult.Value);
-            Assert.Contains("Xóa thành công", apiResponse.Message);
-
-            var deletedTaxonomy = await context.ProductTaxonomies.FindAsync(taxonomyId);
-            Assert.Null(deletedTaxonomy);
+            var apiResponse = Assert.IsType<ApiResponse<CategoryDto>>(createdResult.Value);
+            
+            Assert.True(apiResponse.Success);
+            Assert.Equal("Thiết bị điện tử", apiResponse.Data.CategoryName);
+            
+            var dbCategory = await context.ProductCategories.FirstOrDefaultAsync(c => c.CategoryName == "Thiết bị điện tử");
+            Assert.NotNull(dbCategory);
         }
     }
 }

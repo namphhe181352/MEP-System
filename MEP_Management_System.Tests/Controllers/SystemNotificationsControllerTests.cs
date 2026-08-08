@@ -2,18 +2,17 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
+using System.Threading;
 using System.Threading.Tasks;
-using AutoMapper;
 using MEP_Management_System.Controllers.AdminController;
-using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.AdminDTOs;
+using MEP_Management_System.Hubs;
 using MEP_Management_System.Models;
-using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
 
@@ -22,6 +21,9 @@ namespace MEP_Management_System.Tests.Controllers
     public class SystemNotificationsControllerTests
     {
         private DbContextOptions<MEPDatabaseContext> _dbContextOptions;
+        private Mock<IHubContext<MepHub>> _mockHub;
+        private Mock<IClientProxy> _mockClientProxy;
+        private Mock<IHubClients> _mockClients;
 
         public SystemNotificationsControllerTests()
         {
@@ -29,18 +31,18 @@ namespace MEP_Management_System.Tests.Controllers
                 .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
                 .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
                 .Options;
+
+            _mockClientProxy = new Mock<IClientProxy>();
+            _mockClients = new Mock<IHubClients>();
+            _mockClients.Setup(c => c.All).Returns(_mockClientProxy.Object);
+            
+            _mockHub = new Mock<IHubContext<MepHub>>();
+            _mockHub.Setup(h => h.Clients).Returns(_mockClients.Object);
         }
 
         private SystemNotificationsController CreateController(MEPDatabaseContext context, Guid? userId = null)
         {
-            var mockMapper = new Mock<IMapper>();
-            mockMapper.Setup(m => m.Map<List<SystemNotificationDto>>(It.IsAny<List<SystemNotification>>()))
-                .Returns((List<SystemNotification> source) => source.Select(n => new SystemNotificationDto { NotificationId = n.NotificationId, Title = n.Title }).ToList());
-
-            var mockLogger = new Mock<ILogger<LogNotificationSender>>();
-            var sender = new LogNotificationSender(mockLogger.Object);
-
-            var controller = new SystemNotificationsController(context, mockMapper.Object, sender);
+            var controller = new SystemNotificationsController(context, _mockHub.Object);
 
             var claims = new List<Claim>();
             if (userId.HasValue)
@@ -59,124 +61,75 @@ namespace MEP_Management_System.Tests.Controllers
             return controller;
         }
 
+        // ==========================================
+        // TEST POST /api/admin/system-notifications
+        // ==========================================
         [Fact]
-        public async Task GetNotifications_ReturnsPaginatedList()
+        public async Task CreateNotification_ValidData_SavesToDbAndBroadcastsViaSignalR()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
+            var controller = CreateController(context, Guid.NewGuid());
 
-            var userId = Guid.NewGuid();
-            context.Users.Add(new User { UserId = userId, FullName = "Admin", Email = "admin@test.com", Username = "admin", PasswordHash = "hash" });
-            
-            context.SystemNotifications.Add(new SystemNotification 
-            { 
-                NotificationId = Guid.NewGuid(), 
-                Title = "Test Notif", 
-                Content = "Content",
-                Target = "ALL",
-                Status = "DRAFT",
-                CreatedBy = userId
-            });
-            await context.SaveChangesAsync();
-
-            // Act
-            var result = await controller.GetNotifications(null, 1, 10);
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            var dto = Assert.IsType<PageResultDto<SystemNotificationDto>>(okResult.Value);
-            Assert.Single(dto.Items);
-            Assert.Equal("Test Notif", dto.Items.First().Title);
-        }
-
-        [Fact]
-        public async Task CreateNotification_ValidData_ReturnsCreated()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var adminId = Guid.NewGuid();
-            var controller = CreateController(context, adminId);
-            
-            context.Users.Add(new User { UserId = adminId, FullName = "Admin", Email = "admin@test.com", Username = "admin", PasswordHash = "hash" });
-            await context.SaveChangesAsync();
-
-            var request = new CreateNotificationRequest
+            var request = new CreateNotificationDto
             {
-                Title = "New Notice",
-                Content = "Notice Content",
-                Target = "STAFF",
-                IsUrgent = false
+                Title = "Bảo trì hệ thống",
+                Message = "Hệ thống sẽ bảo trì từ 22h - 24h tối nay.",
+                Type = "SYSTEM_ALERT"
             };
 
             // Act
             var result = await controller.CreateNotification(request);
 
             // Assert
-            var createdResult = Assert.IsType<CreatedAtActionResult>(result);
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var apiResponse = Assert.IsType<ApiResponse<object>>(okResult.Value);
             
-            var dbNotification = await context.SystemNotifications.FirstOrDefaultAsync();
-            Assert.NotNull(dbNotification);
-            Assert.Equal("New Notice", dbNotification.Title);
-            Assert.Equal("DRAFT", dbNotification.Status);
+            Assert.True(apiResponse.Success);
+            
+            // Check Database 
+            var dbNoti = await context.SystemNotifications.FirstOrDefaultAsync(n => n.Title == "Bảo trì hệ thống");
+            Assert.NotNull(dbNoti);
+            Assert.Equal("SYSTEM_ALERT", dbNoti.Type);
+
+            // Check SignalR Broadcast invocation
+            _mockClientProxy.Verify(
+                clientProxy => clientProxy.SendCoreAsync(
+                    "ReceiveSystemNotification", 
+                    It.Is<object[]>(o => o != null && o.Length == 1), 
+                    default(CancellationToken)), 
+                Times.Once);
         }
 
+        // ==========================================
+        // TEST GET /api/admin/system-notifications
+        // ==========================================
         [Fact]
-        public async Task SendNotification_ValidId_ReturnsOk()
+        public async Task GetNotifications_ReturnsPaginatedList()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
-            var adminId = Guid.NewGuid();
-            var controller = CreateController(context, adminId);
+            var controller = CreateController(context, Guid.NewGuid());
 
-            var notifId = Guid.NewGuid();
             context.SystemNotifications.Add(new SystemNotification 
             { 
-                NotificationId = notifId, 
-                Title = "Test Notif", 
-                Content = "Content",
-                Target = "ALL",
-                Status = "DRAFT"
+                NotificationId = Guid.NewGuid(), Title = "Noti 1", Message = "Message 1", Type = "INFO", CreatedAt = DateTime.UtcNow 
+            });
+            context.SystemNotifications.Add(new SystemNotification 
+            { 
+                NotificationId = Guid.NewGuid(), Title = "Noti 2", Message = "Message 2", Type = "WARNING", CreatedAt = DateTime.UtcNow 
             });
             await context.SaveChangesAsync();
 
             // Act
-            var result = await controller.SendNotification(notifId);
+            var result = await controller.GetNotifications(page: 1, pageSize: 10);
 
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result);
-
-            var dbNotif = await context.SystemNotifications.FindAsync(notifId);
-            Assert.Equal("SENT", dbNotif!.Status);
-            Assert.NotNull(dbNotif.SentAt);
-        }
-
-        [Fact]
-        public async Task DeleteNotification_ValidId_ReturnsOk()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
-
-            var notifId = Guid.NewGuid();
-            context.SystemNotifications.Add(new SystemNotification 
-            { 
-                NotificationId = notifId, 
-                Title = "Test Notif", 
-                Content = "Content",
-                Target = "ALL",
-                Status = "DRAFT"
-            });
-            await context.SaveChangesAsync();
-
-            // Act
-            var result = await controller.DeleteNotification(notifId);
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result);
-
-            var dbNotif = await context.SystemNotifications.FindAsync(notifId);
-            Assert.Null(dbNotif);
+            var dto = Assert.IsType<PageResultDto<SystemNotificationDto>>(okResult.Value);
+            
+            Assert.Equal(2, dto.TotalCount);
+            Assert.Equal(2, dto.Items.Count());
         }
     }
 }

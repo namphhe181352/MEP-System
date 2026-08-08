@@ -22,12 +22,12 @@ public class ProductTaxonomy
     [Required]
     [MaxLength(255)]
     [Column("name")]
-    public string Name { get; set; } = null!;
+    public string Name { get; set; } = "";
 
     [Required]
     [MaxLength(50)]
     [Column("type")]
-    public string Type { get; set; } = null!; // "Category" or "Brand"
+    public string Type { get; set; } = ""; // "Category" or "Brand"
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

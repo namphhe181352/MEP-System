@@ -14,7 +14,7 @@ public enum InventoryCheckTicketStatus
 public class InventoryCheckTicket
 {
     public Guid TicketId { get; set; }
-    public string TicketCode { get; set; } = null!;
+    public string TicketCode { get; set; } = "";
     public DateTime CreatedAt { get; set; }
     public InventoryCheckTicketStatus Status { get; set; }
     public Guid BranchId { get; set; }

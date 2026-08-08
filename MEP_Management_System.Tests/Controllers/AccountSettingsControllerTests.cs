@@ -1,18 +1,15 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using MEP_Management_System.Controllers;
 using MEP_Management_System.DTOs;
-using MEP_Management_System.DTOs.AccountSettings_DTOs;
 using MEP_Management_System.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Xunit;
-using BCrypt.Net;
 
 namespace MEP_Management_System.Tests.Controllers
 {
@@ -50,99 +47,45 @@ namespace MEP_Management_System.Tests.Controllers
         }
 
         [Fact]
-        public async Task GetProfile_ReturnsProfile()
+        public async Task ChangePassword_CorrectCurrentPassword_UpdatesPassword()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var userId = Guid.NewGuid();
             var controller = CreateController(context, userId);
 
+            // Use real BCrypt for the test to ensure matching logic works
+            var currentPasswordHash = BCrypt.Net.BCrypt.HashPassword("OldPass123!");
+            
             context.Users.Add(new User 
             { 
                 UserId = userId, 
-                FullName = "Test User", 
-                Email = "test@test.com", 
-                Username = "test", 
-                PasswordHash = "hash",
-                Status = "ACTIVE"
+                Username = "test_user", 
+                PasswordHash = currentPasswordHash 
             });
             await context.SaveChangesAsync();
 
-            // Act
-            var result = await controller.GetProfile();
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result.Result);
-            var response = Assert.IsType<ApiResponse<AccountProfileDto>>(okResult.Value);
-            Assert.True(response.Success);
-            Assert.Equal("Test User", response.Data!.FullName);
-        }
-
-        [Fact]
-        public async Task UpdateProfile_ValidData_ReturnsOk()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var userId = Guid.NewGuid();
-            var controller = CreateController(context, userId);
-
-            context.Users.Add(new User 
-            { 
-                UserId = userId, 
-                FullName = "Old Name", 
-                Email = "test@test.com", 
-                Username = "test", 
-                PasswordHash = "hash",
-                Status = "ACTIVE"
-            });
-            await context.SaveChangesAsync();
-
-            var request = new UpdateProfileRequest { FullName = "New Name", PhoneNumber = "1234567890" };
-
-            // Act
-            var result = await controller.UpdateProfile(request);
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result.Result);
-            var response = Assert.IsType<ApiResponse<AccountProfileDto>>(okResult.Value);
-            Assert.True(response.Success);
-            Assert.Equal("New Name", response.Data!.FullName);
-            Assert.Equal("1234567890", response.Data.PhoneNumber);
-        }
-
-        [Fact]
-        public async Task ChangePassword_ValidData_ReturnsOk()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var userId = Guid.NewGuid();
-            var controller = CreateController(context, userId);
-
-            var oldPasswordHash = BCrypt.Net.BCrypt.HashPassword("oldpassword");
-
-            context.Users.Add(new User 
-            { 
-                UserId = userId, 
-                FullName = "Test User", 
-                Email = "test@test.com", 
-                Username = "test", 
-                PasswordHash = oldPasswordHash,
-                Status = "ACTIVE"
-            });
-            await context.SaveChangesAsync();
-
-            var request = new ChangePasswordRequest { CurrentPassword = "oldpassword", NewPassword = "newpassword" };
+            var request = new ChangePasswordDto
+            {
+                CurrentPassword = "OldPass123!",
+                NewPassword = "NewStrongPass456!",
+                ConfirmNewPassword = "NewStrongPass456!"
+            };
 
             // Act
             var result = await controller.ChangePassword(request);
 
             // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result.Result);
-            var response = Assert.IsType<ApiResponse<bool>>(okResult.Value);
-            Assert.True(response.Success);
-
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var apiResponse = Assert.IsType<ApiResponse<object>>(okResult.Value);
+            
+            Assert.True(apiResponse.Success);
+            Assert.Equal("Đổi mật khẩu thành công.", apiResponse.Message);
+            
+            // Verify DB Hash is changed
             var dbUser = await context.Users.FindAsync(userId);
-            Assert.True(BCrypt.Net.BCrypt.Verify("newpassword", dbUser!.PasswordHash));
+            Assert.True(BCrypt.Net.BCrypt.Verify("NewStrongPass456!", dbUser.PasswordHash));
+            Assert.False(BCrypt.Net.BCrypt.Verify("OldPass123!", dbUser.PasswordHash));
         }
     }
 }

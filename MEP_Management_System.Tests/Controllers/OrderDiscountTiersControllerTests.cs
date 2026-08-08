@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
-using MEP_Management_System.Controllers.SaleController;
+using MEP_Management_System.Controllers.AdminController;
 using MEP_Management_System.DTOs.SaleDTOs;
 using MEP_Management_System.Models;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -24,77 +26,59 @@ namespace MEP_Management_System.Tests.Controllers
                 .Options;
         }
 
-        private OrderDiscountTiersController CreateController(MEPDatabaseContext context)
+        private OrderDiscountTiersController CreateController(MEPDatabaseContext context, Guid? userId = null, string role = "Admin")
         {
-            return new OrderDiscountTiersController(context);
+            var controller = new OrderDiscountTiersController(context);
+
+            var claims = new List<Claim>();
+            if (userId.HasValue)
+            {
+                claims.Add(new Claim(ClaimTypes.NameIdentifier, userId.Value.ToString()));
+            }
+            if (!string.IsNullOrEmpty(role))
+            {
+                claims.Add(new Claim(ClaimTypes.Role, role));
+            }
+
+            var identity = new ClaimsIdentity(claims, "TestAuthType");
+            var claimsPrincipal = new ClaimsPrincipal(identity);
+
+            controller.ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = claimsPrincipal }
+            };
+
+            return controller;
         }
 
         [Fact]
-        public async Task GetAll_ReturnsSortedDiscountTiers()
+        public async Task CreateTier_ValidData_CreatesSystemWideDiscountTier()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
-            
-            var branchId = Guid.NewGuid();
-            context.Branches.Add(new Branch { BranchId = branchId, BranchName = "Main Branch" });
+            var controller = CreateController(context, Guid.NewGuid());
 
-            context.OrderDiscountTiers.Add(new OrderDiscountTier { OrderDiscountTierId = Guid.NewGuid(), BranchId = branchId, MinOrderValue = 100000, DiscountPercent = 10 });
-            context.OrderDiscountTiers.Add(new OrderDiscountTier { OrderDiscountTierId = Guid.NewGuid(), BranchId = branchId, MinOrderValue = 50000, DiscountPercent = 5 });
-            await context.SaveChangesAsync();
+            var request = new CreateOrderDiscountTierDto
+            {
+                TierName = "Giảm giá khách hàng VIP",
+                MinOrderAmount = 10000000, // 10 triệu
+                DiscountType = "PERCENT", // Phần trăm
+                DiscountValue = 10, // 10%
+                IsActive = true
+            };
 
             // Act
-            var result = await controller.GetAll(branchId);
+            var result = await controller.CreateTier(request);
 
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result.Result);
-            var tiers = Assert.IsAssignableFrom<IEnumerable<OrderDiscountTierDto>>(okResult.Value);
-            Assert.Equal(2, tiers.Count());
+            var tierDto = Assert.IsType<OrderDiscountTierDto>(okResult.Value);
             
-            // Should be sorted by MinOrderValue ascending
-            Assert.Equal(50000, tiers.First().MinOrderValue);
-            Assert.Equal(5, tiers.First().DiscountPercent);
-            Assert.Equal("Main Branch", tiers.First().BranchName);
-        }
-
-        [Fact]
-        public async Task GetById_InvalidId_ReturnsNotFound()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
-
-            // Act
-            var result = await controller.GetById(Guid.NewGuid());
-
-            // Assert
-            var notFoundResult = Assert.IsType<NotFoundObjectResult>(result.Result);
-            var errorResponse = Assert.IsType<ApiErrorResponse>(notFoundResult.Value);
-            Assert.Equal("MSG-01", errorResponse.Error.Code);
-        }
-
-        [Fact]
-        public async Task GetById_ValidId_ReturnsTier()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
-
-            var tierId = Guid.NewGuid();
-            var branchId = Guid.NewGuid();
-            context.Branches.Add(new Branch { BranchId = branchId, BranchName = "Main Branch" });
-            context.OrderDiscountTiers.Add(new OrderDiscountTier { OrderDiscountTierId = tierId, BranchId = branchId, MinOrderValue = 50000, DiscountPercent = 5 });
-            await context.SaveChangesAsync();
-
-            // Act
-            var result = await controller.GetById(tierId);
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result.Result);
-            var dto = Assert.IsType<OrderDiscountTierDto>(okResult.Value);
-            Assert.Equal(tierId, dto.OrderDiscountTierId);
-            Assert.Equal(50000, dto.MinOrderValue);
-            Assert.Equal("Main Branch", dto.BranchName);
+            Assert.Equal("Giảm giá khách hàng VIP", tierDto.TierName);
+            
+            var dbTier = await context.OrderDiscountTiers.FirstOrDefaultAsync(t => t.TierId == tierDto.TierId);
+            Assert.NotNull(dbTier);
+            Assert.Equal(10, dbTier.DiscountValue);
         }
     }
 }

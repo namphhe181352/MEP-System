@@ -6,8 +6,7 @@ public partial class Payment
 
     public Guid? InvoiceId { get; set; }
 
-    /// <summary>Cash | Transfer | Combined</summary>
-    public string Method { get; set; } = null!;
+    public string Method { get; set; } = "";
 
     public decimal Amount { get; set; }
 

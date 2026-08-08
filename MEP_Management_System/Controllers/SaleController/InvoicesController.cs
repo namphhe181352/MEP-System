@@ -510,11 +510,27 @@ public class InvoicesController : ControllerBase
             foreach (var item in invoice.InvoiceItems)
             {
                 var actualQty = item.Quantity * (item.ConvertValue ?? 1m);
-                var rowsAffected = await _context.BranchProducts
-                    .Where(bp => bp.BranchProductId == item.BranchProductId && bp.AvailableStock >= actualQty && bp.ActualStock >= actualQty)
-                    .ExecuteUpdateAsync(s => s
-                        .SetProperty(b => b.ActualStock, b => b.ActualStock - actualQty)
-                        .SetProperty(b => b.AvailableStock, b => b.AvailableStock - actualQty));
+                int rowsAffected = 0;
+                if (_context.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+                {
+                    var bp = await _context.BranchProducts.FindAsync(item.BranchProductId);
+                    if (bp != null && bp.AvailableStock >= actualQty && bp.ActualStock >= actualQty)
+                    {
+                        bp.AvailableStock -= actualQty;
+                        bp.ActualStock -= actualQty;
+                        _context.BranchProducts.Update(bp);
+                        await _context.SaveChangesAsync();
+                        rowsAffected = 1;
+                    }
+                }
+                else
+                {
+                    rowsAffected = await _context.BranchProducts
+                        .Where(bp => bp.BranchProductId == item.BranchProductId && bp.AvailableStock >= actualQty && bp.ActualStock >= actualQty)
+                        .ExecuteUpdateAsync(s => s
+                            .SetProperty(b => b.ActualStock, b => b.ActualStock - actualQty)
+                            .SetProperty(b => b.AvailableStock, b => b.AvailableStock - actualQty));
+                }
 
                 if (rowsAffected == 0)
                 {

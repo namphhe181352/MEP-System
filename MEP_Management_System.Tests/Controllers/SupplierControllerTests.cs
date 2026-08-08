@@ -3,16 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
-using MEP_Management_System.Controllers.InventoryController.Supplier;
+using MEP_Management_System.Controllers;
 using MEP_Management_System.DTOs;
-using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
-using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Moq;
 using Xunit;
 
 namespace MEP_Management_System.Tests.Controllers
@@ -29,18 +26,18 @@ namespace MEP_Management_System.Tests.Controllers
                 .Options;
         }
 
-        private SupplierController CreateController(MEPDatabaseContext context, Guid? userId = null)
+        private SupplierController CreateController(MEPDatabaseContext context, Guid? userId = null, string role = "Owner")
         {
-            var mockDebtService = new Mock<ISupplierDebtService>();
-            mockDebtService.Setup(s => s.CalculateCurrentDebtBatchAsync(It.IsAny<IEnumerable<Guid>>(), null))
-                .ReturnsAsync(new Dictionary<Guid, SupplierDebtSummary>());
-
-            var controller = new SupplierController(context, mockDebtService.Object);
+            var controller = new SupplierController(context);
 
             var claims = new List<Claim>();
             if (userId.HasValue)
             {
                 claims.Add(new Claim(ClaimTypes.NameIdentifier, userId.Value.ToString()));
+            }
+            if (!string.IsNullOrEmpty(role))
+            {
+                claims.Add(new Claim(ClaimTypes.Role, role));
             }
 
             var identity = new ClaimsIdentity(claims, "TestAuthType");
@@ -54,95 +51,94 @@ namespace MEP_Management_System.Tests.Controllers
             return controller;
         }
 
+        // ==========================================
+        // TEST GET /api/suppliers
+        // ==========================================
         [Fact]
-        public async Task GetSuppliers_ReturnsSuppliers()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
-
-            context.Suppliers.Add(new Supplier { SupplierId = Guid.NewGuid(), SupplierName = "Test Supplier", Status = 1 });
-            await context.SaveChangesAsync();
-
-            var queryParams = new SupplierQueryParameters { PageNumber = 1, PageSize = 10 };
-
-            // Act
-            var result = await controller.GetSuppliers(queryParams);
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            var response = Assert.IsType<ApiResponse<SupplierPagedResponse>>(okResult.Value);
-            Assert.True(response.Success);
-            Assert.Single(response.Data!.Items);
-            Assert.Equal("Test Supplier", response.Data.Items.First().Name);
-        }
-
-        [Fact]
-        public async Task CreateSupplier_ValidData_ReturnsOk()
+        public async Task GetSuppliers_WithRealVietnameseData_ReturnsPaginatedList()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var controller = CreateController(context, Guid.NewGuid());
 
-            var dto = new SupplierUpsertRequest { SupplierName = "New Supplier", Status = 1 };
+            context.Suppliers.Add(new Supplier { SupplierId = Guid.NewGuid(), SupplierName = "Nhà Phân Phối Masan", SupplierCode = "NCC-MS", Phone = "02877778888", IsActive = 1 });
+            context.Suppliers.Add(new Supplier { SupplierId = Guid.NewGuid(), SupplierName = "Công ty Cổ phần Sữa Vinamilk", SupplierCode = "NCC-VNM", Phone = "19001568", IsActive = 1 });
+            await context.SaveChangesAsync();
 
             // Act
-            var result = await controller.CreateSupplier(dto);
+            var result = await controller.GetSuppliers(search: "Vinamilk", pageNumber: 1, pageSize: 10);
 
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result);
-            var response = Assert.IsType<ApiResponse<SupplierDetailDto>>(okResult.Value);
-            Assert.True(response.Success);
-            Assert.Equal("New Supplier", response.Data!.Name);
-
-            var savedSupplier = await context.Suppliers.FirstOrDefaultAsync(s => s.SupplierName == "New Supplier");
-            Assert.NotNull(savedSupplier);
+            var apiResponse = Assert.IsType<ApiResponse<PaginatedResponse<SupplierDto>>>(okResult.Value);
+            
+            Assert.True(apiResponse.Success);
+            Assert.Single(apiResponse.Data.Items);
+            Assert.Equal("Công ty Cổ phần Sữa Vinamilk", apiResponse.Data.Items.First().SupplierName);
         }
 
+        // ==========================================
+        // TEST POST /api/suppliers
+        // ==========================================
         [Fact]
-        public async Task UpdateSupplier_ValidData_ReturnsOk()
+        public async Task CreateSupplier_ValidData_ReturnsCreatedResult()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var controller = CreateController(context, Guid.NewGuid());
-            var supplierId = Guid.NewGuid();
 
-            context.Suppliers.Add(new Supplier { SupplierId = supplierId, SupplierName = "Old Name", Status = 1 });
-            await context.SaveChangesAsync();
-
-            var dto = new SupplierUpsertRequest { SupplierName = "New Name", Status = 1 };
+            var request = new CreateSupplierDto
+            {
+                SupplierName = "Đại lý Cấp 1 Bia Heineken",
+                SupplierCode = "NCC-HEI",
+                Phone = "0988111222",
+                Email = "sales@heineken-dl1.vn",
+                TaxCode = "0312456789",
+                Address = "KCN Tân Bình, TPHCM"
+            };
 
             // Act
-            var result = await controller.UpdateSupplier(supplierId, dto);
+            var result = await controller.CreateSupplier(request);
 
             // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            var response = Assert.IsType<ApiResponse<SupplierDetailDto>>(okResult.Value);
-            Assert.True(response.Success);
-            Assert.Equal("New Name", response.Data!.Name);
+            var createdResult = Assert.IsType<CreatedAtActionResult>(result);
+            var apiResponse = Assert.IsType<ApiResponse<SupplierDto>>(createdResult.Value);
+            
+            Assert.True(apiResponse.Success);
+            Assert.Equal("Đại lý Cấp 1 Bia Heineken", apiResponse.Data.SupplierName);
+            
+            var dbSupplier = await context.Suppliers.FirstOrDefaultAsync(s => s.SupplierCode == "NCC-HEI");
+            Assert.NotNull(dbSupplier);
+            Assert.Equal("0312456789", dbSupplier.TaxCode);
         }
 
         [Fact]
-        public async Task DeleteSupplier_ValidData_ReturnsOk()
+        public async Task CreateSupplier_DuplicateCode_ReturnsBadRequest()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
-            var supplierId = Guid.NewGuid();
-
-            context.Suppliers.Add(new Supplier { SupplierId = supplierId, SupplierName = "Test", Status = 1 });
+            var controller = CreateController(context, Guid.NewGuid());
+            
+            // Seed existing
+            context.Suppliers.Add(new Supplier { SupplierId = Guid.NewGuid(), SupplierName = "Nhà Phân Phối Cũ", SupplierCode = "NCC-OLD", IsActive = 1 });
             await context.SaveChangesAsync();
 
+            var request = new CreateSupplierDto
+            {
+                SupplierName = "Nhà Phân Phối Mới",
+                SupplierCode = "NCC-OLD", // Duplicate
+                Phone = "0999888777"
+            };
+
             // Act
-            var result = await controller.DeleteSupplier(supplierId);
+            var result = await controller.CreateSupplier(request);
 
             // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            var response = Assert.IsType<ApiResponse<object>>(okResult.Value);
-            Assert.True(response.Success);
-
-            var deleted = await context.Suppliers.FindAsync(supplierId);
-            Assert.Null(deleted);
+            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+            var apiResponse = Assert.IsType<ApiResponse<object>>(badRequestResult.Value);
+            
+            Assert.False(apiResponse.Success);
+            Assert.Contains("đã tồn tại", apiResponse.Message.ToLower());
         }
     }
 }

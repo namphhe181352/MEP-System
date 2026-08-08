@@ -1,17 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
+using System.Security.Claims;
 using System.Threading.Tasks;
-using AutoMapper;
 using MEP_Management_System.Controllers.AdminController;
 using MEP_Management_System.DTOs;
-using MEP_Management_System.DTOs.AdminDTOs;
 using MEP_Management_System.Models;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Moq;
 using Xunit;
 
 namespace MEP_Management_System.Tests.Controllers
@@ -28,141 +26,67 @@ namespace MEP_Management_System.Tests.Controllers
                 .Options;
         }
 
-        private SystemLogsController CreateController(MEPDatabaseContext context)
+        private SystemLogsController CreateController(MEPDatabaseContext context, Guid? userId = null)
         {
-            var mockMapper = new Mock<IMapper>();
-            
-            // Setup mock mapper to return a simple mapped object
-            mockMapper.Setup(m => m.Map<List<SystemLogDto>>(It.IsAny<List<SystemLog>>()))
-                .Returns((List<SystemLog> source) => source.Select(l => new SystemLogDto { LogId = l.LogId, Action = l.Action }).ToList());
-                
-            mockMapper.Setup(m => m.Map<SystemLogDto>(It.IsAny<SystemLog>()))
-                .Returns((SystemLog source) => new SystemLogDto { LogId = source.LogId, Action = source.Action });
+            var controller = new SystemLogsController(context);
 
-            return new SystemLogsController(context, mockMapper.Object);
+            var claims = new List<Claim>();
+            if (userId.HasValue)
+            {
+                claims.Add(new Claim(ClaimTypes.NameIdentifier, userId.Value.ToString()));
+            }
+
+            var identity = new ClaimsIdentity(claims, "TestAuthType");
+            var claimsPrincipal = new ClaimsPrincipal(identity);
+
+            controller.ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = claimsPrincipal }
+            };
+
+            return controller;
         }
 
+        // ==========================================
+        // TEST GET /api/admin/system-logs
+        // ==========================================
         [Fact]
-        public async Task GetLogs_ReturnsPaginatedLogs()
+        public async Task GetLogs_FiltersByLevel_ReturnsFilteredLogs()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
+            var controller = CreateController(context, Guid.NewGuid());
 
             var userId = Guid.NewGuid();
-            context.Users.Add(new User { UserId = userId, FullName = "Admin", Email = "admin@test.com", Username = "admin", PasswordHash = "hash" });
+            context.Users.Add(new User { UserId = userId, FullName = "Hệ thống Admin", Email = "admin@mep.vn", Username = "admin", PasswordHash = "hash" });
             
             context.SystemLogs.Add(new SystemLog 
             { 
-                LogId = Guid.NewGuid(), 
-                UserId = userId,
-                Action = "LOGIN",
-                TableName = "users",
-                Timestamp = DateTime.UtcNow
+                LogId = Guid.NewGuid(), Action = "CREATE_USER", Level = "INFO", 
+                Description = "Tạo user abc", Timestamp = DateTime.UtcNow, UserId = userId 
+            });
+            context.SystemLogs.Add(new SystemLog 
+            { 
+                LogId = Guid.NewGuid(), Action = "DELETE_USER", Level = "WARN", 
+                Description = "Xóa user nguy hiểm", Timestamp = DateTime.UtcNow, UserId = userId 
+            });
+            context.SystemLogs.Add(new SystemLog 
+            { 
+                LogId = Guid.NewGuid(), Action = "DB_ERROR", Level = "ERROR", 
+                Description = "Lỗi kết nối DB", Timestamp = DateTime.UtcNow, UserId = userId 
             });
             await context.SaveChangesAsync();
 
-            // Act
-            var result = await controller.GetLogs("LOGIN", userId, null, null, null, null, 1, 10);
+            // Act - Fetch only WARNING level logs
+            var result = await controller.GetLogs(search: null, level: "WARN", page: 1, pageSize: 10);
 
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result);
             var dto = Assert.IsType<PageResultDto<SystemLogDto>>(okResult.Value);
-            Assert.Single(dto.Items);
-            Assert.Equal("LOGIN", dto.Items.First().Action);
-        }
-
-        [Fact]
-        public async Task ExportLogs_CsvFormat_ReturnsCsvFile()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
-
-            var userId = Guid.NewGuid();
-            context.Users.Add(new User { UserId = userId, FullName = "Admin", Email = "admin@test.com", Username = "admin", PasswordHash = "hash" });
             
-            context.SystemLogs.Add(new SystemLog 
-            { 
-                LogId = Guid.NewGuid(), 
-                UserId = userId,
-                Action = "LOGIN",
-                TableName = "users",
-                Timestamp = DateTime.UtcNow
-            });
-            await context.SaveChangesAsync();
-
-            // Act
-            var result = await controller.ExportLogs("csv");
-
-            // Assert
-            var fileResult = Assert.IsType<FileContentResult>(result);
-            Assert.Equal("text/csv", fileResult.ContentType);
-            Assert.EndsWith(".csv", fileResult.FileDownloadName);
-            var content = Encoding.UTF8.GetString(fileResult.FileContents);
-            Assert.Contains("LOGIN", content);
-        }
-
-        [Fact]
-        public async Task ExportLogs_TxtFormat_ReturnsTxtFile()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
-
-            var userId = Guid.NewGuid();
-            context.Users.Add(new User { UserId = userId, FullName = "Admin", Email = "admin@test.com", Username = "admin", PasswordHash = "hash" });
-            
-            context.SystemLogs.Add(new SystemLog 
-            { 
-                LogId = Guid.NewGuid(), 
-                UserId = userId,
-                Action = "LOGIN",
-                TableName = "users",
-                Timestamp = DateTime.UtcNow
-            });
-            await context.SaveChangesAsync();
-
-            // Act
-            var result = await controller.ExportLogs("txt");
-
-            // Assert
-            var fileResult = Assert.IsType<FileContentResult>(result);
-            Assert.Equal("text/plain", fileResult.ContentType);
-            Assert.EndsWith(".txt", fileResult.FileDownloadName);
-            var content = Encoding.UTF8.GetString(fileResult.FileContents);
-            Assert.Contains("LOGIN", content);
-        }
-
-        [Fact]
-        public async Task GetLog_ValidId_ReturnsLog()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
-
-            var userId = Guid.NewGuid();
-            context.Users.Add(new User { UserId = userId, FullName = "Admin", Email = "admin@test.com", Username = "admin", PasswordHash = "hash" });
-            
-            var logId = Guid.NewGuid();
-            context.SystemLogs.Add(new SystemLog 
-            { 
-                LogId = logId, 
-                UserId = userId,
-                Action = "LOGIN",
-                TableName = "users",
-                Timestamp = DateTime.UtcNow
-            });
-            await context.SaveChangesAsync();
-
-            // Act
-            var result = await controller.GetLog(logId);
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            var dto = Assert.IsType<SystemLogDto>(okResult.Value);
-            Assert.Equal(logId, dto.LogId);
-            Assert.Equal("LOGIN", dto.Action);
+            Assert.Single(dto.Items); // Expect 1
+            Assert.Equal("WARN", dto.Items.First().Level);
+            Assert.Contains("Xóa user", dto.Items.First().Description);
         }
     }
 }

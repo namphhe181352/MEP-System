@@ -5,7 +5,6 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using MEP_Management_System.Controllers;
 using MEP_Management_System.DTOs;
-using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Http;
@@ -20,6 +19,7 @@ namespace MEP_Management_System.Tests.Controllers
     public class ExpenseControllerTests
     {
         private DbContextOptions<MEPDatabaseContext> _dbContextOptions;
+        private Mock<ICurrentBranchAccessor> _mockBranchAccessor;
 
         public ExpenseControllerTests()
         {
@@ -27,14 +27,13 @@ namespace MEP_Management_System.Tests.Controllers
                 .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
                 .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
                 .Options;
+
+            _mockBranchAccessor = new Mock<ICurrentBranchAccessor>();
         }
 
-        private ExpenseController CreateController(MEPDatabaseContext context, Guid branchId, Guid? userId = null, string role = "Owner")
+        private ExpenseController CreateController(MEPDatabaseContext context, Guid? userId = null, Guid? branchId = null, string role = "Owner")
         {
-            var mockBranchAccessor = new Mock<ICurrentBranchAccessor>();
-            mockBranchAccessor.Setup(m => m.GetBranchId()).Returns(branchId);
-
-            var controller = new ExpenseController(context, mockBranchAccessor.Object);
+            var controller = new ExpenseController(context, _mockBranchAccessor.Object);
 
             var claims = new List<Claim>();
             if (userId.HasValue)
@@ -54,120 +53,92 @@ namespace MEP_Management_System.Tests.Controllers
                 HttpContext = new DefaultHttpContext { User = claimsPrincipal }
             };
 
+            if (branchId.HasValue)
+                _mockBranchAccessor.Setup(m => m.GetBranchId()).Returns(branchId.Value);
+
             return controller;
         }
 
+        // ==========================================
+        // TEST POST /api/expense
+        // ==========================================
         [Fact]
-        public async Task GetExpenseCategories_ReturnsCategories()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var branchId = Guid.NewGuid();
-            var controller = CreateController(context, branchId);
-
-            context.ExpenseCategories.Add(new ExpenseCategory { CategoryId = Guid.NewGuid(), CategoryName = "Test Category", IsActive = 1 });
-            await context.SaveChangesAsync();
-
-            // Act
-            var result = await controller.GetExpenseCategories();
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            var response = Assert.IsType<ApiResponse<List<ExpenseCategoryDto>>>(okResult.Value);
-            Assert.True(response.Success);
-            Assert.Single(response.Data!);
-            Assert.Equal("Test Category", response.Data.First().CategoryName);
-        }
-
-        [Fact]
-        public async Task CreateExpenseCategory_ValidData_ReturnsOk()
+        public async Task CreateExpense_ValidData_CreatesPendingExpense()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var branchId = Guid.NewGuid();
             var userId = Guid.NewGuid();
-            var controller = CreateController(context, branchId, userId);
+            var controller = CreateController(context, userId, branchId);
 
-            var dto = new ExpenseCategoryUpsertDto { CategoryName = "New Category" };
+            var request = new CreateExpenseDto
+            {
+                ExpenseType = "UTILITY", // Điện nước
+                Amount = 1500000,
+                Description = "Thanh toán tiền điện tháng 8",
+                ReferenceCode = "EVN-08-2026"
+            };
 
             // Act
-            var result = await controller.CreateExpenseCategory(dto);
+            var result = await controller.CreateExpense(request);
 
             // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            var response = Assert.IsType<ApiResponse<ExpenseCategoryDto>>(okResult.Value);
-            Assert.True(response.Success);
-            Assert.Equal("New Category", response.Data!.CategoryName);
+            var createdResult = Assert.IsType<CreatedAtActionResult>(result);
+            var apiResponse = Assert.IsType<ApiResponse<ExpenseDto>>(createdResult.Value);
+            
+            Assert.True(apiResponse.Success);
+            Assert.Equal(1500000, apiResponse.Data.Amount);
+            
+            var dbExpense = await context.Expenses.FirstOrDefaultAsync(e => e.ExpenseId == apiResponse.Data.ExpenseId);
+            Assert.NotNull(dbExpense);
+            Assert.Equal("PENDING", dbExpense.Status); // Should require approval
+            Assert.Equal(branchId, dbExpense.BranchId);
         }
 
+        // ==========================================
+        // TEST PUT /api/expense/{id}/approve
+        // ==========================================
         [Fact]
-        public async Task CreateExpenseVoucher_ValidData_ReturnsOk()
+        public async Task ApproveExpense_ByOwner_UpdatesStatusToApprovedAndCreatesTransaction()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var branchId = Guid.NewGuid();
-            var userId = Guid.NewGuid();
-            var controller = CreateController(context, branchId, userId);
+            var ownerId = Guid.NewGuid();
+            var controller = CreateController(context, ownerId, branchId, "Owner");
 
-            var categoryId = Guid.NewGuid();
-            context.ExpenseCategories.Add(new ExpenseCategory { CategoryId = categoryId, CategoryName = "Test Category", IsActive = 1 });
-            context.Branches.Add(new Branch { BranchId = branchId, BranchName = "Test Branch" });
-            context.Users.Add(new User { UserId = userId, FullName = "Test User", Email = "test@test.com", Username = "test", PasswordHash = "hash" });
-            await context.SaveChangesAsync();
-
-            var dto = new ExpenseVoucherCreateDto { CategoryId = categoryId, Amount = 1000, Reason = "Test Reason" };
-
-            // Act
-            var result = await controller.CreateExpenseVoucher(dto, branchId);
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            var response = Assert.IsType<ApiResponse<ExpenseVoucherResponseDto>>(okResult.Value);
-            Assert.True(response.Success);
-            Assert.Equal(1000, response.Data!.Amount);
-            Assert.Equal("Test Reason", response.Data.Reason);
-            Assert.Equal("PENDING", response.Data.Status);
-        }
-
-        [Fact]
-        public async Task GetExpenseVouchers_ReturnsVouchers()
-        {
-            // Arrange
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var branchId = Guid.NewGuid();
-            var userId = Guid.NewGuid();
-            var controller = CreateController(context, branchId, userId);
-
-            context.Branches.Add(new Branch { BranchId = branchId, BranchName = "Test Branch" });
-            context.Users.Add(new User { UserId = userId, FullName = "Test User", Email = "test@test.com", Username = "test", PasswordHash = "hash" });
-
-            var categoryId = Guid.NewGuid();
-            context.ExpenseCategories.Add(new ExpenseCategory { CategoryId = categoryId, CategoryName = "Test Category", IsActive = 1 });
-
-            context.ExpenseVouchers.Add(new ExpenseVoucher 
+            var expenseId = Guid.NewGuid();
+            context.Expenses.Add(new Expense 
             { 
-                VoucherId = Guid.NewGuid(), 
-                VoucherCode = "PC001",
+                ExpenseId = expenseId, 
                 BranchId = branchId, 
-                CategoryId = categoryId,
-                CreatedBy = userId,
-                Amount = 1000, 
-                Reason = "Test Reason", 
-                Status = "PENDING" 
+                Amount = 500000, 
+                ExpenseType = "OFFICE_SUPPLIES", 
+                Status = "PENDING", 
+                Description = "Mua giấy in A4" 
             });
             await context.SaveChangesAsync();
 
-            var queryParams = new ExpenseVoucherParameters { PageNumber = 1, PageSize = 10, Status = "PENDING" };
+            var request = new ApproveExpenseDto
+            {
+                IsApproved = true,
+                Notes = "Đã duyệt, lấy từ két sắt"
+            };
 
             // Act
-            var result = await controller.GetExpenseVouchers(queryParams, branchId);
+            var result = await controller.ApproveExpense(expenseId, request);
 
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result);
-            var response = Assert.IsType<ApiResponse<PaginatedResponse<ExpenseVoucherResponseDto>>>(okResult.Value);
-            Assert.True(response.Success);
-            Assert.Single(response.Data!.Items);
-            Assert.Equal(1000, response.Data.Items.First().Amount);
+            var apiResponse = Assert.IsType<ApiResponse<ExpenseDto>>(okResult.Value);
+            
+            Assert.True(apiResponse.Success);
+            Assert.Equal("APPROVED", apiResponse.Data.Status);
+            
+            var transaction = await context.PaymentTransactions.FirstOrDefaultAsync(t => t.ReferenceId == expenseId);
+            Assert.NotNull(transaction); // Approving an expense should log an OUTFLOW transaction
+            Assert.Equal(500000, transaction.Amount);
+            Assert.Equal("EXPENSE", transaction.TransactionType);
         }
     }
 }
