@@ -487,7 +487,7 @@ public class AdminAccountsController : ControllerBase
             });
 
         // Validate role
-        var validRoleNames = new[] { "SalesStaff", "InventoryStaff", "Staff" };
+        var validRoleNames = new[] { "SalesStaff", "InventoryStaff" };
         if (!validRoleNames.Contains(dto.RoleName.Trim(), StringComparer.OrdinalIgnoreCase))
         {
             return BadRequest(new ErrorResponseDto
@@ -495,7 +495,7 @@ public class AdminAccountsController : ControllerBase
                 Error = new ErrorDetail
                 {
                     Code = "MSG-400",
-                    Message = "Role không hợp lệ. Chỉ chấp nhận: SalesStaff, InventoryStaff, Staff."
+                    Message = "Role không hợp lệ. Chỉ chấp nhận: SalesStaff, InventoryStaff."
                 }
             });
         }
