@@ -150,5 +150,40 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
             var dbTier = await context.OrderDiscountTiers.FindAsync(tierId);
             Assert.Equal(1500000, dbTier.MinOrderValue);
         }
+        [Theory]
+        [InlineData(2000000, 10, true)] // Valid update
+        [InlineData(1000000, 15, true)] // Valid update same min value, diff percent
+        [InlineData(5000000, 20, false)] // Conflict with another existing tier's min value
+        public async Task UpdateTier_Validations_ReturnsAppropriateResult(decimal newMinValue, decimal newPercent, bool isSuccess)
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var tierId = Guid.NewGuid();
+            var otherTierId = Guid.NewGuid();
+            var branchId = Guid.NewGuid();
+            
+            context.Branches.Add(new Branch { BranchId = branchId, BranchName = "Chi nhánh 1" });
+            context.OrderDiscountTiers.Add(new OrderDiscountTier { OrderDiscountTierId = tierId, BranchId = branchId, MinOrderValue = 1000000, DiscountPercent = 5 });
+            context.OrderDiscountTiers.Add(new OrderDiscountTier { OrderDiscountTierId = otherTierId, BranchId = branchId, MinOrderValue = 5000000, DiscountPercent = 10 });
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context);
+            var request = new CreateOrderDiscountTierRequest
+            {
+                BranchId = branchId,
+                MinOrderValue = newMinValue,
+                DiscountPercent = newPercent
+            };
+
+            var result = await controller.UpdateTier(tierId, request);
+
+            if (isSuccess)
+            {
+                var okResult = Assert.IsType<OkObjectResult>(result.Result);
+            }
+            else
+            {
+                var conflictResult = Assert.IsType<ConflictObjectResult>(result.Result);
+            }
+        }
     }
 }

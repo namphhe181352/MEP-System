@@ -340,8 +340,8 @@ public class StockLedgerDto
 public class StockLedgerEntryDto
 {
     public DateTime TransactionTime { get; set; }
-    public string DocCode { get; set; }
-    public string DocType { get; set; }
+    public string DocCode { get; set; } = "";
+    public string DocType { get; set; } = "";
     public decimal? UnitCostPrice { get; set; }
     public decimal QtyIn { get; set; }
     public decimal QtyOut { get; set; }

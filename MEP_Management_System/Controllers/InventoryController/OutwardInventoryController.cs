@@ -894,7 +894,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 // BUG 3 FIX: Race condition - Thêm row-level lock FOR UPDATE
                 // Khóa các dòng để ngăn 2 request đồng thời vượt qua validation
                 // ============================================================
-                if (branchProductIds.Any())
+                if (branchProductIds.Any() && _context.Database.ProviderName != "Microsoft.EntityFrameworkCore.InMemory")
                 {
                     // EF Core cannot parameterize a list of Guids for the IN clause via FromSqlInterpolated
                     // in a way that's compatible with the FOR UPDATE locking hint. We build the SQL
@@ -958,27 +958,49 @@ namespace MEP_Management_System.Controllers.InventoryController
                     // Atomic UPDATE: trừ tồn kho trực tiếp trong DB, có kiểm tra tồn >= SL xuất
                     try
                     {
-                        var rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                            UPDATE branch_products
-                            SET actual_stock = actual_stock - {item.Discrepancy},
-                                available_stock = available_stock - {item.Discrepancy}
-                            WHERE branch_product_id = {item.BranchProductId}
-                              AND actual_stock >= {item.Discrepancy}
-                        ");
-
-                        if (rowsAffected == 0)
+                        if (_context.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
                         {
-                            await transaction.RollbackAsync();
-                            return BadRequest(new ApiResponse<object>
+                            if (bp.ActualStock < item.Discrepancy)
                             {
-                                Success = false,
-                                Message = "Số lượng tồn kho khả dụng của sản phẩm không đủ để thực hiện xuất kho.",
-                                Errors = new()
+                                await transaction.RollbackAsync();
+                                return BadRequest(new ApiResponse<object>
                                 {
-                                    $"Sản phẩm '{bp.Product?.ProductName ?? item.BranchProductId.ToString()}' không đủ tồn kho. " +
-                                    $"Tồn hiện tại: {bp.ActualStock}, cần xuất: {item.Discrepancy}"
-                                }
-                            });
+                                    Success = false,
+                                    Message = "Số lượng tồn kho khả dụng của sản phẩm không đủ để thực hiện xuất kho.",
+                                    Errors = new()
+                                    {
+                                        $"Sản phẩm '{bp.Product?.ProductName ?? item.BranchProductId.ToString()}' không đủ tồn kho. Tồn hiện tại: {bp.ActualStock}, cần xuất: {item.Discrepancy}"
+                                    }
+                                });
+                            }
+                            bp.ActualStock -= item.Discrepancy;
+                            bp.AvailableStock -= item.Discrepancy;
+                            _context.BranchProducts.Update(bp);
+                            await _context.SaveChangesAsync();
+                        }
+                        else
+                        {
+                            var rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                                UPDATE branch_products
+                                SET actual_stock = actual_stock - {item.Discrepancy},
+                                    available_stock = available_stock - {item.Discrepancy}
+                                WHERE branch_product_id = {item.BranchProductId}
+                                  AND actual_stock >= {item.Discrepancy}
+                            ");
+
+                            if (rowsAffected == 0)
+                            {
+                                await transaction.RollbackAsync();
+                                return BadRequest(new ApiResponse<object>
+                                {
+                                    Success = false,
+                                    Message = "Số lượng tồn kho khả dụng của sản phẩm không đủ để thực hiện xuất kho.",
+                                    Errors = new()
+                                    {
+                                        $"Sản phẩm '{bp.Product?.ProductName ?? item.BranchProductId.ToString()}' không đủ tồn kho. Tồn hiện tại: {bp.ActualStock}, cần xuất: {item.Discrepancy}"
+                                    }
+                                });
+                            }
                         }
                     }
                     catch (Exception ex) when (ex is DbUpdateConcurrencyException || ex is DbUpdateException)

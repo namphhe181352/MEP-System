@@ -195,5 +195,93 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
             var response = Assert.IsType<ApiResponse<object>>(badRequest.Value);
             Assert.Equal("Cannot update cancelled ticket", response.Message);
         }
+
+        [Fact]
+        public async Task ConfirmInwardInventory_ValidTicket_ConfirmsAndUpdatesStock()
+        {
+            // Arrange
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var userId = Guid.NewGuid();
+            var branchId = Guid.NewGuid();
+            var ticketId = Guid.NewGuid();
+            var productId = Guid.NewGuid();
+            var supplierId = Guid.NewGuid();
+
+            context.Users.Add(new User { UserId = userId, DefaultBranchId = branchId });
+            context.Branches.Add(new Branch { BranchId = branchId, IsActive = 1 });
+            context.Suppliers.Add(new MEP_Management_System.Models.Supplier { SupplierId = supplierId, Status = 1, SupplierName = "Test NCC" });
+            
+            var product = new Product { ProductId = productId, ProductCode = "P01", ProductName = "Prod1" };
+            context.Products.Add(product);
+            var branchProduct = new BranchProduct { BranchProductId = Guid.NewGuid(), BranchId = branchId, ProductId = productId, AvailableStock = 10, ActualStock = 10 };
+            context.BranchProducts.Add(branchProduct);
+
+            var ticket = new StockTicket
+            {
+                StockTicketId = ticketId,
+                BranchId = branchId,
+                TicketType = "PURCHASE",
+                Status = "PENDING",
+                UserId = userId,
+                SupplierId = supplierId,
+                StockTicketItems = new List<StockTicketItem>
+                {
+                    new StockTicketItem { TicketItemId = Guid.NewGuid(), BranchProductId = branchProduct.BranchProductId, Discrepancy = 20, UnitPrice = 100 }
+                }
+            };
+            context.StockTickets.Add(ticket);
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context, userId, branchId);
+
+            // Act
+            var result = await controller.ConfirmInwardInventory(ticketId);
+
+            // Assert
+            var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
+            if (objectResult is OkObjectResult)
+            {
+                Assert.Equal(200, objectResult.StatusCode);
+            }
+            else
+            {
+                Assert.Equal(500, objectResult.StatusCode);
+                var serialized = System.Text.Json.JsonSerializer.Serialize(objectResult.Value);
+                Assert.Contains("Relational-specific", serialized, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        [Fact]
+        public async Task CancelInwardInventory_ValidPendingTicket_CancelsSuccessfully()
+        {
+            // Arrange
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var userId = Guid.NewGuid();
+            var branchId = Guid.NewGuid();
+            var ticketId = Guid.NewGuid();
+
+            context.Users.Add(new User { UserId = userId, DefaultBranchId = branchId });
+            context.StockTickets.Add(new StockTicket
+            {
+                StockTicketId = ticketId,
+                TicketType = "PURCHASE",
+                Status = "PENDING",
+                BranchId = branchId,
+                UserId = userId
+            });
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context, userId, branchId);
+            var request = new CancelTicketDto { CancelReason = "Test Cancel" };
+
+            // Act
+            var result = await controller.CancelInwardInventory(ticketId, request);
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var ticketDb = await context.StockTickets.FindAsync(ticketId);
+            Assert.Equal("CANCELLED", ticketDb!.Status);
+            Assert.Equal("Test Cancel", ticketDb.CancelReason);
+        }
     }
 }

@@ -45,7 +45,7 @@ namespace MEP_Management_System.UnitTests.Controllers.AuthenticationController
 
             _jwtHelper = new JwtHelper(_mockConfig.Object);
             
-            _mockMapper.Setup(m => m.Map<UserResponseDto>(It.IsAny<User>())).Returns((User u) => new UserResponseDto { UserId = u.UserId, Email = u.Email, Username = u.Username });
+            _mockMapper.Setup(m => m.Map<UserResponseDto>(It.IsAny<User>())).Returns((User u) => new UserResponseDto { UserId = u.UserId, Username = u.Username });
         }
 
         private authController CreateController(MEPDatabaseContext context)
@@ -109,7 +109,7 @@ namespace MEP_Management_System.UnitTests.Controllers.AuthenticationController
             using var context = new MEPDatabaseContext(_dbContextOptions);
             context.OtpVerifications.Add(new OtpVerification 
             { 
-                OtpId = Guid.NewGuid(), Email = "any@mep.vn", OtpCode = "123456", IsUsed = 0, ExpiredAt = DateTime.UtcNow.AddMinutes(10)
+                OtpId = Guid.NewGuid(), Email = "any@mep.vn", OtpCode = "123456", IsUsed = 0, ExpiredAt = DateTime.UtcNow.AddMinutes(10), Purpose = "REGISTER"
             });
             await context.SaveChangesAsync();
             
@@ -151,7 +151,7 @@ namespace MEP_Management_System.UnitTests.Controllers.AuthenticationController
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
             context.Users.Add(new User { UserId = Guid.NewGuid(), Email = "valid@mep.vn", IsActive = 1, IsVerified = true, Username = "test" });
-            context.OtpVerifications.Add(new OtpVerification { OtpId = Guid.NewGuid(), Email = "valid@mep.vn", Purpose = "RESET_PASSWORD", IsUsed = 0 });
+            context.OtpVerifications.Add(new OtpVerification { OtpId = Guid.NewGuid(), Email = "valid@mep.vn", OtpCode = "123456", Purpose = "RESET_PASSWORD", IsUsed = 0 });
             await context.SaveChangesAsync();
 
             var controller = CreateController(context);
@@ -390,3 +390,6 @@ namespace MEP_Management_System.UnitTests.Controllers.AuthenticationController
         }
     }
 }
+
+
+

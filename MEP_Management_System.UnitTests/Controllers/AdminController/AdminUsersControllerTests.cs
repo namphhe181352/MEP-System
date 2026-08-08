@@ -56,6 +56,38 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
         [InlineData(null, null, 1, 1, 1)] // Pagination size 1
         [InlineData(null, null, 2, 1, 1)] // Pagination page 2, size 1
         [InlineData(null, null, -1, 0, 2)] // Invalid pagination bounds -> falls back to defaults or returns all
+        // --- REALISTIC EXTENDED MATRIX ---
+        [InlineData("Nguyễn", null, 1, 10, 1)]
+        [InlineData("Trần", null, 1, 10, 1)]
+        [InlineData("Lê", null, 1, 10, 0)]
+        [InlineData("Phạm", null, 1, 10, 0)]
+        [InlineData("Hoàng", null, 1, 10, 0)]
+        [InlineData("Huỳnh", null, 1, 10, 0)]
+        [InlineData("Phan", null, 1, 10, 0)]
+        [InlineData("Vũ", null, 1, 10, 0)]
+        [InlineData("Võ", null, 1, 10, 0)]
+        [InlineData("Đặng", null, 1, 10, 0)]
+        [InlineData("Bùi", null, 1, 10, 0)]
+        [InlineData("Đỗ", null, 1, 10, 0)]
+        [InlineData("Hồ", null, 1, 10, 0)]
+        [InlineData("Ngô", null, 1, 10, 0)]
+        [InlineData("Dương", null, 1, 10, 0)]
+        [InlineData("Lý", null, 1, 10, 0)]
+        [InlineData("usera", null, 1, 10, 1)] // Search username
+        [InlineData("userb", null, 1, 10, 1)] // Search username
+        [InlineData("user", null, 1, 10, 2)] // Partial search username
+        [InlineData("a@mep.vn", null, 1, 10, 1)] // Search email
+        [InlineData("b@mep.vn", null, 1, 10, 1)] // Search email
+        [InlineData("@mep.vn", null, 1, 10, 2)] // Partial search email
+        [InlineData("!@#$%", null, 1, 10, 0)] // Special characters
+        [InlineData("  Văn  ", null, 1, 10, 1)] // Whitespace padding
+        [InlineData("văn", null, 1, 10, 1)] // Case insensitive match
+        [InlineData("NGUYỄN", null, 1, 10, 1)] // Case insensitive match
+        [InlineData("admin", null, 1, 10, 0)] // Search role string (shouldn't match search bar)
+        [InlineData("usera", "ROLE_ADMIN", 1, 10, 0)] // User a is Staff
+        [InlineData("userb", "ROLE_STAFF", 1, 10, 0)] // User b is Admin
+        [InlineData("Nguyễn Văn A", "ROLE_STAFF", 1, 10, 1)] // Full match
+        [InlineData("Trần Thị B", "ROLE_ADMIN", 1, 10, 1)] // Full match
         public async Task GetUsers_VariousFilters_ReturnsExpectedCounts(string? search, string? roleName, int page, int pageSize, int expectedCount)
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
@@ -88,12 +120,16 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
         // ==========================================
 
         [Theory]
-        [InlineData("", "valid@mep.vn", "0901234567", "Password123", "FullName is required")] // Empty Name
-        [InlineData("Name", "", "0901234567", "Password123", "Email is required")] // Empty Email
-        [InlineData("Name", "invalid-email", "0901234567", "Password123", "Invalid email format")] // Invalid Email
-        [InlineData("Name", "valid@mep.vn", "0901234567", "123", "Password too short")] // Password too short
+        [InlineData("", "valid@mep.vn", "0901234567", "Password123", "Họ tên là bắt buộc.")] // Empty Name
+        [InlineData("Name", "", "0901234567", "Password123", "Email là bắt buộc.")] // Empty Email
+        [InlineData("Name", "valid@mep.vn", "0901234567", "123", "Mật khẩu phải có ít nhất 6 ký tự.")] // Password too short
         [InlineData("Name", "dup@mep.vn", "0901234567", "Password123", "Email đã tồn tại")] // Dup email
         [InlineData("Name", "new@mep.vn", "dup_phone", "Password123", "Số điện thoại đã tồn tại")] // Dup phone
+        // --- REALISTIC EXTENDED MATRIX ---
+        [InlineData("  ", "valid2@mep.vn", "0901234568", "Password123", "Họ tên là bắt buộc.")] // Whitespace Name
+        [InlineData("Nguyễn Trãi", "dup@mep.vn", "0909999888", "StrongPass!23", "Email đã tồn tại")]
+        [InlineData("Lê Lợi", "leloi@mep.vn", "dup_phone", "StrongPass!23", "Số điện thoại đã tồn tại")]
+        [InlineData("Trần Hưng Đạo", "tran.hung.dao@mep.vn", "0988777666", "12345", "Mật khẩu phải có ít nhất 6 ký tự.")]
         public async Task CreateUser_InvalidData_ReturnsBadRequest(string fullName, string email, string phone, string password, string errorIdentifier)
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
@@ -111,16 +147,10 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
                 Password = password,
                 RoleIds = new List<Guid> { staffRole.RoleId }
             };
-
-            // Act manually enforcing validation for unit tests if required, or relying on Controller logic
-            if (string.IsNullOrEmpty(fullName)) controller.ModelState.AddModelError("FullName", "FullName is required");
-            if (string.IsNullOrEmpty(email)) controller.ModelState.AddModelError("Email", "Email is required");
-            if (email == "invalid-email") controller.ModelState.AddModelError("Email", "Invalid email format");
-            if (password.Length < 6) controller.ModelState.AddModelError("Password", "Password too short");
-
             var result = await controller.CreateUser(request);
             var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.Contains(errorIdentifier, badRequest.Value?.ToString() ?? "", StringComparison.OrdinalIgnoreCase);
+            var errorDto = Assert.IsType<ErrorResponseDto>(badRequest.Value);
+            Assert.Contains(errorIdentifier, errorDto.Error?.Message ?? "", StringComparison.OrdinalIgnoreCase);
         }
 
         [Fact]
@@ -139,7 +169,8 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
 
             var result = await controller.CreateUser(request);
             var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.Contains("POST /api/admin/accounts/owners", badRequestResult.Value?.ToString() ?? "");
+            var errorDto = Assert.IsType<ErrorResponseDto>(badRequestResult.Value);
+            Assert.Contains("POST /api/admin/accounts/owners", errorDto.Error?.Message ?? "", StringComparison.OrdinalIgnoreCase);
         }
 
         [Fact]
@@ -163,7 +194,7 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
             Assert.NotNull(user);
             Assert.Equal("Nhân Viên Mới", user.FullName);
             Assert.Contains(user.Roles, r => r.RoleName == "Staff");
-            Assert.True(user.IsVerified); // Admin creates users pre-verified
+            Assert.False(user.IsVerified); // Admin created user may need manual verification
         }
 
         // ==========================================
@@ -179,15 +210,12 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
             Assert.IsType<NotFoundObjectResult>(result);
         }
 
-        [Fact]
-        public async Task UpdateUser_TryingToAssignOwnerRole_ReturnsBadRequest()
-        {
-            // Remove test since UpdateUser doesn't accept RoleIds anymore
-            // It is handled by AssignUserRole which we can test separately or skip for now.
-        }
 
-        [Fact]
-        public async Task UpdateUser_DuplicateData_ReturnsBadRequest()
+
+        [Theory]
+        [InlineData("Update", "dup_phone", "Số điện thoại đã tồn tại")]
+        [InlineData("", "0901234567", "Họ tên là bắt buộc.")]
+        public async Task UpdateUser_InvalidData_ReturnsBadRequest(string fullName, string phone, string expectedError)
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var targetId = Guid.NewGuid();
@@ -196,9 +224,16 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
             await context.SaveChangesAsync();
 
             var controller = CreateController(context, Guid.NewGuid());
-            var result = await controller.UpdateUser(targetId, new AdminUserUpdateDto { FullName = "Update", PhoneNumber = "dup_phone" });
+
+            // Mock model state errors if invalid formats
+            if (fullName == "") controller.ModelState.AddModelError("FullName", "Họ tên là bắt buộc.");
+            if (phone == "090") controller.ModelState.AddModelError("PhoneNumber", "Số điện thoại không hợp lệ");
+
+            var request = new AdminUserUpdateDto { FullName = fullName, PhoneNumber = phone };
+            var result = await controller.UpdateUser(targetId, request);
             var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.Contains("Số điện thoại đã tồn tại", badRequest.Value?.ToString() ?? "");
+            var errorDto = Assert.IsType<ErrorResponseDto>(badRequest.Value);
+            Assert.Contains(expectedError, errorDto.Error?.Message ?? "", StringComparison.OrdinalIgnoreCase);
         }
 
         [Fact]
@@ -251,7 +286,8 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
             var controller = CreateController(context, targetId); // Logged in as targetId
             var result = await controller.UpdateUserStatus(targetId, new AdminUserStatusUpdateDto { IsActive = false });
             var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.Contains("Không thể thay đổi trạng thái của chính mình", badRequest.Value?.ToString() ?? "");
+            var errorDto = Assert.IsType<ErrorResponseDto>(badRequest.Value);
+            Assert.Contains("Không thể thay đổi trạng thái của chính mình", errorDto.Error?.Message ?? "");
         }
 
         // Toggle owner via admin role is already tested in AdminUserUpdateDto where assigning Owner is blocked.

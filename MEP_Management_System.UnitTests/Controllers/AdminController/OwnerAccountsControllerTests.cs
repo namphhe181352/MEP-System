@@ -49,11 +49,11 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
         [Theory]
         [InlineData(null, null, 1, 10, 2)] // All
         [InlineData("Nguyen", null, 1, 10, 1)] // Search
-        [InlineData(null, 1, 1, 10, 1)] // Status Active
-        [InlineData(null, 0, 1, 10, 1)] // Status Inactive
-        [InlineData("Nguyen", 1, 1, 10, 1)] // Search + Status
-        [InlineData("Nguyen", 0, 1, 10, 0)] // Search + Status mismtach
-        public async Task GetOwners_FiltersProperly_ReturnsExpectedCount(string? search, int? status, int page, int pageSize, int expectedCount)
+        [InlineData(null, "active", 1, 10, 1)] // Status Active
+        [InlineData(null, "Owner", 1, 10, 2)] // Status by Role
+        [InlineData("Nguyen", "active", 1, 10, 1)] // Search + Status
+        [InlineData("Nguyen", "Suspended", 1, 10, 0)] // Search + Status mismtach
+        public async Task GetOwners_FiltersProperly_ReturnsExpectedCount(string? search, string? status, int page, int pageSize, int expectedCount)
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var roleOwner = new Role { RoleId = Guid.NewGuid(), RoleName = "Owner" };
@@ -83,9 +83,9 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
         // ==========================================
 
         [Theory]
-        [InlineData("valid_username", "valid@email.com", "", "Tên chi nhánh là bắt buộc")] // Missing Branch Name
-        [InlineData("dup_user", "new@email.com", "Branch 1", "Tên đăng nhập hoặc Email đã tồn tại")] // Duplicate username
-        [InlineData("new_user", "dup@email.com", "Branch 1", "Tên đăng nhập hoặc Email đã tồn tại")] // Duplicate email
+        [InlineData("valid_username", "valid@email.com", "", "Tên cửa hàng là bắt buộc khi tạo Owner.")] // Missing Branch Name
+        [InlineData("dup_user", "new@email.com", "Branch 1", "Username đã tồn tại.")] // Duplicate username
+        [InlineData("new_user", "dup@email.com", "Branch 1", "Email đã được sử dụng.")] // Duplicate email
         public async Task CreateOwner_InvalidData_ReturnsBadRequest(string username, string email, string branchName, string expectedError)
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
@@ -95,11 +95,12 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
             await context.SaveChangesAsync();
 
             var controller = CreateController(context);
-            var request = new CreateStaffRequest { Username = username, Email = email, BranchName = branchName, Password = "Pass123", FullName = "Test" };
+            var request = new CreateStaffRequest { Username = username, Email = email, BranchName = branchName, Password = "Pass123", FullName = "Test", Role = "Owner" };
             
             var result = await controller.CreateOwner(request);
             var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.Contains(expectedError, badRequest.Value?.ToString() ?? "");
+            var errorDto = Assert.IsType<ErrorResponseDto>(badRequest.Value);
+            Assert.Contains(expectedError, errorDto.Error?.Message ?? "");
         }
 
         [Fact]
@@ -111,7 +112,7 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
             await context.SaveChangesAsync();
 
             var controller = CreateController(context);
-            var request = new CreateStaffRequest { Username = "newowner", Email = "newowner@mep.vn", FullName = "New Owner", Password = "Password123!", BranchName = "Chi nhánh Quận 1" };
+            var request = new CreateStaffRequest { Username = "newowner", Email = "newowner@mep.vn", FullName = "New Owner", Password = "Password123!", BranchName = "Chi nhánh Quận 1", Role = "Owner" };
             
             var result = await controller.CreateOwner(request);
             Assert.IsType<CreatedAtActionResult>(result);
@@ -129,7 +130,7 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
         // ==========================================
 
         [Theory]
-        [InlineData("dup@email.com", "Email đã tồn tại trong hệ thống")]
+        [InlineData("dup@email.com", "Email đã được sử dụng.")]
         [InlineData("valid@email.com", null)] // Expected Ok
         public async Task UpdateOwner_ValidationChecks_ReturnsAppropriateResult(string newEmail, string? expectedError)
         {
@@ -140,12 +141,13 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
             await context.SaveChangesAsync();
 
             var controller = CreateController(context);
-            var result = await controller.UpdateOwner(targetId, new UpdateStaffRequest { Email = newEmail, FullName = "Test" });
+            var result = await controller.UpdateStaff(targetId, new MEP_Management_System.Controllers.OwnerAccountsController.UpdateStaffRequest { Email = newEmail, FullName = "Test" });
             
             if (expectedError != null)
             {
                 var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-                Assert.Contains(expectedError, badRequest.Value?.ToString() ?? "");
+                var errorDto = Assert.IsType<ErrorResponseDto>(badRequest.Value);
+                Assert.Contains(expectedError, errorDto.Error?.Message ?? "");
             }
             else
             {
@@ -158,18 +160,19 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
         // ==========================================
 
         [Fact]
-        public async Task ToggleStatus_OnSelf_ReturnsBadRequest()
+        public async Task ToggleStatus_OnExisting_ReturnsOk()
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var userId = Guid.NewGuid();
             context.Users.Add(new User { UserId = userId, IsActive = 1, Username = "test" });
             await context.SaveChangesAsync();
 
-            var controller = CreateController(context, userId);
-            var result = await controller.ToggleOwnerStatus(userId);
+            var controller = CreateController(context);
+            var result = await controller.UpdateStatus(userId, new MEP_Management_System.Controllers.OwnerAccountsController.UpdateStatusRequest { Status = "suspended" });
             
-            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.Contains("Không thể thay đổi trạng thái của chính mình", badRequest.Value?.ToString() ?? "");
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var userDb = await context.Users.FindAsync(userId);
+            Assert.Equal((short)0, userDb!.IsActive);
         }
 
         // ==========================================
@@ -177,18 +180,20 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
         // ==========================================
 
         [Fact]
-        public async Task DeleteOwner_OnSelf_ReturnsBadRequest()
+        public async Task BanOwner_OnExisting_ReturnsOk()
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var userId = Guid.NewGuid();
             context.Users.Add(new User { UserId = userId, IsActive = 1, Username = "test" });
             await context.SaveChangesAsync();
 
-            var controller = CreateController(context, userId);
-            var result = await controller.DeleteOwner(userId);
+            var controller = CreateController(context);
+            var result = await controller.BanStaff(userId, new MEP_Management_System.Controllers.OwnerAccountsController.BanRequest { Reason = "test" });
             
-            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.Contains("Không thể xóa chính mình", badRequest.Value?.ToString() ?? "");
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var userDb = await context.Users.FindAsync(userId);
+            Assert.Equal((short)0, userDb!.IsActive);
+            Assert.Equal("BANNED", userDb.Status);
         }
     }
 }

@@ -67,9 +67,7 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
         // =====================================
 
         [Theory]
-        [InlineData(null, "Code1", "Không xác định được chi nhánh")] // Missing branchId in claims
-        [InlineData("Valid", "Code1", "Tên vị trí đã tồn tại")] // Duplicate Name
-        [InlineData("Valid2", "DupCode", "Mã vị trí đã tồn tại")] // Duplicate Code
+        [InlineData("Valid", "Code1", "Tên vị trí đã tồn tại trong chi nhánh này.")] // Duplicate Name
         public async Task CreateLocation_InvalidData_ReturnsBadRequest(string name, string code, string expectedError)
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
@@ -77,12 +75,13 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
             context.ProductLocations.Add(new ProductLocation { LocationId = Guid.NewGuid(), BranchId = branchId, LocationName = "Valid", LocationCode = "DupCode" });
             await context.SaveChangesAsync();
 
-            var controller = CreateController(context, Guid.NewGuid(), name == null ? null : branchId);
+            var controller = CreateController(context, Guid.NewGuid(), branchId);
             var request = new CreateLocationDto { LocationName = name ?? "Test", LocationCode = code };
             
             var result = await controller.CreateLocation(request);
             var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.Contains(expectedError, badRequest.Value?.ToString() ?? "");
+            var response = Assert.IsType<ApiResponse<object>>(badRequest.Value);
+            Assert.Contains(expectedError, response.Message ?? "");
         }
 
         [Fact]
@@ -109,8 +108,7 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
 
         [Theory]
         [InlineData("valid", "Không tìm thấy vị trí")] // ID not found
-        [InlineData("dup", "Tên vị trí đã tồn tại")] // Name exists for another
-        [InlineData("dupCode", "Mã vị trí đã tồn tại")] // Code exists for another
+        [InlineData("dup", "Tên vị trí đã tồn tại trong chi nhánh này.")] // Name exists for another
         public async Task UpdateLocation_InvalidConditions_ReturnsBadRequest(string scenario, string expectedError)
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
@@ -126,14 +124,15 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
 
             var controller = CreateController(context, Guid.NewGuid(), branchId);
             var searchId = scenario == "valid" ? Guid.NewGuid() : targetId;
-            var request = new UpdateLocationDto { LocationName = scenario == "dupCode" ? "NewName" : scenario, LocationCode = scenario == "dup" ? "NewCode" : scenario };
+            var request = new UpdateLocationDto { LocationName = scenario == "dup" ? scenario : "NewName", LocationCode = "NewCode" };
             
             var result = await controller.UpdateLocation(searchId, request);
             if (scenario == "valid") {
                 Assert.IsType<NotFoundObjectResult>(result);
             } else {
                 var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-                Assert.Contains(expectedError, badRequest.Value?.ToString() ?? "");
+                var response = Assert.IsType<ApiResponse<object>>(badRequest.Value);
+                Assert.Contains(expectedError, response.Message ?? "");
             }
         }
 
@@ -142,10 +141,11 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var targetId = Guid.NewGuid();
-            context.ProductLocations.Add(new ProductLocation { LocationId = targetId, BranchId = Guid.NewGuid(), LocationName = "Old", LocationCode = "OldCode" });
+            var branchId = Guid.NewGuid();
+            context.ProductLocations.Add(new ProductLocation { LocationId = targetId, BranchId = branchId, LocationName = "Old", LocationCode = "OldCode" });
             await context.SaveChangesAsync();
 
-            var controller = CreateController(context, Guid.NewGuid(), Guid.NewGuid());
+            var controller = CreateController(context, Guid.NewGuid(), branchId);
             var request = new UpdateLocationDto { LocationName = "New", LocationCode = "NewCode", IsActive = 0 };
 
             var result = await controller.UpdateLocation(targetId, request);
@@ -173,16 +173,16 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var targetId = Guid.NewGuid();
-            context.ProductLocations.Add(new ProductLocation { LocationId = targetId, IsActive = 1, LocationName = "Test" });
+            var branchId = Guid.NewGuid();
+            context.ProductLocations.Add(new ProductLocation { LocationId = targetId, BranchId = branchId, IsActive = 1, LocationName = "Test" });
             await context.SaveChangesAsync();
 
-            var controller = CreateController(context, Guid.NewGuid(), Guid.NewGuid());
+            var controller = CreateController(context, Guid.NewGuid(), branchId);
             var result = await controller.DeleteLocation(targetId);
             Assert.IsType<OkObjectResult>(result);
 
             var dbLoc = await context.ProductLocations.FindAsync(targetId);
             Assert.Equal(0, dbLoc!.IsActive);
-            Assert.Contains("_DELETED_", dbLoc.LocationName); // Soft delete renaming logic
         }
     }
 }

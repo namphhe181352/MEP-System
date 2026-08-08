@@ -139,8 +139,15 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
             Assert.Equal(orderId, dbReturnOrder.OrderId);
         }
 
-        [Fact]
-        public async Task AddReturnItem_ValidItem_AddsToReturnOrder()
+        [Theory]
+        [InlineData("Ổ cắm Lioa", "OD-LIOA", 5, 50000, 2, "Lỗi nhà sản xuất", 100000)]
+        [InlineData("Bóng đèn Led", "BD-LED", 10, 20000, 10, "Đổi ý", 200000)]
+        [InlineData("Dây điện Cadivi", "DD-CAD", 50, 15000, 25, "Mua thừa", 375000)]
+        [InlineData("Công tắc Schneider", "CT-SCH", 20, 120000, 5, "Khách trả", 600000)]
+        [InlineData("Ống nhựa Tiền Phong", "ONG-TP", 100, 25000, 50, "Giao sai kích thước", 1250000)]
+        [InlineData("Keo dán Bình Minh", "KEO-BM", 15, 8000, 15, "Hết hạn", 120000)]
+        [InlineData("Băng keo Nano", "BK-NANO", 30, 5000, 1, "Hỏng", 5000)]
+        public async Task AddReturnItem_ValidItem_AddsToReturnOrder(string productName, string productCode, int invoiceQuantity, decimal sellPrice, int returnQuantity, string returnReason, decimal expectedRefund)
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
@@ -152,7 +159,7 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
 
             var productId = Guid.NewGuid();
             var branchProductId = Guid.NewGuid();
-            context.Products.Add(new Product { ProductId = productId, ProductCode = "OD-LIOA", ProductName = "Ổ cắm Lioa", CategoryTaxonomyId = categoryId });
+            context.Products.Add(new Product { ProductId = productId, ProductCode = productCode, ProductName = productName, CategoryTaxonomyId = categoryId });
             context.BranchProducts.Add(new BranchProduct { BranchProductId = branchProductId, BranchId = branchId, ProductId = productId });
             
             var orderId = Guid.NewGuid();
@@ -171,8 +178,8 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
                 InvoiceItemId = Guid.NewGuid(), 
                 InvoiceId = invoiceId, 
                 BranchProductId = branchProductId, 
-                Quantity = 5, 
-                SellPrice = 50000 
+                Quantity = invoiceQuantity, 
+                SellPrice = sellPrice 
             };
             
             context.Orders.Add(new Order { OrderId = orderId, BranchId = branchId });
@@ -193,7 +200,7 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
                 .Returns((ReturnItem ri) => new ReturnItemDto { ReturnItemId = ri.ReturnItemId, Quantity = ri.Quantity, RefundAmount = ri.RefundAmount });
 
             var controller = CreateController(context, userId, branchId);
-            var request = new AddReturnItemRequest { ProductId = productId, Quantity = 2, Reason = "Lỗi" };
+            var request = new AddReturnItemRequest { ProductId = productId, Quantity = returnQuantity, Reason = returnReason };
 
             // Act
             var result = await controller.AddReturnItem(returnOrderId, request);
@@ -204,8 +211,8 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
             
             var dbReturnItem = await context.ReturnItems.FirstOrDefaultAsync(ri => ri.ReturnOrderId == returnOrderId);
             Assert.NotNull(dbReturnItem);
-            Assert.Equal(2, dbReturnItem.Quantity);
-            Assert.Equal(100000, dbReturnItem.RefundAmount); // 2 * 50000
+            Assert.Equal(returnQuantity, dbReturnItem.Quantity);
+            Assert.Equal(expectedRefund, dbReturnItem.RefundAmount);
         }
 
         [Fact]
