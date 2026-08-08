@@ -255,76 +255,7 @@ namespace MEP_Management_System.Controllers.InventoryController
             }
         }
 
-        // ============================================================
-        // GET /api/inwardinventory/{id}/returnable-items
-        // Lookup API - tra ve danh sach san pham co the tra lai
-        // tu mot phieu nhap kho. Dung trong form Xuat tra nha cung cap.
-        // ============================================================
-        [HttpGet("{id:guid}/returnable-items")]
-        // Lookup API - khong yeu cau quyen cu the, chi can da dang nhap
-        public async Task<IActionResult> GetReturnableItems(Guid id)
-        {
-            try
-            {
-                var branchId = _currentBranch.GetBranchId();
-                if (branchId == null)
-                    return BadRequest(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "Không xác định được chi nhánh."
-                    });
 
-                var ticket = await _context.StockTickets
-                    .Include(st => st.StockTicketItems)
-                        .ThenInclude(item => item.BranchProduct)
-                            .ThenInclude(bp => bp.Product)
-                    .FirstOrDefaultAsync(st => st.StockTicketId == id
-                        && st.BranchId == branchId.Value
-                        && st.Status == "COMPLETED"
-                        && (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST"));
-
-                if (ticket == null)
-                    return NotFound(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "Phiếu nhập không tồn tại hoặc chưa hoàn thành."
-                    });
-
-                var returnableItems = ticket.StockTicketItems.Select(item =>
-                {
-                    var actualStock = item.BranchProduct?.ActualStock ?? 0;
-                    var maxReturnable = item.ActualQuantity; // Toan bo so luong da nhap deu co the tra
-
-                    return new
-                    {
-                        branchProductId = item.BranchProductId,
-                        inwardTicketItemId = item.TicketItemId,
-                        productCode = item.BranchProduct?.Product?.ProductCode ?? "",
-                        productName = item.BranchProduct?.Product?.ProductName ?? "",
-                        unitName = item.BranchProduct?.Product?.BaseUnit ?? "",
-                        unitPrice = item.UnitPrice ?? item.BranchProduct?.CostPrice ?? 0,
-                        maxReturnableQuantity = maxReturnable,
-                        actualStock = actualStock
-                    };
-                }).Where(x => x.maxReturnableQuantity > 0).ToList();
-
-                return Ok(new ApiResponse<object>
-                {
-                    Success = true,
-                    Message = "Danh sach san pham co the tra.",
-                    Data = new { items = returnableItems }
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<object>
-                {
-                    Success = false,
-                    Message = "Loi khi lay danh sach san pham co the tra.",
-                    Errors = new() { ex.Message }
-                });
-            }
-        }
 
         // ============================================================
         // GET /api/inwardinventory/{id}
