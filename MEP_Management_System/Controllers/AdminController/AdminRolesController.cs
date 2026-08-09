@@ -28,24 +28,6 @@ public class AdminRolesController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetRoles()
     {
-        // Cleanup: xoa toan bo quyen cu cua SalesStaff & InventoryStaff
-        var staffRoles = await _context.Roles
-            .Include(r => r.Permissions)
-            .Where(r => r.RoleName == "SalesStaff" || r.RoleName == "Sales Staff"
-                || r.RoleName == "InventoryStaff" || r.RoleName == "Inventory Staff")
-            .ToListAsync();
-
-        bool cleaned = false;
-        foreach (var role in staffRoles)
-        {
-            if (role.Permissions.Any())
-            {
-                role.Permissions.Clear();
-                cleaned = true;
-            }
-        }
-        if (cleaned) await _context.SaveChangesAsync();
-
         var roles = await _context.Roles
             .OrderBy(r => r.RoleName)
             .Select(r => new AdminRoleDto
@@ -170,6 +152,35 @@ public class AdminRolesController : ControllerBase
         var permissionsToAssign = await _context.Permissions
             .Where(p => dto.PermissionIds.Contains(p.PermissionId))
             .ToListAsync();
+
+        // Auto-include VIEW permissions khi co quyen thao tac lien quan
+        var assignedCodes = permissionsToAssign.Select(p => p.PermissionCode).ToHashSet();
+        var actionToViewPrefixes = new Dictionary<string, string[]>
+        {
+            { "STOCK_INWARD_CREATE", new[] { "STOCK_INWARD_" } },
+            { "STOCK_OUTWARD_CREATE", new[] { "STOCK_OUTWARD_" } },
+            { "STOCK_CHECK_VIEW", new[] { "STOCK_CHECK_" } },
+            { "PRODUCT_VIEW", new[] { "PRODUCT_" } },
+            { "SALE_VIEW", new[] { "SALE_", "CUSTOMER_", "PAYMENT_" } },
+            { "SUPPLIER_VIEW", new[] { "SUPPLIER_" } },
+            { "EXPENSE_VIEW", new[] { "EXPENSE_" } },
+            { "STAFF_VIEW", new[] { "STAFF_", "SHIFT_" } },
+        };
+
+        foreach (var kvp in actionToViewPrefixes)
+        {
+            var viewCode = kvp.Key;
+            var actionPrefixes = kvp.Value;
+            if (!assignedCodes.Contains(viewCode) &&
+                assignedCodes.Any(rc => actionPrefixes.Any(ap => rc.StartsWith(ap))))
+            {
+                var viewPerm = await _context.Permissions.FirstOrDefaultAsync(p => p.PermissionCode == viewCode);
+                if (viewPerm != null && !permissionsToAssign.Any(p => p.PermissionId == viewPerm.PermissionId))
+                {
+                    permissionsToAssign.Add(viewPerm);
+                }
+            }
+        }
 
         role.Permissions.Clear();
         foreach (var permission in permissionsToAssign)
