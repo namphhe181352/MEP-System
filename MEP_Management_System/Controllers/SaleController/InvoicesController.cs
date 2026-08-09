@@ -18,7 +18,7 @@ namespace MEP_Management_System.Controllers.SaleController;
 
 [ApiController]
 [Route("api/pos/invoices")]
-[HasPermission(PermissionConstants.SALE_VIEW)]
+[Authorize]
 [Tags("Quản lý bán hàng (Sale)")]
 public class InvoicesController : ControllerBase
 {
@@ -427,6 +427,7 @@ public class InvoicesController : ControllerBase
 
     // PATCH /api/pos/invoices/{invoiceId}/cancel
     [HttpPatch("{invoiceId:guid}/cancel")]
+    [HasPermission(PermissionConstants.SALE_DELETE)]
     public async Task<ActionResult> CancelInvoice(Guid invoiceId)
     {
         var branchId = GetBranchId();
@@ -448,6 +449,7 @@ public class InvoicesController : ControllerBase
 
     // POST /api/pos/invoices/{invoiceId}/finalize
     [HttpPost("{invoiceId:guid}/finalize")]
+    [HasPermission(PermissionConstants.SALE_CREATE)]
     public async Task<ActionResult<InvoiceDto>> FinalizeInvoice(Guid invoiceId)
     {
         var branchId = GetBranchId();
@@ -653,6 +655,7 @@ public class InvoicesController : ControllerBase
     // POST /api/pos/invoices/{invoiceId}/hold
     /// <summary>Treo hóa đơn (Hold Invoice) - lưu trạng thái giỏ hàng hiện tại.</summary>
     [HttpPost("{invoiceId:guid}/hold")]
+    [HasPermission(PermissionConstants.SALE_CREATE)]
     public async Task<ActionResult<InvoiceDto>> HoldInvoice(Guid invoiceId, [FromBody] HoldInvoiceRequest request)
     {
         var branchId = GetBranchId();
@@ -689,6 +692,7 @@ public class InvoicesController : ControllerBase
     // POST /api/pos/invoices/{invoiceId}/resume
     /// <summary>Khôi phục hóa đơn đang treo (Resume Invoice) - chuyển về Draft.</summary>
     [HttpPost("{invoiceId:guid}/resume")]
+    [HasPermission(PermissionConstants.SALE_CREATE)]
     public async Task<ActionResult<InvoiceDto>> ResumeInvoice(Guid invoiceId)
     {
         var branchId = GetBranchId();

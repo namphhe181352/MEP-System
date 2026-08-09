@@ -16,7 +16,7 @@ namespace MEP_Management_System.Controllers.SaleController;
 
 [ApiController]
 [Route("api/pos/shifts")]
-[HasPermission(PermissionConstants.SHIFT_VIEW)]
+[Authorize]
 public class ShiftsController : ControllerBase
 {
     private readonly Models.MEPDatabaseContext _context;
@@ -156,7 +156,7 @@ public class ShiftsController : ControllerBase
                 Status = shift.Status,
                 StartedAt = shift.StartedAt,
                 OpeningBalance = shift.OpeningBalance,
-                UserName = User.FindFirst(ClaimTypes.Name)?.Value ?? User.FindFirst("name")?.Value
+                UserName = User.FindFirst(ClaimTypes.GivenName)?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? User.FindFirst("name")?.Value
             };
 
             _ = _notifications.NotifyBranchShiftOpened(branchId.Value, new
@@ -237,7 +237,7 @@ catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException
         await _context.SaveChangesAsync();
 
         var dto = _mapper.Map<ShiftDto>(shift);
-        dto.ClosedByUserName = User.FindFirst(ClaimTypes.Name)?.Value ?? User.FindFirst("name")?.Value;
+        dto.ClosedByUserName = User.FindFirst(ClaimTypes.GivenName)?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? User.FindFirst("name")?.Value;
 
         _ = _notifications.NotifyBranchShiftClosed(branchId.Value, shift.ShiftId.ToString(), new
         {

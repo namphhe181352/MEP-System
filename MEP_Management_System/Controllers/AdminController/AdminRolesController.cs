@@ -164,7 +164,7 @@ public class AdminRolesController : ControllerBase
             { "SALE_VIEW", new[] { "SALE_", "CUSTOMER_", "PAYMENT_" } },
             { "SUPPLIER_VIEW", new[] { "SUPPLIER_" } },
             { "EXPENSE_VIEW", new[] { "EXPENSE_" } },
-            { "STAFF_VIEW", new[] { "STAFF_", "SHIFT_" } },
+            { "STAFF_VIEW", new[] { "STAFF_" } },
         };
 
         foreach (var kvp in actionToViewPrefixes)
