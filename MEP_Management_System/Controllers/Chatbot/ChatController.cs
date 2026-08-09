@@ -404,13 +404,14 @@ Khi cần lấy dữ liệu, VIẾT SQL query trong block:
 
 ## SQL MẪU:
 
-1. Tìm sản phẩm:
+1. Tìm sản phẩm (LUÔN filter Status=1 và IsActive=1):
 ```sql
 --QUERY_START--
 SELECT p.product_code, p.product_name, p.brand_name, bp.sell_price, bp.available_stock
 FROM products p
 LEFT JOIN branch_products bp ON p.product_id = bp.product_id
-WHERE p.product_name ILIKE '%Aptomat%' OR p.product_code ILIKE '%Aptomat%'
+WHERE (p.product_name ILIKE '%Aptomat%' OR p.product_code ILIKE '%Aptomat%')
+  AND p.Status = 1 AND (bp.IsActive = 1 OR bp.IsActive IS NULL)
 LIMIT 20;
 --QUERY_END--
 ```
@@ -441,6 +442,7 @@ SELECT p.product_code, p.product_name, bp.available_stock, bp.minimum_stock
 FROM products p
 JOIN branch_products bp ON p.product_id = bp.product_id
 WHERE bp.available_stock <= bp.minimum_stock
+  AND p.Status = 1 AND bp.IsActive = 1
 ORDER BY bp.available_stock ASC LIMIT 20;
 --QUERY_END--
 ```
@@ -454,6 +456,7 @@ JOIN orders o ON oi.order_id = o.order_id
 JOIN branch_products bp ON oi.branch_product_id = bp.branch_product_id
 JOIN products p ON bp.product_id = p.product_id
 WHERE o.created_at >= '{firstDayOfMonthStr}' AND o.status = 'Completed'
+  AND p.Status = 1 AND bp.IsActive = 1
 GROUP BY p.product_id, p.product_code, p.product_name
 ORDER BY total_sold DESC LIMIT 10;
 --QUERY_END--
@@ -516,6 +519,10 @@ ORDER BY total_amount DESC;
 - Doanh thu tuần này: WHERE created_at >= '{mondayStr}'
 - Doanh thu tháng này: WHERE created_at >= '{firstDayOfMonthStr}'
 - Luôn thêm: AND status = 'Completed' khi tính doanh thu/lợi nhuận từ orders
+- TUYỆT ĐỐI phải THÊM điều kiện lọc sản phẩm đã xóa:
+  - Khi JOIN với bảng products: LUÔN thêm AND p.Status = 1
+  - Khi JOIN với bảng branch_products: LUÔN thêm AND bp.IsActive = 1
+  - KHÔNG BAO GIỜ hiển thị sản phẩm có Status = 0, IsActive = 0, hoặc product_code chứa _DEL_
 - TUYỆT ĐỐI KHÔNG được viết SQL đụng tới các bảng ngoài danh sách DATABASE SCHEMA ở trên (ví dụ: users, roles, permissions, otp_verifications, system_configs, system_logs, store_approvals, hay bất kỳ bảng nào có tiền tố forum_/community_). Nếu user hỏi về những nội dung đó, trả lời rằng chatbot không hỗ trợ truy vấn thông tin này.
 - TUYỆT ĐỐI KHÔNG được viết INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE hay bất kỳ câu lệnh nào không phải SELECT.
 
@@ -523,8 +530,8 @@ ORDER BY total_amount DESC;
 1. Tiếng Việt, thân thiện
 2. Dùng bảng Markdown đẹp mắt
 3. Không bịa đặt số liệu
-4. Khi không có dữ liệu: ""Dạ hiện tại em chưa tìm thấy dữ liệu nào ạ.""
-5. Khi lỗi: ""Dạ hệ thống đang bận, anh/chị vui lòng thử lại sau nhé.""
+4. Khi không có dữ liệu: Dạ hiện tại em chưa tìm thấy dữ liệu nào ạ.
+5. Khi lỗi: Dạ hệ thống đang bận, anh/chị vui lòng thử lại sau nhé.
 ";
         return prompt;
     }
