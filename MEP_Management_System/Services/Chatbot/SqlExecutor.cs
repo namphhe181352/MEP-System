@@ -81,7 +81,7 @@ public class SqlExecutor
         "inventory_check_tickets", "inventory_check_details",
         "inventory_transfer_tickets", "inventory_transfer_details",
         "expense_vouchers", "expense_categories",
-        "shifts", "staff_assignments"
+        "shifts", "staff_assignments", "users", "user_roles", "roles"
     };
 
     // Các schema/bảng hệ thống PostgreSQL tuyệt đối không cho phép động vào,
@@ -230,7 +230,7 @@ public class SqlExecutor
                 return (false, validation.Message, null);
             }
 
-            _logger.LogDebug("Executing SQL (branchId={BranchId}): {Sql}", branchId, sql);
+            _logger.LogInformation("Executing SQL (branchId={BranchId}): {Sql}", branchId, sql);
 
             var result = await ExecuteSelectAsync(sql, branchId);
 
