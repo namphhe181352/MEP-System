@@ -47,6 +47,7 @@ builder.Services.AddScoped<StockPrintTemplateService>();
 builder.Services.AddScoped<InvoicePrintTemplateService>();
 //builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.ToolDispatcher>(); // Removed: ToolDispatcher not found
 builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.SqlExecutor>();
+builder.Services.AddSingleton<MEP_Management_System.Services.Chatbot.ChatbotRateLimiter>();
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
 builder.Services.AddTransient<IEmailService, EmailService>();
 
