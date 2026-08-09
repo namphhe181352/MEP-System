@@ -1,6 +1,6 @@
-﻿using System;
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -11,6 +11,55 @@ using Npgsql;
 
 namespace MEP_Management_System.Services.Chatbot;
 
+/// <summary>
+/// Rate limit đơn giản theo fixed window (in-memory, reset khi restart app).
+/// Đăng ký singleton trong DI để chia sẻ bucket giữa mọi request - chặn spam
+/// gọi AI API (tốn phí token) từ một user.
+/// </summary>
+public class ChatbotRateLimiter
+{
+    private readonly ConcurrentDictionary<string, (DateTime WindowStart, int Count)> _buckets = new();
+    private readonly int _maxRequestsPerWindow;
+    private readonly int _windowSeconds;
+
+    public ChatbotRateLimiter(int maxRequestsPerWindow = 15, int windowSeconds = 60)
+    {
+        _maxRequestsPerWindow = maxRequestsPerWindow;
+        _windowSeconds = windowSeconds;
+    }
+
+    /// <summary>
+    /// Kiểm tra user có được phép thực hiện request tiếp theo trong cửa sổ hiện tại không.
+    /// </summary>
+    public bool Allow(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) key = "anonymous";
+
+        var now = DateTime.UtcNow;
+        var bucket = _buckets.AddOrUpdate(
+            key,
+            _ => (now, 1),
+            (_, existing) =>
+                (now - existing.WindowStart).TotalSeconds >= _windowSeconds
+                    ? (now, 1)
+                    : (existing.WindowStart, existing.Count + 1));
+
+        // Dọn dẹp bucket cũ định kỳ để tránh rò rỉ bộ nhớ khi có nhiều user.
+        if (_buckets.Count > 10_000)
+        {
+            foreach (var kvp in _buckets)
+            {
+                if ((now - kvp.Value.WindowStart).TotalSeconds >= _windowSeconds)
+                {
+                    _buckets.TryRemove(kvp.Key, out _);
+                }
+            }
+        }
+
+        return bucket.Count <= _maxRequestsPerWindow;
+    }
+}
+
 public class SqlExecutor
 {
     private readonly MEPDatabaseContext _context;
@@ -20,19 +69,20 @@ public class SqlExecutor
     // ĐỒNG BỘ với danh sách 32 bảng đã duyệt (GRANT SELECT cho role mep_chatbot_ro).
     // Đây là whitelist duy nhất - mọi bảng xuất hiện trong FROM/JOIN của SQL do AI
     // sinh ra PHẢI nằm trong danh sách này, nếu không sẽ bị từ chối (fail-closed).
-    private static readonly HashSet<string> AllowedTables = new(StringComparer.OrdinalIgnoreCase)
-{
-    "branches", "branch_products", "products", "product_attributes",
-    "product_conversion_units", "customers", "orders", "order_items",
-    "order_discount_tiers", "invoices", "invoice_items", "payments",
-    "refund_records", "return_orders", "return_items",
-    "suppliers", "SupplierPayments",
-    "purchase_orders", "purchase_order_items", "stock_tickets", "stock_ticket_items",
-    "inventory_check_tickets", "inventory_check_details",
-    "inventory_transfer_tickets", "inventory_transfer_details",
-    "expense_vouchers", "expense_categories",
-    "shifts", "staff_assignments"
-};
+    // public để unit test verify toàn bộ whitelist.
+    public static readonly HashSet<string> AllowedTables = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "branches", "branch_products", "products", "product_attributes",
+        "product_conversion_units", "customers", "orders", "order_items",
+        "order_discount_tiers", "invoices", "invoice_items", "payments",
+        "refund_records", "return_orders", "return_items",
+        "suppliers", "SupplierPayments",
+        "purchase_orders", "purchase_order_items", "stock_tickets", "stock_ticket_items",
+        "inventory_check_tickets", "inventory_check_details",
+        "inventory_transfer_tickets", "inventory_transfer_details",
+        "expense_vouchers", "expense_categories",
+        "shifts", "staff_assignments"
+    };
 
     // Các schema/bảng hệ thống PostgreSQL tuyệt đối không cho phép động vào,
     // dù không nằm trong AllowedTables ở trên (phòng trường hợp AI cố dò schema
@@ -51,8 +101,16 @@ public class SqlExecutor
         @"\bTRUNCATE\b", @"\bALTER\b", @"\bCREATE\b", @"\bGRANT\b", @"\bREVOKE\b",
         @"\bEXEC\b", @"\bEXECUTE\b", @"\bCALL\b", @"\bDO\b",
         @"\bUNION\b\s+\bSELECT\b",
+        @"\bSELECT\s+\*",           // chặn SELECT * - buộc AI liệt kê cột cụ thể (tránh lộ PII diện rộng)
         @"--", @"/\*"
     };
+
+    // Bắt TOÀN BỘ danh sách bảng sau FROM/JOIN, kể cả danh sách phân tách dấu phẩy
+    // (FROM a, b). Mỗi bảng trong list đều phải nằm trong whitelist - trước đây chỉ
+    // bắt được bảng đầu tiên, để lọt bảng đứng sau dấu phẩy.
+    private static readonly Regex TableListRegex = new(
+        @"(?:FROM|JOIN)\s+(?<tables>""?[A-Za-z_][A-Za-z0-9_]*""?(?:\s+[A-Za-z_][A-Za-z0-9_]*)?(?:\s*,\s*""?[A-Za-z_][A-Za-z0-9_]*""?(?:\s+[A-Za-z_][A-Za-z0-9_]*)?)*)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public SqlExecutor(MEPDatabaseContext context, ILogger<SqlExecutor> logger, IConfiguration config)
     {
@@ -60,62 +118,24 @@ public class SqlExecutor
         _logger = logger;
         // Connection string RIÊNG cho role read-only (mep_chatbot_ro) - xem
         // setup_chatbot_readonly_role.sql. Nếu chưa cấu hình, fallback về
-        // connection của app chính (KHÔNG an toàn bằng, chỉ để không crash khi
-        // bạn chưa kịp cấu hình - hãy thêm "ChatbotDbConnection" vào appsettings.json
-        // càng sớm càng tốt).
+        // connection string của app chính (KHÔNG an toàn bằng, chỉ để không crash
+        // khi bạn chưa kịp cấu hình - hãy thêm "ChatbotDbConnection" vào
+        // appsettings.json càng sớm càng tốt).
         _chatbotConnectionString = config.GetConnectionString("ChatbotDbConnection");
         if (string.IsNullOrWhiteSpace(_chatbotConnectionString))
         {
             _logger.LogWarning(
                 "ChatbotDbConnection chưa được cấu hình trong appsettings.json - " +
-                "chatbot đang dùng chung connection với app chính (KHÔNG khuyến nghị). " +
+                "chatbot đang dùng chung connection string với app chính (KHÔNG khuyến nghị). " +
                 "Hãy thêm connection string dùng role mep_chatbot_ro để có bảo vệ DB-level thực sự.");
         }
     }
 
     /// <summary>
-    /// Nhận SQL đã được ChatController extract sẵn (không còn marker --QUERY_START--...).
-    /// Đây là nơi DUY NHẤT validate + thực thi SQL - không parse marker lại lần nữa
-    /// để tránh lệch pha giữa ChatController và SqlExecutor.
-    ///
-    /// branchId: branch_id (dạng string, ví dụ Guid.ToString()) của user đang chat,
-    /// lấy từ claim trong JWT ở ChatController. Được set vào session variable
-    /// Postgres "app.current_branch_id" TRƯỚC khi chạy SQL do AI sinh ra, để Row
-    /// Level Security (RLS) tự động lọc theo đúng chi nhánh của user - không phụ
-    /// thuộc vào việc AI có nhớ filter branch_id trong câu SQL hay không.
+    /// Validate SQL do AI sinh ra - fail-closed: bất kỳ điều gì không khớp whitelist
+    /// đều bị từ chối. Tách public static để unit-test trực tiếp không cần DB.
     /// </summary>
-    public async Task<(bool success, string message, object? data)> ExecuteQueryAsync(string sql, string? branchId)
-    {
-        try
-        {
-            if (string.IsNullOrWhiteSpace(sql))
-            {
-                return (false, "Không tìm thấy SQL query hợp lệ.", null);
-            }
-
-            sql = sql.Trim();
-
-            var validation = ValidateSql(sql);
-            if (!validation.IsValid)
-            {
-                _logger.LogWarning("SQL validation failed: {Reason} | SQL: {Sql}", validation.Message, sql);
-                return (false, validation.Message, null);
-            }
-
-            _logger.LogInformation("Executing SQL (branchId={BranchId}): {Sql}", branchId, sql);
-
-            var result = await ExecuteSelectAsync(sql, branchId);
-
-            return (true, "Query thành công", result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error executing SQL query: {Sql}", sql);
-            return (false, $"Lỗi khi thực thi query: {ex.Message}", null);
-        }
-    }
-
-    private (bool IsValid, string Message) ValidateSql(string sql)
+    public static (bool IsValid, string Message) ValidateSql(string sql)
     {
         if (string.IsNullOrWhiteSpace(sql))
         {
@@ -147,13 +167,7 @@ public class SqlExecutor
             }
         }
 
-        // Trích xuất TẤT CẢ tên bảng xuất hiện sau FROM/JOIN, hỗ trợ cả identifier
-        // có ngoặc kép (PascalCase như "SupplierPayments") lẫn snake_case thường.
-        var tableMatches = Regex.Matches(
-            sql,
-            @"(?:FROM|JOIN)\s+""?([A-Za-z_][A-Za-z0-9_]*)""?",
-            RegexOptions.IgnoreCase);
-
+        var tableMatches = TableListRegex.Matches(sql);
         if (tableMatches.Count == 0)
         {
             return (false, "Không xác định được bảng nào trong câu SQL - từ chối để an toàn.");
@@ -161,33 +175,87 @@ public class SqlExecutor
 
         foreach (Match m in tableMatches)
         {
-            var tableName = m.Groups[1].Value;
-            if (!AllowedTables.Contains(tableName))
+            foreach (var part in m.Groups["tables"].Value.Split(','))
             {
-                // FAIL-CLOSED: bất kỳ bảng nào không nằm trong whitelist đều bị từ
-                // chối ngay lập tức, thay vì chỉ bỏ qua như code cũ.
-                return (false, $"Bảng '{tableName}' không được phép truy cập.");
+                // Lấy token đầu tiên của mỗi phần (tên bảng), bỏ qua alias phía sau
+                var nameMatch = Regex.Match(part.Trim(), @"^""?([A-Za-z_][A-Za-z0-9_]*)""?");
+                if (!nameMatch.Success)
+                {
+                    // Phần không phải tên bảng trần (vd: subquery) - các bảng bên trong
+                    // subquery sẽ được quét riêng bởi FROM/JOIN bên trong nó.
+                    continue;
+                }
+
+                var tableName = nameMatch.Groups[1].Value;
+                if (!AllowedTables.Contains(tableName))
+                {
+                    // FAIL-CLOSED: bất kỳ bảng nào không nằm trong whitelist đều bị từ
+                    // chối ngay lập tức, thay vì chỉ bỏ qua như code cũ.
+                    return (false, $"Bảng '{tableName}' không được phép truy cập.");
+                }
             }
         }
 
         return (true, "OK");
     }
 
+    /// <summary>
+    /// Nhận SQL đã được ChatController extract sẵn (không còn marker --QUERY_START--...).
+    /// Đây là nơi DUY NHẤT validate + thực thi SQL - không parse marker lại lần nữa
+    /// để tránh lệch pha giữa ChatController và SqlExecutor.
+    ///
+    /// branchId: branch_id (dạng string, ví dụ Guid.ToString()) của user đang chat,
+    /// lấy từ claim trong JWT ở ChatController. Được set vào session variable
+    /// Postgres "app.current_branch_id" TRƯỚC khi chạy SQL do AI sinh ra, để Row
+    /// Level Security (RLS) tự động lọc theo đúng chi nhánh của user - không phụ
+    /// thuộc vào việc AI có nhớ filter branch_id trong câu SQL hay không.
+    ///
+    /// virtual để unit-test vòng lặp chatbot có thể fake kết quả query.
+    /// </summary>
+    public virtual async Task<(bool success, string message, object? data)> ExecuteQueryAsync(string sql, string? branchId)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(sql))
+            {
+                return (false, "Không tìm thấy SQL query hợp lệ.", null);
+            }
+
+            sql = sql.Trim();
+
+            var validation = ValidateSql(sql);
+            if (!validation.IsValid)
+            {
+                _logger.LogWarning("SQL validation failed: {Reason} | SQL: {Sql}", validation.Message, sql);
+                return (false, validation.Message, null);
+            }
+
+            _logger.LogDebug("Executing SQL (branchId={BranchId}): {Sql}", branchId, sql);
+
+            var result = await ExecuteSelectAsync(sql, branchId);
+
+            return (true, "Query thành công", result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error executing SQL query: {Sql}", sql);
+            return (false, $"Lỗi khi thực thi query: {ex.Message}", null);
+        }
+    }
+
     private async Task<object?> ExecuteSelectAsync(string sql, string? branchId)
     {
-        // Dùng connection RIÊNG (role mep_chatbot_ro, chỉ SELECT) thay vì connection
-        // full-quyền của app chính, nếu đã cấu hình ChatbotDbConnection.
-        // Đây là lớp bảo vệ DB-level thực sự - kể cả nếu ValidateSql phía trên có
-        // sót lỗ hổng, DB vẫn tự chặn INSERT/UPDATE/DELETE hay bảng ngoài whitelist.
-        await using var connection = !string.IsNullOrWhiteSpace(_chatbotConnectionString)
-            ? new NpgsqlConnection(_chatbotConnectionString)
-            : (NpgsqlConnection)_context.Database.GetDbConnection();
+        // Luôn mở connection RIÊNG và tự đóng - KHÔNG dùng chung connection đang mở
+        // của EF context (tránh nhiễu session variable giữa các request). Ưu tiên
+        // connection string read-only (role mep_chatbot_ro) nếu đã cấu hình
+        // ChatbotDbConnection; nếu chưa thì fallback về connection string của app
+        // chính (vẫn là connection riêng, không dùng chung với EF).
+        var connectionString = !string.IsNullOrWhiteSpace(_chatbotConnectionString)
+            ? _chatbotConnectionString
+            : _context.Database.GetDbConnection().ConnectionString;
 
-        var ownsConnection = !string.IsNullOrWhiteSpace(_chatbotConnectionString);
-        if (connection.State != System.Data.ConnectionState.Open)
-        {
-            await connection.OpenAsync();
-        }
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
 
         try
         {
@@ -214,25 +282,9 @@ public class SqlExecutor
                 await setCmd.ExecuteNonQueryAsync();
             }
 
-            // 🔍 DEBUG TẠM THỜI: log ra current_user và giá trị session variable
-            // thực tế đang được DB nhìn thấy, để xác nhận app có đang connect
-            // đúng role mep_chatbot_ro và branchId có được set đúng hay không.
-            // XÓA đoạn debug này sau khi xác nhận RLS hoạt động đúng.
-            await using (var debugCmd = connection.CreateCommand())
-            {
-                debugCmd.CommandText = "SELECT current_user, current_setting('app.current_branch_id', true);";
-                await using var debugReader = await debugCmd.ExecuteReaderAsync();
-                if (await debugReader.ReadAsync())
-                {
-                    _logger.LogWarning(
-                        "DEBUG RLS: current_user={CurrentUser}, app.current_branch_id={BranchSetting}",
-                        debugReader.GetValue(0), debugReader.GetValue(1));
-                }
-            }
-
             using var command = connection.CreateCommand();
             command.CommandText = sql;
-            command.CommandTimeout = 5; // giây - khớp với statement_timeout đã set cho role trong SQL script
+            command.CommandTimeout = 15; // giây - đủ cho query aggregate lớn, tránh AI lặp 4 lần vì timeout
 
             using var reader = await command.ExecuteReaderAsync();
 
@@ -256,20 +308,22 @@ public class SqlExecutor
                 results.Add(row);
             }
 
+            // Kiểm tra còn dòng nữa không để báo truncated CHÍNH XÁC: chỉ báo cắt
+            // khi thật sự có dòng bị bỏ lại sau maxRows, không báo nhầm khi số
+            // dòng = đúng maxRows.
+            var truncated = results.Count >= maxRows && await reader.ReadAsync();
+
             return new
             {
                 columns = columns,
                 rows = results,
                 totalRows = results.Count,
-                truncated = results.Count >= maxRows
+                truncated = truncated
             };
         }
         finally
         {
-            if (ownsConnection)
-            {
-                await connection.CloseAsync();
-            }
+            await connection.CloseAsync();
         }
     }
 }
