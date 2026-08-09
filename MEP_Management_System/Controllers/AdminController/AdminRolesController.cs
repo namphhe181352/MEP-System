@@ -86,23 +86,29 @@ public class AdminRolesController : ControllerBase
     [HttpGet("permission-matrix")]
     public async Task<IActionResult> GetRolePermissionMatrix()
     {
-        // Cleanup: xoa toan bo quyen seed cu cua SalesStaff & InventoryStaff
-        var staffRoles = await _context.Roles
-            .Include(r => r.Permissions)
-            .Where(r => r.RoleName == "SalesStaff" || r.RoleName == "Sales Staff"
-                || r.RoleName == "InventoryStaff" || r.RoleName == "Inventory Staff")
+        // Dam bao tat ca permission can thiet deu ton tai trong DB
+        var requiredCodes = new[] {
+            "EXPENSE_VIEW", "EXPENSE_CREATE", "EXPENSE_CONFIRM", "EXPENSE_CANCEL", "EXPENSE_CATEGORY_MANAGE",
+            "STAFF_VIEW", "STAFF_CREATE", "STAFF_UPDATE", "STAFF_DELETE", "STAFF_ASSIGN_BRANCH",
+            "SHIFT_VIEW", "SHIFT_CREATE", "SHIFT_UPDATE", "SHIFT_FORCE_CLOSE",
+            "PRINT_VIEW", "PROMOTION_VIEW",
+            "REPORT_VIEW", "PRODUCT_CATEGORY_MANAGE", "STOCK_CHECK_COUNT"
+        };
+        var existingCodes = await _context.Permissions
+            .Where(p => requiredCodes.Contains(p.PermissionCode))
+            .Select(p => p.PermissionCode)
             .ToListAsync();
-
-        bool cleaned = false;
-        foreach (var role in staffRoles)
+        var missingCodes = requiredCodes.Where(c => !existingCodes.Contains(c)).ToList();
+        foreach (var code in missingCodes)
         {
-            if (role.Permissions.Any())
+            _context.Permissions.Add(new Permission
             {
-                role.Permissions.Clear();
-                cleaned = true;
-            }
+                PermissionId = Guid.NewGuid(),
+                PermissionCode = code,
+                PermissionName = code
+            });
         }
-        if (cleaned) await _context.SaveChangesAsync();
+        if (missingCodes.Any()) await _context.SaveChangesAsync();
 
         var matrix = await _context.Roles
             .Include(r => r.Permissions)

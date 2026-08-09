@@ -30,11 +30,15 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         }
 
         [HttpGet]
-        [HasPermission(PermissionConstants.SUPPLIER_PAYMENT_VIEW)]
         public async Task<IActionResult> GetAll([FromQuery] Guid? supplierId, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 20)
         {
             try
             {
+                if (!User.IsInRole("Owner") && !User.HasClaim("permission", PermissionConstants.SUPPLIER_PAYMENT_VIEW)
+                    && !User.HasClaim("permission", PermissionConstants.SUPPLIER_PAYMENT_CREATE)
+                    && !User.HasClaim("permission", PermissionConstants.SUPPLIER_PAYMENT_DELETE))
+                    return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền xem thanh toán NCC." });
+
                 var query = _context.SupplierPayments
                     .Include(p => p.Supplier)
                     .Include(p => p.PurchaseOrder)
@@ -140,11 +144,14 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                 if (payment == null)
                     return NotFound(new ApiResponse<object> { Success = false, Message = "Không tìm thấy phiếu chi." });
 
-                payment.Note = dto.Note;
+                if (dto.Amount.HasValue && dto.Amount.Value > 0) payment.Amount = dto.Amount.Value;
+                if (!string.IsNullOrWhiteSpace(dto.PaymentMethod)) payment.PaymentMethod = dto.PaymentMethod;
+                if (dto.ReferenceCode != null) payment.ReferenceCode = dto.ReferenceCode;
+                if (dto.Note != null) payment.Note = dto.Note;
 
                 await _context.SaveChangesAsync();
 
-                return Ok(new ApiResponse<object> { Success = true, Message = "Cập nhật ghi chú thành công." });
+                return Ok(new ApiResponse<object> { Success = true, Message = "Cập nhật phiếu chi thành công." });
             }
             catch (Exception ex)
             {

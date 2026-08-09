@@ -207,7 +207,7 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("estimated_out_at");
             entity.Property(e => e.IsActive)
-                .HasDefaultValue((short)1)
+                .HasDefaultValue((short)0)
                 .HasColumnName("is_active");
             entity.Property(e => e.MaximumStock)
                 .HasPrecision(10, 2)

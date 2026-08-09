@@ -107,6 +107,17 @@ public static class DatabaseSeeder
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000060"), PermissionCode = "SHIFT_CREATE", PermissionName = "Mở ca làm việc" },
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000061"), PermissionCode = "SHIFT_UPDATE", PermissionName = "Chốt ca làm việc" },
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000062"), PermissionCode = "SHIFT_DELETE", PermissionName = "Hủy ca làm việc" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000063"), PermissionCode = "SHIFT_FORCE_CLOSE", PermissionName = "Chốt hộ ca làm việc" },
+            // MISSING CODES
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000064"), PermissionCode = "STOCK_CHECK_CANCEL", PermissionName = "Hủy phiếu kiểm kê" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000065"), PermissionCode = "STOCK_OUTWARD_CONFIRM", PermissionName = "Xác nhận phiếu xuất kho" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000066"), PermissionCode = "SUPPLIER_PAYMENT_UPDATE", PermissionName = "Cập nhật thanh toán NCC" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000067"), PermissionCode = "SUPPLIER_PAYMENT_DELETE", PermissionName = "Xóa thanh toán NCC" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000068"), PermissionCode = "LOCATION_VIEW", PermissionName = "Xem vị trí kho" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000069"), PermissionCode = "LOCATION_CREATE", PermissionName = "Tạo vị trí kho" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000070"), PermissionCode = "LOCATION_UPDATE", PermissionName = "Cập nhật vị trí kho" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000071"), PermissionCode = "LOCATION_DELETE", PermissionName = "Xóa vị trí kho" },
+            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000074"), PermissionCode = "STOCK_CHECK_COUNT", PermissionName = "Đếm sản phẩm kiểm kê" },
         };
         await context.Permissions.AddRangeAsync(permissions);
         await context.SaveChangesAsync();

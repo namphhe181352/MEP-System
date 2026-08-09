@@ -347,7 +347,6 @@ namespace MEP_Management_System.Services
                             ActualStock = 0,
                             ReservedStock = 0,
                             AvailableStock = 0,
-                            IsActive = 1,
                             DirectSale = 1
                         };
 

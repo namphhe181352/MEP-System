@@ -30,6 +30,7 @@ public static class PermissionConstants
     public const string PRODUCT_CREATE = "PRODUCT_CREATE";
     public const string PRODUCT_UPDATE = "PRODUCT_UPDATE";
     public const string PRODUCT_DELETE = "PRODUCT_DELETE";
+    public const string PRODUCT_CATEGORY_MANAGE = "PRODUCT_CATEGORY_MANAGE";
 
     // === LOCATION (Vị trí kho) ===
     public const string LOCATION_VIEW = "LOCATION_VIEW";
@@ -50,6 +51,7 @@ public static class PermissionConstants
     public const string STOCK_CHECK_CREATE = "STOCK_CHECK_CREATE";
     public const string STOCK_CHECK_APPROVE = "STOCK_CHECK_APPROVE";
     public const string STOCK_CHECK_CANCEL = "STOCK_CHECK_CANCEL";
+    public const string STOCK_CHECK_COUNT = "STOCK_CHECK_COUNT";
 
     // === SALE / POS ===
     public const string CUSTOMER_VIEW = "CUSTOMER_VIEW";
@@ -64,6 +66,7 @@ public static class PermissionConstants
     public const string PAYMENT_CREATE = "PAYMENT_CREATE";
     public const string PRINT_VIEW = "PRINT_VIEW";
     public const string PROMOTION_VIEW = "PROMOTION_VIEW";
+    public const string LOYALTY_VIEW = "LOYALTY_VIEW";
     public const string SHIFT_VIEW = "SHIFT_VIEW";
     public const string SHIFT_CREATE = "SHIFT_CREATE";
     public const string SHIFT_UPDATE = "SHIFT_UPDATE";

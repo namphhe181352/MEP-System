@@ -136,7 +136,6 @@ namespace MEP_Management_System.Controllers.InventoryController
         // Query ?status=CANCELLED hoặc ?status=ALL để xem thêm CANCELLED
         // ============================================================
         [HttpGet]
-        [HasPermission(PermissionConstants.STOCK_OUTWARD_CREATE)]
         public async Task<IActionResult> GetOutwardInventories(
             [FromQuery] string? status,
             [FromQuery] string? ticketType,
@@ -148,6 +147,11 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
+                // Quyen xem: STOCK_OUTWARD_CREATE hoac STOCK_OUTWARD_CONFIRM
+                if (!HasGlobalAccess() && !User.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_CREATE)
+                    && !User.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_CONFIRM))
+                    return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền xem phiếu xuất kho." });
+
                 if (pageNumber < 1) pageNumber = 1;
                 if (pageSize < 1 || pageSize > 100) pageSize = 10;
 
@@ -256,11 +260,14 @@ namespace MEP_Management_System.Controllers.InventoryController
         // GET /api/outwardinventory/{id}
         // ============================================================
         [HttpGet("{id:guid}")]
-        [HasPermission(PermissionConstants.STOCK_OUTWARD_CREATE)]
         public async Task<IActionResult> GetOutwardInventoryById(Guid id)
         {
             try
             {
+                if (!HasGlobalAccess() && !User.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_CREATE)
+                    && !User.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_CONFIRM))
+                    return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền xem chi tiết phiếu xuất kho." });
+
                 var stockTicketQuery = _context.StockTickets
                     .Include(st => st.User)
                     .Include(st => st.StockTicketItems)
@@ -606,7 +613,6 @@ namespace MEP_Management_System.Controllers.InventoryController
         // Chỉ cho phép sửa khi Status = PENDING
         // ============================================================
         [HttpPut("{id:guid}")]
-        [HasPermission(PermissionConstants.STOCK_OUTWARD_UPDATE)]
         public async Task<IActionResult> UpdateOutwardInventory(Guid id, [FromBody] OutwardInventoryUpdateDto dto)
         {
             try
@@ -643,6 +649,12 @@ namespace MEP_Management_System.Controllers.InventoryController
                         Errors = new() { $"No outward inventory with ID: {id}" }
                     });
                 }
+
+                // Kiem tra quyen: nguoi tao PENDING hoac co CONFIRM hoac Owner
+                var currentUserId = GetCurrentUserId();
+                bool canUpdate = HasGlobalAccess() || User.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_CONFIRM);
+                if (!canUpdate && stockTicket.UserId != currentUserId)
+                    return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền chỉnh sửa phiếu này." });
 
                 // ============================================================
                 // QUY TẮC MỚI: Kiểm tra trạng thái trước khi sửa
@@ -1000,7 +1012,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 // ============================================================
                 // KIEM TRA QUYEN HUY
                 // ============================================================
-                bool hasDeletePerm = HasGlobalAccess() || User.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_DELETE);
+                bool hasDeletePerm = HasGlobalAccess() || User.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_DELETE)
+                    || User.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_CONFIRM);
                 bool isCreator = stockTicket.UserId == currentUserId.Value;
                 bool isPending = stockTicket.Status?.ToUpperInvariant() == "PENDING";
 

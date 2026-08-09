@@ -446,6 +446,16 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                         Errors = new() { $"No supplier with ID: {id}" }
                     });
 
+                // Check cong no
+                var debt = await _supplierDebtService.CalculateCurrentDebtAsync(id);
+                if (debt.CurrentDebt > 0)
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = "Không thể xóa nhà cung cấp đang còn công nợ.",
+                        Errors = new() { $"Nhà cung cấp '{s.SupplierName}' đang còn nợ {debt.CurrentDebt:N0}đ. Vui lòng thanh toán hết công nợ trước khi xóa." }
+                    });
+
                 // Check for dependencies
                 var hasDependencies = await _context.Products.AnyAsync(p => p.SupplierId == id) ||
                                       await _context.PurchaseOrders.AnyAsync(po => po.SupplierId == id) ||

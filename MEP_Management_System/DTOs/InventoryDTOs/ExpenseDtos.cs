@@ -112,6 +112,16 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
     #region Cancel Expense Voucher
 
     /// <summary>
+    /// Request body cho API cập nhật phiếu chi (chỉ PENDING).
+    /// </summary>
+    public class UpdateExpenseVoucherDto
+    {
+        public string? Reason { get; set; }
+        public decimal? Amount { get; set; }
+        public string? Note { get; set; }
+    }
+
+    /// <summary>
     /// Request body cho API hủy phiếu chi.
     /// </summary>
     public class CancelExpenseVoucherDto

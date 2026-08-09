@@ -24,6 +24,10 @@ namespace MEP_Management_System.Services
                 .Include(s => s.PurchaseOrders)
                     .ThenInclude(po => po.PurchaseOrderItems)
                         .ThenInclude(poi => poi.Product)
+                .Include(s => s.StockTickets.Where(t => t.TicketType == "PURCHASE" && t.Status == "COMPLETED"))
+                    .ThenInclude(t => t.StockTicketItems)
+                        .ThenInclude(i => i.BranchProduct)
+                            .ThenInclude(bp => bp.Product)
                 .FirstOrDefaultAsync(s => s.SupplierId == supplierId && s.Status == 1);
 
             if (supplier == null) return null;
@@ -49,13 +53,35 @@ namespace MEP_Management_System.Services
                     }).ToList()
                 }).ToList();
 
+            var stockTicketDetails = supplier.StockTickets
+                .OrderByDescending(t => t.CompletedAt ?? t.CreatedAt)
+                .Select(t => new SupplierDebtPoDetailDto
+                {
+                    PurchaseOrderId = t.StockTicketId,
+                    OrderCode = t.TicketCode ?? t.StockTicketId.ToString()[..8].ToUpper(),
+                    TotalAmount = t.TotalAmount,
+                    Status = t.Status ?? "COMPLETED",
+                    ExpectedDeliveryDate = t.CompletedAt?.ToString("yyyy-MM-dd"),
+                    CreatedAt = (t.CompletedAt ?? t.CreatedAt)?.ToString("yyyy-MM-dd"),
+                    Items = t.StockTicketItems.Select(i => new SupplierDebtPoItemDto
+                    {
+                        ProductId = i.BranchProduct?.ProductId ?? Guid.Empty,
+                        ProductCode = i.BranchProduct?.Product?.ProductCode ?? "",
+                        ProductName = i.BranchProduct?.Product?.ProductName ?? "",
+                        Quantity = i.Discrepancy,
+                        UnitPrice = i.UnitPrice ?? i.BranchProduct?.CostPrice ?? 0,
+                        LineTotal = i.Discrepancy * (i.UnitPrice ?? i.BranchProduct?.CostPrice ?? 0)
+                    }).ToList()
+                }).ToList();
+
             return new SupplierDebtDetailResponse
             {
                 SupplierId = supplier.SupplierId,
                 SupplierName = supplier.SupplierName,
                 ContactPhone = supplier.ContactPhone,
                 ContactEmail = supplier.ContactEmail,
-                PurchaseOrders = poDetails
+                PurchaseOrders = poDetails,
+                StockTickets = stockTicketDetails
             };
         }
 

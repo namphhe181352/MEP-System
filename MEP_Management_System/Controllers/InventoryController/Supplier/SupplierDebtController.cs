@@ -36,11 +36,15 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         // Trả về danh sách công nợ NCC và khối KPI tổng quan (Single-Store)
         // ============================================================
         [HttpGet]
-        [HasPermission(PermissionConstants.SUPPLIER_PAYMENT_VIEW)]
         public async Task<IActionResult> GetSupplierDebts([FromQuery] SupplierDebtParameters @params)
         {
             try
             {
+                if (!User.IsInRole("Owner") && !User.HasClaim("permission", PermissionConstants.SUPPLIER_PAYMENT_VIEW)
+                    && !User.HasClaim("permission", PermissionConstants.SUPPLIER_PAYMENT_CREATE)
+                    && !User.HasClaim("permission", PermissionConstants.SUPPLIER_PAYMENT_DELETE))
+                    return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền xem công nợ." });
+
                 // 🌟 TỐI ƯU 1: Bỏ .AsQueryable() vì truy vấn được thực thi ngay sau block filter này
                 var supplierQuery = _context.Suppliers
                     .Include(s => s.PurchaseOrders)
@@ -208,11 +212,13 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         // Trả về chi tiết công nợ kèm lịch sử PO và danh sách chi tiết item
         // ============================================================
         [HttpGet("{supplierId:guid}")]
-        [HasPermission(PermissionConstants.SUPPLIER_PAYMENT_VIEW)]
         public async Task<IActionResult> GetSupplierDebtDetail(Guid supplierId)
         {
             try
             {
+                if (!User.IsInRole("Owner") && !User.HasClaim("permission", PermissionConstants.SUPPLIER_PAYMENT_VIEW)
+                    && !User.HasClaim("permission", PermissionConstants.SUPPLIER_PAYMENT_CREATE))
+                    return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền xem chi tiết công nợ." });
                 var result = await _supplierDebtService.GetSupplierDebtDetailAsync(supplierId, User);
                 if (result == null)
                 {

@@ -142,6 +142,31 @@ public class OwnerStaffController : ControllerBase
 
         var missing = codeList.Where(c => !foundCodes.Contains(c)).ToList();
 
+        // Auto-create missing permissions
+        try
+        {
+            foreach (var code in missing)
+            {
+                var newPerm = new Permission
+                {
+                    PermissionId = Guid.NewGuid(),
+                    PermissionCode = code,
+                    PermissionName = code
+                };
+                _context.Permissions.Add(newPerm);
+                permissions.Add(newPerm);
+            }
+            if (missing.Any())
+            {
+                await _context.SaveChangesAsync();
+                missing.Clear();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[WARN] Failed to auto-create permissions: {ex.Message}");
+        }
+
         return (permissions, missing);
     }
 
@@ -904,12 +929,9 @@ public class OwnerStaffController : ControllerBase
 
             if (missingCodes.Any())
             {
-                return BadRequest(new ApiResponse<object>
-                {
-                    Success = false,
-                    Message = "Một số mã quyền không tồn tại.",
-                    Errors = missingCodes.Select(c => $"PermissionCode không tồn tại: {c}").ToList()
-                });
+                // Log warning nhung van tiep tuc, bo qua cac ma khong ton tai
+                System.Diagnostics.Debug.WriteLine($"[WARN] Permission codes not found: {string.Join(", ", missingCodes)}");
+                validPermissions = validPermissions.Where(p => !missingCodes.Contains(p.PermissionCode, StringComparer.OrdinalIgnoreCase)).ToList();
             }
 
             // Get role permission codes for this staff

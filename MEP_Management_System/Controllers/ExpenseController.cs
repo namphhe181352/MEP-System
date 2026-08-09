@@ -422,6 +422,34 @@ namespace MEP_Management_System.Controllers
         }
 
         /// <summary>
+        /// PUT /api/expense/{id} - Cập nhật phiếu chi (chỉ PENDING, chỉ người tạo)
+        /// </summary>
+        [HttpPut("{id:guid}")]
+        public async Task<IActionResult> UpdateExpenseVoucher(Guid id, [FromBody] UpdateExpenseVoucherDto dto)
+        {
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId == null)
+                return Unauthorized(new ApiResponse<object> { Success = false, Message = "Không xác định được người dùng." });
+
+            var voucher = await _context.ExpenseVouchers.FindAsync(id);
+            if (voucher == null)
+                return NotFound(new ApiResponse<object> { Success = false, Message = "Không tìm thấy phiếu chi." });
+
+            if (voucher.Status != "PENDING")
+                return BadRequest(new ApiResponse<object> { Success = false, Message = "Chỉ được sửa phiếu chi ở trạng thái chờ xác nhận." });
+
+            if (voucher.CreatedBy != currentUserId.Value && !User.IsInRole("Owner"))
+                return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền sửa phiếu chi này." });
+
+            if (!string.IsNullOrWhiteSpace(dto.Reason)) voucher.Reason = dto.Reason.Trim();
+            if (dto.Amount.HasValue && dto.Amount.Value > 0) voucher.Amount = dto.Amount.Value;
+            if (dto.Note != null) voucher.Note = dto.Note.Trim();
+
+            await _context.SaveChangesAsync();
+            return Ok(new ApiResponse<object> { Success = true, Message = "Cập nhật phiếu chi thành công." });
+        }
+
+        /// <summary>
         /// PATCH /api/expense/{id}/confirm - Xác nhận phiếu chi tiền (PENDING → COMPLETED).
         /// </summary>
         [HttpPatch("{id:guid}/confirm")]
@@ -678,7 +706,7 @@ namespace MEP_Management_System.Controllers
         /// GET /api/expense/categories - Danh sách nhóm chi phí kèm số phiếu đang dùng.
         /// </summary>
         [HttpGet("categories")]
-        [HasPermission(PermissionConstants.EXPENSE_VIEW)]
+        // Lookup API
         public async Task<IActionResult> GetExpenseCategories([FromQuery] Guid? branchId = null)
         {
             try
