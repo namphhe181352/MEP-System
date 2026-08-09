@@ -83,6 +83,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? ContactPhone { get; set; }
         public string? ContactEmail { get; set; }
         public List<SupplierDebtPoDetailDto> PurchaseOrders { get; set; } = new();
+        public List<SupplierDebtPoDetailDto> StockTickets { get; set; } = new();
     }
 
     public class SupplierDebtPoDetailDto
@@ -128,6 +129,9 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
 
     public class UpdateSupplierPaymentDto
     {
+        public decimal? Amount { get; set; }
+        public string? PaymentMethod { get; set; }
+        public string? ReferenceCode { get; set; }
         public string? Note { get; set; }
     }
 

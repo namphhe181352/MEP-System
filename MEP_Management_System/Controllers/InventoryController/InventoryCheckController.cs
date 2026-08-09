@@ -129,7 +129,6 @@ public class InventoryCheckController : ControllerBase
     #region Inventory Check CRUD
 
     [HttpGet]
-    [HasPermission(PermissionConstants.STOCK_CHECK_CREATE)]
     public async Task<IActionResult> GetInventoryChecks(
         [FromQuery] string? status,
         [FromQuery] DateTime? startDate,
@@ -140,6 +139,12 @@ public class InventoryCheckController : ControllerBase
     {
         try
         {
+            if (!IsOwner() && !User.HasClaim("permission", PermissionConstants.STOCK_CHECK_CREATE)
+                && !User.HasClaim("permission", PermissionConstants.STOCK_CHECK_COUNT)
+                && !User.HasClaim("permission", PermissionConstants.STOCK_CHECK_APPROVE)
+                && !User.HasClaim("permission", PermissionConstants.STOCK_CHECK_CANCEL))
+                return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền xem danh sách kiểm kê." });
+
             var resolvedBranchId = branchId ?? _currentBranch.GetBranchId();
             if (resolvedBranchId == null)
             {
@@ -244,11 +249,16 @@ public class InventoryCheckController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
-    [HasPermission(PermissionConstants.STOCK_CHECK_CREATE)]
     public async Task<IActionResult> GetInventoryCheckById(Guid id)
     {
         try
         {
+            if (!IsOwner() && !User.HasClaim("permission", PermissionConstants.STOCK_CHECK_CREATE)
+                && !User.HasClaim("permission", PermissionConstants.STOCK_CHECK_COUNT)
+                && !User.HasClaim("permission", PermissionConstants.STOCK_CHECK_APPROVE)
+                && !User.HasClaim("permission", PermissionConstants.STOCK_CHECK_CANCEL))
+                return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền xem chi tiết kiểm kê." });
+
             var branchId = _currentBranch.GetBranchId();
             if (branchId == null)
             {
@@ -339,26 +349,26 @@ public class InventoryCheckController : ControllerBase
 
             // ============================================================
             // QUY TẮC 1: Xử lý AssigneeUserId
-            // Owner: được phép gán cho người khác
-            // Staff: phải tự gán cho mình, không được gán cho người khác
+            // Nguoi tao phieu (co STOCK_CHECK_CREATE) duoc gan cho bat ky ai
             // ============================================================
             Guid? resolvedAssigneeUserId = dto.AssigneeUserId;
 
             if (!isOwner)
             {
-                // Staff: chỉ được gán cho chính mình
-                if (resolvedAssigneeUserId.HasValue && resolvedAssigneeUserId != userId)
+                bool hasCreatePerm = User.HasClaim("permission", PermissionConstants.STOCK_CHECK_CREATE);
+                if (!hasCreatePerm)
                 {
-                    // Reject: Staff cố tình gán cho người khác
-                    return BadRequest(new ApiResponse<object>
+                    if (resolvedAssigneeUserId.HasValue && resolvedAssigneeUserId != userId)
                     {
-                        Success = false,
-                        Message = "Bạn không có quyền gán phiếu kiểm kê cho người khác.",
-                        Errors = new() { "Staff chỉ có thể tự gán phiếu cho mình." }
-                    });
+                        return BadRequest(new ApiResponse<object>
+                        {
+                            Success = false,
+                            Message = "Bạn không có quyền gán phiếu kiểm kê cho người khác.",
+                            Errors = new() { "Staff chỉ có thể tự gán phiếu cho mình." }
+                        });
+                    }
+                    resolvedAssigneeUserId = userId;
                 }
-                // Staff luôn tự gán cho mình
-                resolvedAssigneeUserId = userId;
             }
 
             // Validate: Check if any products are already in active inventory checks
@@ -544,10 +554,11 @@ public class InventoryCheckController : ControllerBase
                 ticket.Notes = dto.Notes;
             }
 
-            // Update assignee - Staff không được gán cho người khác
+            // Update assignee - nguoi tao phieu duoc gan cho bat ky ai
             if (dto.AssigneeUserId.HasValue)
             {
-                if (!isOwner && dto.AssigneeUserId != userId)
+                bool isCreator = ticket.CreatedByUserId == userId;
+                if (!isOwner && !isCreator && dto.AssigneeUserId != userId)
                 {
                     return BadRequest(new ApiResponse<object>
                     {
@@ -738,12 +749,15 @@ public class InventoryCheckController : ControllerBase
     #region Fill / Submit
 
     [HttpPut("{id:guid}/fill")]
-    [HasPermission(PermissionConstants.STOCK_CHECK_CREATE)]
     public async Task<IActionResult> FillActualQuantities(Guid id, [FromBody] FillActualQuantityDto dto)
     {
         using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
+            if (!IsOwner() && !User.HasClaim("permission", PermissionConstants.STOCK_CHECK_CREATE)
+                && !User.HasClaim("permission", PermissionConstants.STOCK_CHECK_COUNT))
+                return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền đếm sản phẩm kiểm kê." });
+
             if (dto == null || dto.Details == null || dto.Details.Count == 0)
             {
                 return BadRequest(new ApiResponse<object>
@@ -1534,6 +1548,44 @@ public class InventoryCheckController : ControllerBase
                 Errors = new() { ex.Message }
             });
         }
+    }
+
+    #endregion
+
+    #region Staff with count permission
+
+    /// <summary>
+    /// GET /api/inventorycheck/counters - Danh sach nhan vien co quyen dem san pham
+    /// </summary>
+    [HttpGet("counters")]
+    public async Task<IActionResult> GetCounters()
+    {
+        var branchId = _currentBranch.GetBranchId();
+        if (branchId == null)
+            return BadRequest(new ApiResponse<object> { Success = false, Message = "Không xác định được chi nhánh." });
+
+        var counters = await _context.StaffAssignments
+            .Where(sa => sa.BranchId == branchId.Value)
+            .Select(sa => sa.User)
+            .Where(u => u.Status == "ACTIVE" && u.IsActive == 1
+                && u.UserPermissions.Any(up => up.Permission.PermissionCode == "STOCK_CHECK_COUNT"))
+            .Select(u => new { userId = u.UserId, fullName = u.FullName })
+            .Distinct()
+            .ToListAsync();
+
+        // Include Owner trong chi nhanh
+        var owners = await _context.StaffAssignments
+            .Where(sa => sa.BranchId == branchId.Value)
+            .Select(sa => sa.User)
+            .Where(u => u.Roles.Any(r => r.RoleName == "Owner") && u.Status == "ACTIVE" && u.IsActive == 1)
+            .Select(u => new { userId = u.UserId, fullName = u.FullName })
+            .Distinct()
+            .ToListAsync();
+        foreach (var o in owners)
+            if (!counters.Any(c => c.userId == o.userId))
+                counters.Add(o);
+
+        return Ok(new ApiResponse<object> { Success = true, Data = counters });
     }
 
     #endregion

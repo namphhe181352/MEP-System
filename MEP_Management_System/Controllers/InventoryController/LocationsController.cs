@@ -116,9 +116,11 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// POST /api/locations - Tạo vị trí mới
         /// </summary>
         [HttpPost]
-        [HasPermission(PermissionConstants.LOCATION_CREATE)]
         public async Task<IActionResult> CreateLocation([FromBody] CreateLocationDto dto)
         {
+            if (!User.IsInRole("Owner") && !User.HasClaim("permission", PermissionConstants.LOCATION_CREATE)
+                && !User.HasClaim("permission", PermissionConstants.PRODUCT_CATEGORY_MANAGE))
+                return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền thêm vị trí kho." });
             try
             {
                 var currentUserId = GetCurrentUserId();
@@ -193,9 +195,11 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// PUT /api/locations/{id} - Cập nhật vị trí
         /// </summary>
         [HttpPut("{id:guid}")]
-        [HasPermission(PermissionConstants.LOCATION_UPDATE)]
         public async Task<IActionResult> UpdateLocation(Guid id, [FromBody] UpdateLocationDto dto)
         {
+            if (!User.IsInRole("Owner") && !User.HasClaim("permission", PermissionConstants.LOCATION_UPDATE)
+                && !User.HasClaim("permission", PermissionConstants.PRODUCT_CATEGORY_MANAGE))
+                return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền sửa vị trí kho." });
             try
             {
                 var currentUserId = GetCurrentUserId();
@@ -280,9 +284,11 @@ namespace MEP_Management_System.Controllers.InventoryController
         /// DELETE /api/locations/{id} - Xóa vị trí
         /// </summary>
         [HttpDelete("{id:guid}")]
-        [HasPermission(PermissionConstants.LOCATION_DELETE)]
         public async Task<IActionResult> DeleteLocation(Guid id)
         {
+            if (!User.IsInRole("Owner") && !User.HasClaim("permission", PermissionConstants.LOCATION_DELETE)
+                && !User.HasClaim("permission", PermissionConstants.PRODUCT_CATEGORY_MANAGE))
+                return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền xóa vị trí kho." });
             try
             {
                 var branchId = GetCurrentBranchId();

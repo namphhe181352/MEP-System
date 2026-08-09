@@ -136,7 +136,6 @@ namespace MEP_Management_System.Controllers.InventoryController
         // Query ?status=CANCELLED hoặc ?status=ALL để xem thêm CANCELLED
         // ============================================================
         [HttpGet]
-        [HasPermission(PermissionConstants.STOCK_INWARD_CREATE)]
         public async Task<IActionResult> GetInwardInventories(
             [FromQuery] string? status,
             [FromQuery] string? ticketType,
@@ -148,6 +147,11 @@ namespace MEP_Management_System.Controllers.InventoryController
         {
             try
             {
+                // Quyen xem: STOCK_INWARD_CREATE hoac STOCK_INWARD_UPDATE
+                if (!IsOwner() && !User.HasClaim("permission", PermissionConstants.STOCK_INWARD_CREATE)
+                    && !User.HasClaim("permission", PermissionConstants.STOCK_INWARD_UPDATE))
+                    return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền xem phiếu nhập kho." });
+
                 if (pageNumber < 1) pageNumber = 1;
                 if (pageSize < 1 || pageSize > 100) pageSize = 10;
                     // Delegate branch + status scoping to service, then apply extra filters and pagination here
@@ -330,11 +334,15 @@ namespace MEP_Management_System.Controllers.InventoryController
         // GET /api/inwardinventory/{id}
         // ============================================================
         [HttpGet("{id:guid}")]
-        [HasPermission(PermissionConstants.STOCK_INWARD_CREATE)]
         public async Task<IActionResult> GetInwardInventoryById(Guid id)
         {
             try
             {
+                // Quyen xem: STOCK_INWARD_CREATE hoac STOCK_INWARD_UPDATE
+                if (!IsOwner() && !User.HasClaim("permission", PermissionConstants.STOCK_INWARD_CREATE)
+                    && !User.HasClaim("permission", PermissionConstants.STOCK_INWARD_UPDATE))
+                    return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền xem chi tiết phiếu nhập kho." });
+
                 var stockTicketQuery = _context.StockTickets
                     .Include(st => st.User)
                     .Include(st => st.StockTicketItems)
@@ -790,7 +798,6 @@ namespace MEP_Management_System.Controllers.InventoryController
         // Chỉ cho phép sửa khi Status = PENDING
         // ============================================================
         [HttpPut("{id:guid}")]
-        [HasPermission(PermissionConstants.STOCK_INWARD_UPDATE)]
         public async Task<IActionResult> UpdateInwardInventory(Guid id, [FromBody] InwardInventoryUpdateDto dto)
         {
             try
@@ -827,6 +834,11 @@ namespace MEP_Management_System.Controllers.InventoryController
                         Errors = new() { $"No inward inventory with ID: {id}" }
                     });
                 }
+
+                // Kiem tra quyen: nguoi tao PENDING hoac co UPDATE hoac Owner
+                bool canUpdate = IsOwner() || User.HasClaim("permission", PermissionConstants.STOCK_INWARD_UPDATE);
+                if (!canUpdate && stockTicket.UserId != currentUserId.Value)
+                    return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền chỉnh sửa phiếu này." });
 
                 // ============================================================
                 // QUY TẮC MỚI: Kiểm tra trạng thái trước khi sửa
@@ -1117,7 +1129,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 // Kiem tra quyen huy
-                bool hasDeletePerm = IsOwner() || User.HasClaim("permission", PermissionConstants.STOCK_INWARD_DELETE);
+                bool hasDeletePerm = IsOwner() || User.HasClaim("permission", PermissionConstants.STOCK_INWARD_DELETE)
+                    || User.HasClaim("permission", PermissionConstants.STOCK_INWARD_UPDATE);
                 bool isCreator = stockTicket.UserId == currentUserId.Value;
                 bool isPending = stockTicket.Status?.ToUpperInvariant() == "PENDING";
 
