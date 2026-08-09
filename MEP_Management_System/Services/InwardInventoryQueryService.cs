@@ -93,7 +93,7 @@ namespace MEP_Management_System.Services
                 CancelReason = st.CancelReason,
                 CostPrice = st.TicketType == "CUSTOMER_RETURN"
                     ? 0
-                    : st.StockTicketItems?.Sum(i => i.BranchProduct?.CostPrice ?? 0) ?? 0,
+                    : st.StockTicketItems?.Sum(i => i.UnitPrice ?? 0) ?? 0,
                 Items = st.StockTicketItems?.Select(i => new InwardInventoryItemResponseDto
                 {
                     TicketItemId = i.TicketItemId,
@@ -106,7 +106,9 @@ namespace MEP_Management_System.Services
                     ActualQuantity = i.ActualQuantity,
                     CostPrice = st.TicketType == "CUSTOMER_RETURN"
                         ? 0
-                        : i.BranchProduct?.CostPrice ?? 0
+                        : (i.UnitPrice ?? 0),
+                    UnitPrice = i.UnitPrice,
+                    UnitName = i.BranchProduct?.Product?.BaseUnit
                 }).ToList() ?? new List<InwardInventoryItemResponseDto>()
             };
         }

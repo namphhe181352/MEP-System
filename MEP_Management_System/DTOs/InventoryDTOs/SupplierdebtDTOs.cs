@@ -83,7 +83,12 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? ContactPhone { get; set; }
         public string? ContactEmail { get; set; }
         public List<SupplierDebtPoDetailDto> PurchaseOrders { get; set; } = new();
+<<<<<<< HEAD
         public List<SupplierDebtPoDetailDto> StockTickets { get; set; } = new();
+=======
+        /// <summary>Phiếu nhập kho đã hoàn thành (StockTicket PURCHASE COMPLETED).</summary>
+        public List<SupplierDebtStDetailDto> StockTickets { get; set; } = new();
+>>>>>>> bca0f3e71c7921a59c1389279c9a58109a183eeb
     }
 
     public class SupplierDebtPoDetailDto
@@ -105,6 +110,18 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public decimal Quantity { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal LineTotal { get; set; }
+    }
+
+    /// <summary>Phiếu nhập kho (StockTicket PURCHASE) trong lịch sử mua hàng.</summary>
+    public class SupplierDebtStDetailDto
+    {
+        public Guid StockTicketId { get; set; }
+        public string TicketCode { get; set; } = null!;
+        public decimal TotalAmount { get; set; }
+        public string Status { get; set; } = null!;
+        public string? CreatedAt { get; set; }
+        public string? CompletedAt { get; set; }
+        public List<SupplierDebtPoItemDto> Items { get; set; } = new();
     }
 
 

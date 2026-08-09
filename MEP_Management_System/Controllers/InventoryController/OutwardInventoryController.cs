@@ -445,6 +445,82 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
+                // === Validate phiếu nhập tham chiếu (Xuất trả NCC) ===
+                var validationErrors = new List<string>();
+                StockTicket? inwardTicket = null;
+                Dictionary<Guid, decimal>? inwardUnitPrices = null;
+                Dictionary<Guid, decimal>? maxReturnableByInwardItemId = null;
+
+                if (dto.OutwardType == OutwardInventoryType.ReturnToSupplier && dto.InwardTicketId.HasValue)
+                {
+                    inwardTicket = await _context.StockTickets
+                        .Include(st => st.StockTicketItems)
+                        .FirstOrDefaultAsync(st => st.StockTicketId == dto.InwardTicketId.Value
+                            && st.Status == "COMPLETED"
+                            && st.TicketType == "PURCHASE");
+
+                    if (inwardTicket == null)
+                    {
+                        return BadRequest(new ApiResponse<object>
+                        {
+                            Success = false,
+                            Message = "Phiếu nhập tham chiếu không tồn tại hoặc chưa hoàn thành."
+                        });
+                    }
+
+                    if (dto.SupplierId.HasValue && inwardTicket.SupplierId != dto.SupplierId.Value)
+                    {
+                        return BadRequest(new ApiResponse<object>
+                        {
+                            Success = false,
+                            Message = "Phiếu nhập không thuộc về nhà cung cấp đã chọn."
+                        });
+                    }
+
+                    // Lưu đơn giá gốc từ phiếu nhập để validate
+                    inwardUnitPrices = inwardTicket.StockTicketItems
+                        .ToDictionary(i => i.TicketItemId, i => i.UnitPrice ?? 0);
+
+                    // Tính tổng số lượng đã trả cho từng dòng nhập
+                    var inwardItemIds = inwardTicket.StockTicketItems.Select(i => i.TicketItemId).ToList();
+                    var returnedQuantities = await _context.StockTicketItems
+                        .Where(si => si.InwardTicketItemId != null && inwardItemIds.Contains(si.InwardTicketItemId.Value)
+                            && si.StockTicket!.Status != "CANCELLED")
+                        .GroupBy(si => si.InwardTicketItemId!.Value)
+                        .Select(g => new { InwardTicketItemId = g.Key, TotalReturned = g.Sum(si => si.Discrepancy) })
+                        .ToListAsync();
+
+                    maxReturnableByInwardItemId = inwardTicket.StockTicketItems.ToDictionary(
+                        i => i.TicketItemId,
+                        i => i.Discrepancy - returnedQuantities
+                            .Where(r => r.InwardTicketItemId == i.TicketItemId)
+                            .Sum(r => r.TotalReturned)
+                    );
+
+                    // Validate từng item có InwardTicketItemId
+                    foreach (var item in dto.Items.Where(i => i.InwardTicketItemId.HasValue))
+                    {
+                        if (!inwardUnitPrices.ContainsKey(item.InwardTicketItemId!.Value))
+                        {
+                            validationErrors.Add($"Dòng hàng nhập (ID: {item.InwardTicketItemId}) không thuộc phiếu nhập đã chọn.");
+                            continue;
+                        }
+
+                        var inwardUnitPrice = inwardUnitPrices[item.InwardTicketItemId!.Value];
+                        var requestUnitPrice = item.UnitPrice ?? 0;
+                        if (requestUnitPrice > 0 && Math.Abs(requestUnitPrice - inwardUnitPrice) > 0.01m)
+                        {
+                            validationErrors.Add($"Đơn giá xuất ({requestUnitPrice:N0}) không khớp với đơn giá nhập gốc ({inwardUnitPrice:N0}).");
+                        }
+
+                        var maxReturnable = maxReturnableByInwardItemId.GetValueOrDefault(item.InwardTicketItemId!.Value, 0);
+                        if (item.Quantity > maxReturnable)
+                        {
+                            validationErrors.Add($"Số lượng xuất trả ({item.Quantity}) vượt quá số lượng còn lại có thể trả ({maxReturnable}).");
+                        }
+                    }
+                }
+
                 var productIds = dto.Items.Select(i => i.BranchProductId).Distinct().ToList();
                 var branchProducts = await _context.BranchProducts
                     .Where(bp => (productIds.Contains(bp.ProductId) || productIds.Contains(bp.BranchProductId)) && bp.BranchId == resolvedBranchId.Value)
@@ -466,7 +542,6 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 // Kiểm tra số lượng hợp lệ
-                var validationErrors = new List<string>();
                 var effectiveUnitPriceByBranchProductId = new Dictionary<Guid, decimal>();
 
                 foreach (var item in dto.Items)
@@ -485,14 +560,17 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                     if (item.Quantity > bp.ActualStock)
                     {
-                        validationErrors.Add($"Sản phẩm {bp.Product?.ProductName ?? bp.ProductId.ToString()} không đủ tồn kho để xuất. Tồn hiện tại: {bp.ActualStock}, số lượng cần xuất: {item.Quantity}.");
+                        validationErrors.Add($"Số lượng tồn kho khả dụng của sản phẩm '{bp.Product?.ProductName ?? bp.ProductId.ToString()}' không đủ để thực hiện xuất kho. Tồn hiện tại: {bp.ActualStock}, cần xuất: {item.Quantity}.");
                     }
 
                     var fallbackUnitPrice = item.UnitPrice.HasValue && item.UnitPrice.Value > 0
                         ? item.UnitPrice.Value
-                        : bp.CostPrice > 0
-                            ? bp.CostPrice
-                            : 0m;
+                        : (item.InwardTicketItemId.HasValue && inwardUnitPrices != null
+                            && inwardUnitPrices.TryGetValue(item.InwardTicketItemId.Value, out var iup) && iup > 0
+                            ? iup
+                            : bp.CostPrice > 0
+                                ? bp.CostPrice
+                                : 0m);
 
                     if (fallbackUnitPrice <= 0)
                     {
@@ -533,6 +611,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                         Reason = dto.Reason,
                         Notes = dto.Note,
                         SupplierId = dto.SupplierId,
+                        InwardTicketId = dto.InwardTicketId,
                         CreatedAt = currentTime
                     };
 
@@ -551,7 +630,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                             SystemQuantity = bp.ActualStock,
                             ActualQuantity = bp.ActualStock,
                             Discrepancy = item.Quantity,
-                            UnitPrice = effectiveUnitPrice
+                            UnitPrice = effectiveUnitPrice,
+                            InwardTicketItemId = item.InwardTicketItemId
                         };
 
                         _context.StockTicketItems.Add(ticketItem);
@@ -827,7 +907,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 // BUG 3 FIX: Race condition - Thêm row-level lock FOR UPDATE
                 // Khóa các dòng để ngăn 2 request đồng thời vượt qua validation
                 // ============================================================
-                if (branchProductIds.Any())
+                if (branchProductIds.Any() && _context.Database.ProviderName != "Microsoft.EntityFrameworkCore.InMemory")
                 {
                     // EF Core cannot parameterize a list of Guids for the IN clause via FromSqlInterpolated
                     // in a way that's compatible with the FOR UPDATE locking hint. We build the SQL
@@ -872,20 +952,108 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 // ============================================================
-                // QUY TẮC MỚI: Cập nhật tồn kho (OUTWARD: trừ kho)
+                // QUY TẮC MỚI: Cập nhật tồn kho bằng Atomic SQL Update
+                // Tránh race condition khi 2 user cùng thao tác trên 1 sản phẩm
                 // ============================================================
                 foreach (var item in stockTicket.StockTicketItems)
                 {
-                    if (latestBranchProducts.TryGetValue(item.BranchProductId, out var bp))
-                    {
-                        // Cập nhật tồn kho - Xuất kho thì TRỪ
-                        bp.ActualStock -= item.Discrepancy;
-                        bp.AvailableStock -= item.Discrepancy;
+                    if (!latestBranchProducts.TryGetValue(item.BranchProductId, out var bp))
+                        continue;
 
-                        // Cập nhật lại ticket item
-                        item.SystemQuantity = bp.ActualStock + item.Discrepancy;
-                        item.ActualQuantity = bp.ActualStock;
+                    // Snapshot unit_price từ BQ CostPrice cho WRITE_OFF / TRANSFER nếu chưa có
+                    if ((item.UnitPrice ?? 0) <= 0
+                        && stockTicket.TicketType != "RETURN_SUPPLIER")
+                    {
+                        item.UnitPrice = bp.CostPrice;
                     }
+                    var effectiveUnitPrice = item.UnitPrice ?? bp.CostPrice;
+
+                    // Atomic UPDATE: trừ tồn kho trực tiếp trong DB, có kiểm tra tồn >= SL xuất
+                    try
+                    {
+                        if (_context.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+                        {
+                            if (bp.ActualStock < item.Discrepancy)
+                            {
+                                await transaction.RollbackAsync();
+                                return BadRequest(new ApiResponse<object>
+                                {
+                                    Success = false,
+                                    Message = "Số lượng tồn kho khả dụng của sản phẩm không đủ để thực hiện xuất kho.",
+                                    Errors = new()
+                                    {
+                                        $"Sản phẩm '{bp.Product?.ProductName ?? item.BranchProductId.ToString()}' không đủ tồn kho. Tồn hiện tại: {bp.ActualStock}, cần xuất: {item.Discrepancy}"
+                                    }
+                                });
+                            }
+                            bp.ActualStock -= item.Discrepancy;
+                            bp.AvailableStock -= item.Discrepancy;
+                            _context.BranchProducts.Update(bp);
+                            await _context.SaveChangesAsync();
+                        }
+                        else
+                        {
+                            var rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                                UPDATE branch_products
+                                SET actual_stock = actual_stock - {item.Discrepancy},
+                                    available_stock = available_stock - {item.Discrepancy}
+                                WHERE branch_product_id = {item.BranchProductId}
+                                  AND actual_stock >= {item.Discrepancy}
+                            ");
+
+                            if (rowsAffected == 0)
+                            {
+                                await transaction.RollbackAsync();
+                                return BadRequest(new ApiResponse<object>
+                                {
+                                    Success = false,
+                                    Message = "Số lượng tồn kho khả dụng của sản phẩm không đủ để thực hiện xuất kho.",
+                                    Errors = new()
+                                    {
+                                        $"Sản phẩm '{bp.Product?.ProductName ?? item.BranchProductId.ToString()}' không đủ tồn kho. Tồn hiện tại: {bp.ActualStock}, cần xuất: {item.Discrepancy}"
+                                    }
+                                });
+                            }
+                        }
+                    }
+                    catch (Exception ex) when (ex is DbUpdateConcurrencyException || ex is DbUpdateException)
+                    {
+                        await transaction.RollbackAsync();
+                        return StatusCode(409, new ApiResponse<object>
+                        {
+                            Success = false,
+                            Message = "Hệ thống đang xử lý một giao dịch kho khác cho sản phẩm này. Vui lòng thử lại sau giây lát.",
+                            Errors = new() { ex.Message }
+                        });
+                    }
+
+                    // Đọc lại tồn kho sau khi cập nhật
+                    var updatedBp = await _context.BranchProducts
+                        .FirstOrDefaultAsync(bp2 => bp2.BranchProductId == item.BranchProductId);
+                    if (updatedBp != null)
+                    {
+                        item.SystemQuantity = updatedBp.ActualStock + item.Discrepancy;
+                        item.ActualQuantity = updatedBp.ActualStock;
+                    }
+
+                    // Ghi inventory_ledger (qty_change âm cho xuất kho)
+                    var ledger = new InventoryLedger
+                    {
+                        LedgerId = Guid.NewGuid(),
+                        BranchId = stockTicket.BranchId,
+                        BranchProductId = item.BranchProductId,
+                        DocType = stockTicket.TicketType ?? "WRITE_OFF",
+                        DocId = stockTicket.StockTicketId,
+                        DocCode = stockTicket.TicketCode,
+                        TransactionTime = DateTime.UtcNow,
+                        QtyChange = -item.Discrepancy, // ÂM cho xuất kho
+                        UnitCostPrice = Math.Round(effectiveUnitPrice, 4),
+                        TotalCostValue = Math.Round(-item.Discrepancy * effectiveUnitPrice, 4),
+                        StockAfter = updatedBp?.ActualStock ?? 0,
+                        AvgCostAfter = Math.Round(updatedBp?.CostPrice ?? effectiveUnitPrice, 4),
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _context.InventoryLedgers.Add(ledger);
                 }
 
                 // Chuyển trạng thái sang COMPLETED
@@ -943,13 +1111,13 @@ namespace MEP_Management_System.Controllers.InventoryController
                     }
                 });
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not DbUpdateConcurrencyException && ex is not DbUpdateException)
             {
                 await transaction.RollbackAsync();
                 return StatusCode(500, new ApiResponse<object>
                 {
                     Success = false,
-                    Message = "Lỗi khi xác nhận phiếu xuất kho.",
+                    Message = "Lỗi hệ thống khi xác nhận phiếu xuất kho. Vui lòng thử lại sau.",
                     Errors = new() { ex.Message }
                 });
             }
@@ -1260,6 +1428,9 @@ th {{ background: #f0f0f0; }}
                 BranchId = stockTicket.BranchId,
                 UserId = stockTicket.UserId,
                 UserName = stockTicket.User?.FullName ?? stockTicket.User?.Username,
+                SupplierId = stockTicket.SupplierId,
+                SupplierName = stockTicket.Supplier?.SupplierName,
+                InwardTicketId = stockTicket.InwardTicketId,
                 Reason = stockTicket.Reason,
                 Note = stockTicket.Notes,
                 CreatedAt = stockTicket.CreatedAt,
@@ -1279,8 +1450,9 @@ th {{ background: #f0f0f0; }}
                     SystemQuantity = item.SystemQuantity,
                     Quantity = item.Discrepancy,
                     ActualQuantity = item.ActualQuantity,
-                    UnitPrice = item.UnitPrice,
-                    UnitName = item.BranchProduct?.Product?.BaseUnit
+                    UnitPrice = (item.UnitPrice ?? 0) > 0 ? item.UnitPrice : (item.BranchProduct?.CostPrice ?? 0),
+                    UnitName = item.BranchProduct?.Product?.BaseUnit,
+                    InwardTicketItemId = item.InwardTicketItemId
                 }).ToList() ?? new()
             };
         }

@@ -77,14 +77,18 @@ public class InvoicesController : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         var branchId = GetBranchId();
+        
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 20;
 
         // Build base query directly from Invoices (fix: don't depend on Orders table)
         var baseQuery = _context.Invoices
+            .Include(i => i.Order)
             .AsNoTracking()
             .Where(i => i.Order.BranchId == branchId);
 
         // Count query
-        var countQuery = _context.Invoices.Where(i => i.Order.BranchId == branchId);
+        var countQuery = _context.Invoices.Include(i => i.Order).Where(i => i.Order.BranchId == branchId);
         if (!string.IsNullOrEmpty(status))
             countQuery = countQuery.Where(i => i.Status == status);
         if (dateFrom.HasValue)
@@ -98,56 +102,54 @@ public class InvoicesController : ControllerBase
         var total = await countQuery.CountAsync();
 
         // Fetch invoices + related data in single optimized query
-        var invoiceData = await _context.Invoices
-            .AsNoTracking()
-            .Where(i => i.Order.BranchId == branchId)
-            .Where(i => !string.IsNullOrEmpty(status) ? i.Status == status : true)
-            .Where(i => dateFrom.HasValue ? i.CreatedAt >= dateFrom.Value : true)
-            .Where(i => dateTo.HasValue ? i.CreatedAt <= dateTo.Value : true)
-            .Where(i => customerId.HasValue ? i.Order.CustomerId == customerId.Value : true)
-            .Where(i => staffId.HasValue ? i.Order.UserId == staffId.Value : true)
+        var query = _context.Invoices
+            .Include(i => i.Order)
+            .Where(i => i.Order.BranchId == branchId);
+
+        if (!string.IsNullOrEmpty(status))
+            query = query.Where(i => i.Status == status);
+        if (dateFrom.HasValue)
+            query = query.Where(i => i.CreatedAt >= dateFrom.Value);
+        if (dateTo.HasValue)
+            query = query.Where(i => i.CreatedAt <= dateTo.Value);
+        if (customerId.HasValue)
+            query = query.Where(i => i.Order.CustomerId == customerId.Value);
+        if (staffId.HasValue)
+            query = query.Where(i => i.Order.UserId == staffId.Value);
+
+        // Fetch invoices + related data in single optimized query
+        var invoices = await query
+            .Include(i => i.Order.User)
+            .Include(i => i.Order.Customer)
+            .Include(i => i.InvoiceItems)
+            .Include(i => i.Payments)
             .OrderByDescending(i => i.CreatedAt)
             .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(i => new
-            {
-                Invoice = i,
-                i.OrderId,
-                i.Order.UserId,
-                UserName = i.Order.User != null ? i.Order.User.FullName : null,
-                i.Order.CustomerId,
-                CustomerName = i.Order.Customer != null ? i.Order.Customer.CustomerName : null,
-                DiscountAmount = i.DiscountAmount,
-                DiscountPercent = i.DiscountPercent,
-                i.InvoiceItems,
-                i.Payments
-            })
             .ToListAsync();
 
-        var items = invoiceData.Select(data =>
+        var items = invoices.Select(invoice =>
         {
-            var dto = _mapper.Map<InvoiceDto>(data.Invoice);
-            dto.OrderId = data.OrderId;
-            dto.UserId = data.UserId;
-            dto.UserName = data.UserName;
-            dto.CustomerId = data.CustomerId;
-            dto.CustomerName = data.CustomerName;
-            // AutoMapper tính TotalAmount từ Invoice.InvoiceItems nhưng khi dùng Select() trong EF,
-            // navigation property không được load → InvoiceItems là null → TotalAmount = 0.
-            // Nên phải tính thủ công từ data.InvoiceItems (đã được EF populate riêng).
-            if (data.InvoiceItems != null && data.InvoiceItems.Any())
+            var dto = _mapper.Map<InvoiceDto>(invoice);
+            dto.OrderId = invoice.OrderId;
+            dto.UserId = invoice.Order != null ? invoice.Order.UserId : Guid.Empty;
+            dto.UserName = invoice.Order?.User?.FullName;
+            dto.CustomerId = invoice.Order?.CustomerId;
+            dto.CustomerName = invoice.Order?.Customer?.CustomerName;
+            
+            if (invoice.InvoiceItems != null && invoice.InvoiceItems.Any())
             {
-                var subtotal = data.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
+                var subtotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
                 dto.Subtotal = subtotal;
-                dto.DiscountAmount = data.DiscountAmount;
-                dto.DiscountPercent = data.DiscountPercent;
-                dto.TotalAmount = subtotal - data.DiscountAmount;
-                dto.Items = _mapper.Map<List<DTOs.SaleDTOs.InvoiceItemDto>>(data.InvoiceItems);
+                dto.DiscountAmount = invoice.DiscountAmount;
+                dto.DiscountPercent = invoice.DiscountPercent;
+                dto.TotalAmount = subtotal - invoice.DiscountAmount;
+                dto.Items = _mapper.Map<List<DTOs.SaleDTOs.InvoiceItemDto>>(invoice.InvoiceItems);
             }
-            if (data.Payments != null && data.Payments.Any())
+            if (invoice.Payments != null && invoice.Payments.Any())
             {
-                dto.PaymentMethod = data.Payments.Count > 1
+                dto.PaymentMethod = invoice.Payments.Count > 1
                     ? "Combined"
-                    : data.Payments.First().Method.ToString();
+                    : invoice.Payments.First().Method.ToString();
             }
             return dto;
         }).ToList();
@@ -329,7 +331,7 @@ public class InvoicesController : ControllerBase
             if (unitPrice < effectiveCost)
             {
                 await transaction.RollbackAsync();
-                return BadRequest(ApiErrorResponse.Create("MSG-63", "Price override below floor price"));
+                return BadRequest(ApiErrorResponse.Create("MSG-63", "Giá bán không được thấp hơn giá sàn."));
             }
 
             var existingItem = invoice.InvoiceItems
@@ -510,17 +512,60 @@ public class InvoicesController : ControllerBase
             foreach (var item in invoice.InvoiceItems)
             {
                 var actualQty = item.Quantity * (item.ConvertValue ?? 1m);
-                var rowsAffected = await _context.BranchProducts
-                    .Where(bp => bp.BranchProductId == item.BranchProductId && bp.AvailableStock >= actualQty && bp.ActualStock >= actualQty)
-                    .ExecuteUpdateAsync(s => s
-                        .SetProperty(b => b.ActualStock, b => b.ActualStock - actualQty)
-                        .SetProperty(b => b.AvailableStock, b => b.AvailableStock - actualQty));
+                int rowsAffected = 0;
+                if (_context.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+                {
+                    var bp = await _context.BranchProducts.FindAsync(item.BranchProductId);
+                    if (bp != null && bp.AvailableStock >= actualQty && bp.ActualStock >= actualQty)
+                    {
+                        bp.AvailableStock -= actualQty;
+                        bp.ActualStock -= actualQty;
+                        _context.BranchProducts.Update(bp);
+                        await _context.SaveChangesAsync();
+                        rowsAffected = 1;
+                    }
+                }
+                else
+                {
+                    rowsAffected = await _context.BranchProducts
+                        .Where(bp => bp.BranchProductId == item.BranchProductId && bp.AvailableStock >= actualQty && bp.ActualStock >= actualQty)
+                        .ExecuteUpdateAsync(s => s
+                            .SetProperty(b => b.ActualStock, b => b.ActualStock - actualQty)
+                            .SetProperty(b => b.AvailableStock, b => b.AvailableStock - actualQty));
+                }
 
                 if (rowsAffected == 0)
                 {
                     await transaction.RollbackAsync();
                     return BadRequest(ApiErrorResponse.Create("MSG-59", $"Thanh toán thất bại. Sản phẩm trong giỏ hàng đã hết hàng hoặc không đủ số lượng. Available: {item.BranchProduct.AvailableStock}"));
                 }
+
+                // Snapshot cost_price + ghi inventory_ledger
+                var costPrice = item.BranchProduct.CostPrice;
+                item.CostPrice = Math.Round(costPrice, 4);
+
+                // Đọc lại tồn kho sau khi trừ
+                var updatedBp = await _context.BranchProducts
+                    .FirstOrDefaultAsync(bp2 => bp2.BranchProductId == item.BranchProductId);
+                var stockAfter = updatedBp?.ActualStock ?? 0;
+
+                var ledgerEntry = new InventoryLedger
+                {
+                    LedgerId = Guid.NewGuid(),
+                    BranchId = invoice.Order.BranchId,
+                    BranchProductId = item.BranchProductId,
+                    DocType = "SALE",
+                    DocId = invoice.InvoiceId,
+                    DocCode = invoice.InvoiceCode,
+                    TransactionTime = DateTime.UtcNow,
+                    QtyChange = -actualQty,
+                    UnitCostPrice = Math.Round(costPrice, 4),
+                    TotalCostValue = Math.Round(-actualQty * costPrice, 4),
+                    StockAfter = stockAfter,
+                    AvgCostAfter = Math.Round(costPrice, 4),
+                    CreatedAt = DateTime.UtcNow
+                };
+                _context.InventoryLedgers.Add(ledgerEntry);
             }
 
             invoice.Status = "Completed";

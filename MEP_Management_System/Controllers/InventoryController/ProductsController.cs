@@ -1200,6 +1200,7 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 short statusVal = isActive ? (short)1 : (short)0;
                 bp.IsActive = statusVal;
+                bp.DirectSale = statusVal;
 
                 if (bp.Product != null)
                 {
@@ -1280,6 +1281,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 {
                     short statusVal = request.IsActive ? (short)1 : (short)0;
                     bp.IsActive = statusVal;
+                    bp.DirectSale = statusVal;
 
                     if (bp.Product != null)
                     {
