@@ -64,6 +64,32 @@ public class OwnerStaffController : ControllerBase
     /// </summary>
     private async Task<OwnerStaffDto> MapToDto(User user)
     {
+        // Lay role permissions (khong bi deny)
+        var rolePermissionCodes = user.Roles
+            .SelectMany(r => r.Permissions)
+            .Select(p => p.PermissionCode)
+            .ToHashSet();
+
+        // Lay user permissions (explicit allow/deny)
+        var deniedCodes = user.UserPermissions
+            .Where(up => up.IsGranted == false)
+            .Select(up => up.Permission?.PermissionCode ?? "")
+            .Where(c => !string.IsNullOrEmpty(c))
+            .ToHashSet();
+
+        var allowedCodes = user.UserPermissions
+            .Where(up => up.IsGranted != false)
+            .Select(up => up.Permission?.PermissionCode ?? "")
+            .Where(c => !string.IsNullOrEmpty(c))
+            .ToHashSet();
+
+        // Merge: role permissions + explicit allows, minus explicit denies
+        var effectivePermissions = rolePermissionCodes
+            .Union(allowedCodes)
+            .Except(deniedCodes)
+            .Distinct()
+            .ToList();
+
         return new OwnerStaffDto
         {
             UserId = user.UserId,
@@ -71,11 +97,7 @@ public class OwnerStaffController : ControllerBase
             Email = user.Email,
             PhoneNumber = user.PhoneNumber,
             IsActive = user.IsActive,
-            PermissionCodes = user.UserPermissions
-                .Where(up => up.IsGranted != false) // Chi lay quyen duoc cap (true hoac null), bo qua deny
-                .Select(up => up.Permission?.PermissionCode ?? "")
-                .Where(c => !string.IsNullOrEmpty(c))
-                .ToList(),
+            PermissionCodes = effectivePermissions,
             HasCustomPermissions = user.UserPermissions.Any(),
             Roles = user.Roles
                 .Select(r => r.RoleName)
@@ -262,7 +284,7 @@ public class OwnerStaffController : ControllerBase
 
         var query = _context.Users
             .Include(u => u.UserPermissions).ThenInclude(up => up.Permission)
-            .Include(u => u.Roles)
+            .Include(u => u.Roles).ThenInclude(r => r.Permissions)
             .Where(u => staffUserIds.Contains(u.UserId)
                 && u.UserId != ownerId.Value
                 // Loại trừ Admin/Owner - chỉ hiển thị staff (Sale, Kho, etc.)
@@ -279,7 +301,7 @@ public class OwnerStaffController : ControllerBase
         {
             query = _context.Users
                 .Include(u => u.UserPermissions).ThenInclude(up => up.Permission)
-                .Include(u => u.Roles)
+                .Include(u => u.Roles).ThenInclude(r => r.Permissions)
                 .Where(u => staffUserIds.Contains(u.UserId)
                     && u.Status == "DELETED"
                     && u.UserId != ownerId.Value
@@ -628,7 +650,7 @@ public class OwnerStaffController : ControllerBase
 
         var staff = await _context.Users
             .Include(u => u.UserPermissions).ThenInclude(up => up.Permission)
-            .Include(u => u.Roles)
+            .Include(u => u.Roles).ThenInclude(r => r.Permissions)
             .FirstOrDefaultAsync(u => u.UserId == id);
 
         if (staff == null)
@@ -820,7 +842,7 @@ public class OwnerStaffController : ControllerBase
 
             var createdUser = await _context.Users
                 .Include(u => u.UserPermissions).ThenInclude(up => up.Permission)
-                .Include(u => u.Roles)
+                .Include(u => u.Roles).ThenInclude(r => r.Permissions)
                 .FirstAsync(u => u.UserId == user.UserId);
 
             return CreatedAtAction(nameof(GetStaffById), new { id = user.UserId },
@@ -877,8 +899,7 @@ public class OwnerStaffController : ControllerBase
 
         var staff = await _context.Users
             .Include(u => u.UserPermissions)
-            .Include(u => u.Roles)
-            .ThenInclude(r => r.Permissions)
+            .Include(u => u.Roles).ThenInclude(r => r.Permissions)
             .FirstOrDefaultAsync(u => u.UserId == id);
 
         if (staff == null)
@@ -941,6 +962,35 @@ public class OwnerStaffController : ControllerBase
                 .ToHashSet();
 
             var requestedCodes = validPermissions.Select(p => p.PermissionCode).ToHashSet();
+
+            // Auto-include VIEW permissions khi co quyen thao tac lien quan
+            var actionToViewPrefixes = new Dictionary<string, string[]>
+            {
+                { "STOCK_INWARD_CREATE", new[] { "STOCK_INWARD_" } },
+                { "STOCK_OUTWARD_CREATE", new[] { "STOCK_OUTWARD_" } },
+                { "STOCK_CHECK_VIEW", new[] { "STOCK_CHECK_" } },
+                { "PRODUCT_VIEW", new[] { "PRODUCT_" } },
+                { "SALE_VIEW", new[] { "SALE_", "CUSTOMER_", "PAYMENT_" } },
+                { "SUPPLIER_VIEW", new[] { "SUPPLIER_" } },
+                { "EXPENSE_VIEW", new[] { "EXPENSE_" } },
+                { "STAFF_VIEW", new[] { "STAFF_", "SHIFT_" } },
+            };
+
+            foreach (var kvp in actionToViewPrefixes)
+            {
+                var viewCode = kvp.Key;
+                var actionPrefixes = kvp.Value;
+                if (!requestedCodes.Contains(viewCode) &&
+                    requestedCodes.Any(rc => actionPrefixes.Any(ap => rc.StartsWith(ap))))
+                {
+                    var viewPerm = await _context.Permissions.FirstOrDefaultAsync(p => p.PermissionCode == viewCode);
+                    if (viewPerm != null)
+                    {
+                        validPermissions.Add(viewPerm);
+                        requestedCodes.Add(viewCode);
+                    }
+                }
+            }
 
             // Remove all existing user permissions
             _context.UserPermissions.RemoveRange(staff.UserPermissions);
