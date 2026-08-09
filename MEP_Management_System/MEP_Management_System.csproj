@@ -34,4 +34,9 @@
     <Folder Include="Migrations\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Cho phép project unit test truy cập các internal helper của chatbot (ExtractSqlQuery, ExtractAiContent, ...) -->
+    <InternalsVisibleTo Include="MEP_Management_System.UnitTests" />
+  </ItemGroup>
+
 </Project>
