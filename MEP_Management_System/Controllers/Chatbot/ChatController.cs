@@ -69,9 +69,16 @@ public class ChatController : ControllerBase
         _logger = logger;
     }
 
+    public class ChatMessageDto
+    {
+        public string Role { get; set; } = string.Empty;
+        public string Content { get; set; } = string.Empty;
+    }
+
     public class ChatRequest
     {
         public string Message { get; set; } = string.Empty;
+        public List<ChatMessageDto>? History { get; set; }
     }
 
     public class ChatResponse
@@ -149,6 +156,18 @@ public class ChatController : ControllerBase
                 new { role = "system", content = systemPrompt }
             };
 
+            // Nếu frontend gửi kèm history, ta nối vào trước câu hiện tại
+            if (request.History != null && request.History.Any())
+            {
+                foreach (var msg in request.History)
+                {
+                    // Đảm bảo role chỉ là user hoặc assistant
+                    var role = msg.Role.ToLower() == "bot" || msg.Role.ToLower() == "assistant" ? "assistant" : "user";
+                    messages.Add(new { role = role, content = msg.Content });
+                }
+            }
+
+            messages.Add(new { role = "user", content = request.Message });
             var result = await ProcessChatAsync(apiUrl, apiKey, model, messages, request.Message, branchId, cancellationToken);
 
             return Ok(result);
@@ -450,6 +469,9 @@ public class ChatController : ControllerBase
 - products: product_id, product_code, product_name, barcode, base_unit, brand_name, category_name, supplier_id, status
 - product_attributes: attribute_id, product_id, attribute_name, attribute_value
 - product_conversion_units: conversion_id, product_id, unit_name, convert_value, price
+- users: user_id, full_name, email, phone_number, status (Lưu ý: status có các giá trị 'ACTIVE', 'INACTIVE', 'DELETED'. LUÔN lọc status = 'ACTIVE' và role_name != 'Owner' khi hỏi về nhân viên hiện tại)
+- user_roles: user_id, role_id
+- roles: role_id, role_name
 - customers: customer_id, customer_name, phone_number, email, address, loyalty_points, debt_limit, current_debt, status, ""group"", membership_tier, order_count, total_spent
 - orders: order_id, order_code, branch_id, customer_id, user_id, total_amount, discount_amount, tax_amount, payment_method, status, created_at
 - invoice_items: invoice_item_id, invoice_id, branch_product_id, quantity, sell_price, cost_price
@@ -539,7 +561,6 @@ JOIN orders o ON i.order_id = o.order_id
 JOIN branch_products bp ON ii.branch_product_id = bp.branch_product_id
 JOIN products p ON bp.product_id = p.product_id
 WHERE i.created_at >= '{firstDayOfMonthStr}' AND i.status = 'Completed'
-  AND p.status = 1 AND bp.is_active = 1
 GROUP BY p.product_id, p.product_code, p.product_name
 ORDER BY total_sold DESC LIMIT 10;
 --QUERY_END--
@@ -665,11 +686,11 @@ SELECT COUNT(*) as total_suppliers FROM suppliers WHERE status = 1;
 - Doanh thu tuần này: WHERE created_at >= '{mondayStr}'
 - Doanh thu tháng này: WHERE created_at >= '{firstDayOfMonthStr}'
 - Luôn thêm: AND status = 'Completed' khi tính doanh thu/lợi nhuận từ orders hoặc invoices
-- TUYỆT ĐỐI phải THÊM điều kiện lọc sản phẩm đã xóa:
-  - Khi JOIN với bảng products: LUÔN thêm AND p.status = 1
-  - Khi JOIN với bảng branch_products: LUÔN thêm AND bp.is_active = 1
-  - KHÔNG BAO GIỜ hiển thị sản phẩm có status = 0, is_active = 0, hoặc product_code chứa _DEL_
-- TUYỆT ĐỐI KHÔNG được viết SQL đụng tới các bảng ngoài danh sách DATABASE SCHEMA ở trên (ví dụ: users, roles, permissions, otp_verifications, system_configs, system_logs, store_approvals, hay bất kỳ bảng nào có tiền tố forum_/community_). Nếu user hỏi về những nội dung đó, trả lời rằng chatbot không hỗ trợ truy vấn thông tin này.
+- LƯU Ý KHI LỌC SẢN PHẨM ĐÃ XÓA:
+  - Khi hỏi về **tồn kho, danh sách sản phẩm hiện tại**: LUÔN lọc sản phẩm đã xóa (thêm AND p.status = 1 AND bp.is_active = 1). KHÔNG hiển thị sản phẩm chứa _DEL_.
+  - Khi hỏi về **báo cáo doanh thu, lợi nhuận, sản phẩm bán chạy trong quá khứ**: KHÔNG lọc sản phẩm đã xóa (vì sản phẩm dù đã xóa vẫn phải tính vào doanh thu lịch sử).
+- LƯU Ý KHI LỌC NHÂN VIÊN: LUÔN truy vấn từ bảng staff_assignments JOIN với users (lọc u.status = 'ACTIVE'). Để loại trừ chủ cửa hàng, hãy JOIN thêm với user_roles và roles (lọc r.role_name != 'Owner').
+- TUYỆT ĐỐI KHÔNG được viết SQL đụng tới các bảng ngoài danh sách DATABASE SCHEMA ở trên (ví dụ: permissions, otp_verifications, system_configs, system_logs, store_approvals, hay bất kỳ bảng nào có tiền tố forum_/community_). Nếu user hỏi về những nội dung đó, trả lời rằng chatbot không hỗ trợ truy vấn thông tin này.
 - TUYỆT ĐỐI KHÔNG được viết INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE hay bất kỳ câu lệnh nào không phải SELECT.
 
 ## NGUYÊN TẮC
