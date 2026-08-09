@@ -15,7 +15,7 @@ namespace MEP_Management_System.Controllers.SaleController;
 
 [ApiController]
 [Route("api/pos/customers")]
-[HasPermission(PermissionConstants.CUSTOMER_VIEW)]
+[Authorize]
 [Tags("Quản lý bán hàng (Sale)")]
 public class CustomersController : ControllerBase
 {
@@ -62,6 +62,7 @@ public class CustomersController : ControllerBase
 
     // GET /api/pos/customers
     [HttpGet]
+    [Authorize]
     public async Task<ActionResult<PageResultDto<CustomerDto>>> GetCustomers(
         [FromQuery] string? search, [FromQuery] string? group,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
@@ -97,6 +98,7 @@ public class CustomersController : ControllerBase
 
     // GET /api/pos/customers/all?search=
     [HttpGet("all")]
+    [Authorize]
     public async Task<ActionResult<List<CustomerDto>>> GetAllCustomers([FromQuery] string? search)
     {
         var branchId = GetBranchId();
@@ -115,6 +117,7 @@ public class CustomersController : ControllerBase
 
     // POST /api/pos/customers
     [HttpPost]
+    [HasPermission(PermissionConstants.CUSTOMER_CREATE)]
     public async Task<ActionResult<CustomerDto>> CreateCustomer([FromBody] CreateCustomerRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.CustomerName))
@@ -150,6 +153,7 @@ public class CustomersController : ControllerBase
 
     // PUT /api/pos/customers/{id}
     [HttpPut("{id:guid}")]
+    [HasPermission(PermissionConstants.CUSTOMER_UPDATE)]
     public async Task<ActionResult<CustomerDto>> UpdateCustomer(Guid id, [FromBody] UpdateCustomerRequest request)
     {
         var branchId = GetBranchId();
@@ -180,6 +184,7 @@ public class CustomersController : ControllerBase
 
     // GET /api/pos/customers/{id}
     [HttpGet("{id:guid}")]
+    [Authorize]
     public async Task<ActionResult<CustomerDto>> GetCustomer(Guid id)
     {
         var branchId = GetBranchId();
@@ -192,6 +197,7 @@ public class CustomersController : ControllerBase
     // Có đơn hàng → soft-delete (Status = 0) để giữ lịch sử.
     // Không có đơn → hard-delete.
     [HttpDelete("{id:guid}")]
+    [HasPermission(PermissionConstants.CUSTOMER_DELETE)]
     public async Task<IActionResult> DeleteCustomer(Guid id)
     {
         var branchId = GetBranchId();
@@ -233,6 +239,7 @@ public class CustomersController : ControllerBase
 
     // GET /api/pos/customers/{id}/orders
     [HttpGet("{id:guid}/orders")]
+    [Authorize]
     public async Task<ActionResult<PageResultDto<CustomerOrderDto>>> GetCustomerOrders(
         Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {

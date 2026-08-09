@@ -21,7 +21,7 @@ namespace MEP_Management_System.Controllers.OwnerController;
 [ApiController]
 [Route("api/owner/staffs")]
 [Tags("Quản lý Nhân viên (Owner)")]
-[Authorize(Roles = PermissionConstants.OWNER_ROLE)]
+[Authorize]
 public class OwnerStaffController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
@@ -220,6 +220,7 @@ public class OwnerStaffController : ControllerBase
     /// Lấy danh sách nhân viên của chi nhánh hiện tại.
     /// </summary>
     [HttpGet]
+    [HasPermission(PermissionConstants.STAFF_VIEW)]
     public async Task<IActionResult> GetStaffs(
         [FromQuery] string? search,
         [FromQuery] bool? isActive,
@@ -543,6 +544,7 @@ public class OwnerStaffController : ControllerBase
     /// Dung de dong bo voi cau hinh tu Admin.
     /// </summary>
     [HttpGet("role-permissions")]
+    [HasPermission(PermissionConstants.STAFF_VIEW)]
     public async Task<IActionResult> GetRolePermissions()
     {
         var roles = await _context.Roles
@@ -591,6 +593,7 @@ public class OwnerStaffController : ControllerBase
     /// Lấy danh sách quyền hạn khả dụng từ DB.
     /// </summary>
     [HttpGet("available-permissions")]
+    [HasPermission(PermissionConstants.STAFF_VIEW)]
     public async Task<IActionResult> GetAvailablePermissions()
     {
         var permissions = await _context.Permissions
@@ -619,6 +622,7 @@ public class OwnerStaffController : ControllerBase
     /// Lấy chi tiết một nhân viên.
     /// </summary>
     [HttpGet("{id:guid}")]
+    [HasPermission(PermissionConstants.STAFF_VIEW)]
     public async Task<IActionResult> GetStaffById(Guid id)
     {
         var ownerId = GetCurrentUserId();
@@ -676,6 +680,7 @@ public class OwnerStaffController : ControllerBase
     /// Tạo nhân viên mới - Tự động gán chi nhánh của Owner.
     /// </summary>
     [HttpPost]
+    [HasPermission(PermissionConstants.STAFF_CREATE)]
     public async Task<IActionResult> CreateStaff([FromBody] CreateStaffWithPermissionRequest dto)
     {
         var ownerId = GetCurrentUserId();
@@ -868,6 +873,7 @@ public class OwnerStaffController : ControllerBase
     /// Cập nhật thông tin nhân viên (Không đổi chi nhánh).
     /// </summary>
     [HttpPut("{id:guid}")]
+    [HasPermission(PermissionConstants.STAFF_UPDATE)]
     public async Task<IActionResult> UpdateStaff(Guid id, [FromBody] UpdateStaffPermissionRequest dto)
     {
         var ownerId = GetCurrentUserId();
@@ -973,7 +979,7 @@ public class OwnerStaffController : ControllerBase
                 { "SALE_VIEW", new[] { "SALE_", "CUSTOMER_", "PAYMENT_" } },
                 { "SUPPLIER_VIEW", new[] { "SUPPLIER_" } },
                 { "EXPENSE_VIEW", new[] { "EXPENSE_" } },
-                { "STAFF_VIEW", new[] { "STAFF_", "SHIFT_" } },
+                { "STAFF_VIEW", new[] { "STAFF_" } },
             };
 
             foreach (var kvp in actionToViewPrefixes)
@@ -1018,7 +1024,7 @@ public class OwnerStaffController : ControllerBase
                 { "SALE_VIEW", new[] { "SALE_", "CUSTOMER_", "PAYMENT_" } },
                 { "SUPPLIER_VIEW", new[] { "SUPPLIER_" } },
                 { "EXPENSE_VIEW", new[] { "EXPENSE_" } },
-                { "STAFF_VIEW", new[] { "STAFF_", "SHIFT_" } },
+                { "STAFF_VIEW", new[] { "STAFF_" } },
             };
 
             foreach (var rolePermCode in rolePermissionCodes.Where(c => !requestedCodes.Contains(c)))
@@ -1072,6 +1078,7 @@ public class OwnerStaffController : ControllerBase
     /// Thay đổi trạng thái hoạt động (Bật/Tắt) của tài khoản nhân viên.
     /// </summary>
     [HttpPatch("{id:guid}/toggle-status")]
+    [HasPermission(PermissionConstants.STAFF_UPDATE)]
     public async Task<IActionResult> ToggleStaffStatus(Guid id)
     {
         var ownerId = GetCurrentUserId();
@@ -1132,6 +1139,7 @@ public class OwnerStaffController : ControllerBase
     /// Xóa mềm nhân viên (Soft Delete - chuyển Status = DELETED, IsActive = 0).
     /// </summary>
     [HttpDelete("{id:guid}")]
+    [HasPermission(PermissionConstants.STAFF_DELETE)]
     public async Task<IActionResult> DeleteStaff(Guid id)
     {
         var ownerId = GetCurrentUserId();
@@ -1233,6 +1241,7 @@ public class OwnerStaffController : ControllerBase
     /// Lấy danh sách nhân viên đã xóa mềm của chi nhánh hiện tại.
     /// </summary>
     [HttpGet("deleted")]
+    [HasPermission(PermissionConstants.STAFF_VIEW)]
     public async Task<IActionResult> GetDeletedStaffs()
     {
         var ownerId = GetCurrentUserId();
@@ -1284,6 +1293,7 @@ public class OwnerStaffController : ControllerBase
     /// Khôi phục nhân viên đã xóa mềm.
     /// </summary>
     [HttpPost("{id:guid}/restore")]
+    [HasPermission(PermissionConstants.STAFF_DELETE)]
     public async Task<IActionResult> RestoreStaff(Guid id)
     {
         var ownerId = GetCurrentUserId();
@@ -1328,6 +1338,7 @@ public class OwnerStaffController : ControllerBase
     /// Sau khi anonymize, UserId vẫn giữ nguyên nên các hoá đơn/đơn hàng vẫn trỏ đúng.
     /// </summary>
     [HttpDelete("{id:guid}/permanent")]
+    [HasPermission(PermissionConstants.STAFF_DELETE)]
     public async Task<IActionResult> PermanentDeleteStaff(Guid id)
     {
         var ownerId = GetCurrentUserId();

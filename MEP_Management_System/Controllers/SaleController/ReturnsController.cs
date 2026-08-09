@@ -15,7 +15,7 @@ namespace MEP_Management_System.Controllers.SaleController;
 
 [ApiController]
 [Route("api/pos/returns")]
-[HasPermission(PermissionConstants.SALE_VIEW)]
+[Authorize]
 [Tags("Đổi trả hàng (Return Order)")]
 public class ReturnsController : ControllerBase
 {
@@ -573,6 +573,32 @@ public class ReturnsController : ControllerBase
     // GET /api/pos/returns/invoice/{invoiceId:guid}/eligible-items
     /// <summary>
     /// Trả về danh sách sản phẩm trong hóa đơn kèm trạng thái được phép đổi/trả.
+    /// Lấy chính sách đổi trả theo nhóm hàng của chi nhánh hiện tại (dùng cho POS).
+    /// </summary>
+    [HttpGet("category-policies")]
+    public async Task<ActionResult<List<CategoryPolicyDto>>> GetCategoryPolicies()
+    {
+        var branchId = GetBranchId();
+        var config = await _context.SystemConfigs
+            .FirstOrDefaultAsync(c => c.BranchId == branchId && c.ConfigKey == "CATEGORY_RETURN_POLICIES");
+
+        if (config == null || string.IsNullOrWhiteSpace(config.ConfigValue))
+            return Ok(new List<CategoryPolicyDto>());
+
+        try
+        {
+            var policies = JsonSerializer.Deserialize<List<CategoryPolicyDto>>(config.ConfigValue,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            return Ok(policies ?? new List<CategoryPolicyDto>());
+        }
+        catch
+        {
+            return Ok(new List<CategoryPolicyDto>());
+        }
+    }
+
+    /// <summary>
+    /// Kiểm tra sản phẩm trong hóa đơn có đủ điều kiện đổi/trả không.
     /// Mỗi item được đánh giá độc lập theo policy của category riêng.
     /// </summary>
     [HttpGet("invoice/{invoiceId:guid}/eligible-items")]
