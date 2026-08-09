@@ -4,8 +4,7 @@ public partial class Shift
 {
     public Guid ShiftId { get; set; }
 
-    /// <summary>Format: SHIFT-YYYYMMDD-XXX</summary>
-    public string ShiftCode { get; set; } = null!;
+    public string ShiftCode { get; set; } = "";
 
     /// <summary>Người mở ca (Cash Session)</summary>
     public Guid UserId { get; set; }

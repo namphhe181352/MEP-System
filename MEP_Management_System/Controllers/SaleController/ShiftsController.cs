@@ -197,13 +197,15 @@ catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException
         if (shift == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Shift not found"));
         if (shift.Status == "CLOSED") return BadRequest(ApiErrorResponse.Create("MSG-76", "Shift already closed"));
 
+        // Luôn ghi nhận người chốt ca
+        shift.ClosedByUserId = userId;
+
         // Nếu người chốt != người mở → chốt hộ, bắt buộc có lý do
         if (shift.UserId != userId)
         {
             if (string.IsNullOrWhiteSpace(request.ForceCloseReason))
                 return BadRequest(ApiErrorResponse.Create("MSG-76", "Vui lòng nhập lý do chốt hộ."));
 
-            shift.ClosedByUserId = userId;
             shift.ForceCloseReason = request.ForceCloseReason;
         }
 
@@ -219,13 +221,13 @@ catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException
         shift.ExpectedCash = shift.OpeningBalance + allPayments.Sum(p => p.Amount);
         shift.ActualCash = request.ActualCash;
         shift.Variance = request.ActualCash - shift.ExpectedCash;
-        shift.Note = shift.ClosedByUserId != null && !string.IsNullOrWhiteSpace(shift.ForceCloseReason)
+        shift.Note = shift.UserId != userId && !string.IsNullOrWhiteSpace(shift.ForceCloseReason)
             ? (request.Note ?? "") + " [Chốt hộ: " + shift.ForceCloseReason + "]"
             : request.Note;
         shift.EndedAt = DateTime.UtcNow;
         shift.Status = "CLOSED";
 
-        var chotHo = shift.ClosedByUserId != null;
+        var chotHo = shift.UserId != userId;
         var nguoiChot = User.FindFirst(ClaimTypes.Name)?.Value ?? User.FindFirst("name")?.Value ?? userId.ToString();
         var nguoiMo = shift.User?.FullName ?? shift.UserId.ToString();
         LogAction(chotHo ? "CHOT_CA_HO" : "CHOT_CA", "shifts", "Shift", shift.ShiftId,
@@ -235,7 +237,7 @@ catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException
         await _context.SaveChangesAsync();
 
         var dto = _mapper.Map<ShiftDto>(shift);
-        if (shift.ClosedBy != null) dto.ClosedByUserName = shift.ClosedBy.FullName;
+        dto.ClosedByUserName = User.FindFirst(ClaimTypes.Name)?.Value ?? User.FindFirst("name")?.Value;
 
         _ = _notifications.NotifyBranchShiftClosed(branchId.Value, shift.ShiftId.ToString(), new
         {
@@ -247,7 +249,7 @@ catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException
             shift.ExpectedCash,
             shift.ActualCash,
             shift.EndedAt,
-            ForceClosed = shift.ClosedByUserId != null,
+            ForceClosed = shift.UserId != userId,
             ClosedBy = User.FindFirst(ClaimTypes.Name)?.Value ?? User.FindFirst("name")?.Value
         });
 
