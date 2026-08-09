@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace MEP_Management_System.DTOs.InventoryDTOs
 {
@@ -83,12 +83,8 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? ContactPhone { get; set; }
         public string? ContactEmail { get; set; }
         public List<SupplierDebtPoDetailDto> PurchaseOrders { get; set; } = new();
-<<<<<<< HEAD
-        public List<SupplierDebtPoDetailDto> StockTickets { get; set; } = new();
-=======
         /// <summary>Phiếu nhập kho đã hoàn thành (StockTicket PURCHASE COMPLETED).</summary>
         public List<SupplierDebtStDetailDto> StockTickets { get; set; } = new();
->>>>>>> bca0f3e71c7921a59c1389279c9a58109a183eeb
     }
 
     public class SupplierDebtPoDetailDto

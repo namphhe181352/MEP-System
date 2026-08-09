@@ -76,19 +76,6 @@ namespace MEP_Management_System.Services
                     }).ToList()
                 }).ToList();
 
-<<<<<<< HEAD
-            var stockTicketDetails = supplier.StockTickets
-                .OrderByDescending(t => t.CompletedAt ?? t.CreatedAt)
-                .Select(t => new SupplierDebtPoDetailDto
-                {
-                    PurchaseOrderId = t.StockTicketId,
-                    OrderCode = t.TicketCode ?? t.StockTicketId.ToString()[..8].ToUpper(),
-                    TotalAmount = t.TotalAmount,
-                    Status = t.Status ?? "COMPLETED",
-                    ExpectedDeliveryDate = t.CompletedAt?.ToString("yyyy-MM-dd"),
-                    CreatedAt = (t.CompletedAt ?? t.CreatedAt)?.ToString("yyyy-MM-dd"),
-                    Items = t.StockTicketItems.Select(i => new SupplierDebtPoItemDto
-=======
             // Thêm StockTickets PURCHASE COMPLETED (phiếu nhập kho đã hoàn thành)
             var stockTickets = await _context.StockTickets
                 .Where(t => t.SupplierId == supplierId
@@ -139,24 +126,16 @@ namespace MEP_Management_System.Services
                             productCostPrices.TryGetValue(pid, out unitPrice);
                     }
                     return new SupplierDebtPoItemDto
->>>>>>> bca0f3e71c7921a59c1389279c9a58109a183eeb
                     {
                         ProductId = i.BranchProduct?.ProductId ?? Guid.Empty,
                         ProductCode = i.BranchProduct?.Product?.ProductCode ?? "",
                         ProductName = i.BranchProduct?.Product?.ProductName ?? "",
                         Quantity = i.Discrepancy,
-<<<<<<< HEAD
-                        UnitPrice = i.UnitPrice ?? i.BranchProduct?.CostPrice ?? 0,
-                        LineTotal = i.Discrepancy * (i.UnitPrice ?? i.BranchProduct?.CostPrice ?? 0)
-                    }).ToList()
-                }).ToList();
-=======
                         UnitPrice = unitPrice,
                         LineTotal = i.Discrepancy * unitPrice
                     };
                 }).ToList()
             }).ToList();
->>>>>>> bca0f3e71c7921a59c1389279c9a58109a183eeb
 
             return new SupplierDebtDetailResponse
             {
@@ -165,11 +144,7 @@ namespace MEP_Management_System.Services
                 ContactPhone = supplier.ContactPhone,
                 ContactEmail = supplier.ContactEmail,
                 PurchaseOrders = poDetails,
-<<<<<<< HEAD
-                StockTickets = stockTicketDetails
-=======
                 StockTickets = stDetails
->>>>>>> bca0f3e71c7921a59c1389279c9a58109a183eeb
             };
         }
 
