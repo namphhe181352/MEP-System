@@ -308,7 +308,22 @@ namespace MEP_Management_System.Services
                                 continue;
                             }
                         }
-                        // Mã mới hoàn toàn, không trùng tên -> cho phép tạo mới
+                        // Mã mới hoàn toàn, không trùng tên -> tạo Product ngay trong Parse
+                        var newProductId = Guid.NewGuid();
+                        var newProduct = new Product
+                        {
+                            ProductId = newProductId,
+                            ProductCode = item.MaSanPham,
+                            ProductName = item.TenSanPham ?? item.MaSanPham,
+                            BaseUnit = "Cái",
+                            Status = 1,
+                            SalesChannelLinked = 0,
+                            CreatedAt = DateTime.UtcNow,
+                            CreatedBy = userId
+                        };
+                        _context.Products.Add(newProduct);
+                        await _context.SaveChangesAsync();
+                        item.ResolvedProductId = newProductId;
                     }
                     else
                     {

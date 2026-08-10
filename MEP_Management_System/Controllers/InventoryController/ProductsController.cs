@@ -708,158 +708,237 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var successCount = 0;
                 var errors = new List<string>();
 
-                // Get existing categories and brands for this branch to reuse them or check existence
+                // Get existing categories and brands (globally, because of UNIQUE constraint on name+type)
                 var existingCategories = await _context.ProductTaxonomies
-                    .Where(t => t.BranchId == branchId.Value && t.Type == "Category")
+                    .Where(t => t.Type == "Category")
                     .ToListAsync();
 
                 var existingBrands = await _context.ProductTaxonomies
-                    .Where(t => t.BranchId == branchId.Value && t.Type == "Brand")
+                    .Where(t => t.Type == "Brand")
                     .ToListAsync();
 
-                // Dictionaries to quickly find taxonomy by name (case-insensitive)
-                var categoryDict = existingCategories.ToDictionary(c => c.Name.Trim().ToLower(), c => c);
-                var brandDict = existingBrands.ToDictionary(b => b.Name.Trim().ToLower(), b => b);
+                // Track taxonomy by name -> TaxonomyId (string to Guid)
+                var categoryDict = existingCategories.ToDictionary(
+                    c => c.Name.Trim().ToLower(),
+                    c => c.TaxonomyId);
+                var brandDict = existingBrands.ToDictionary(
+                    b => b.Name.Trim().ToLower(),
+                    b => b.TaxonomyId);
 
-                using var transaction = await _context.Database.BeginTransactionAsync();
-                try
+                // Track newly created taxonomies (entity + key) to save in next batch
+                var newTaxonomies = new List<ProductTaxonomy>();
+                var pendingCategoryKeys = new HashSet<string>();
+                var pendingBrandKeys = new HashSet<string>();
+
+                // OPTIMIZATION: Pre-load ALL existing product codes in ONE query (fixes N+1)
+                // Note: product_code is globally unique, so we must check all products in the database.
+                var existingCodes = await _context.Products
+                    .Select(p => p.ProductCode.ToLower())
+                    .ToListAsync();
+                var existingCodeSet = new HashSet<string>(existingCodes, StringComparer.OrdinalIgnoreCase);
+
+                // Track codes being imported in this batch to prevent duplicates within same import
+                var importedCodesInBatch = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                const int batchSize = 500; // Save every 500 products to avoid EF tracker overload
+                var productsToInsert = new List<Product>();
+                var branchProductsToInsert = new List<BranchProduct>();
+
+                foreach (var pDto in dto.Products)
                 {
-                    foreach (var pDto in dto.Products)
+                    var rowErrors = new List<string>();
+                    if (string.IsNullOrWhiteSpace(pDto.ProductCode)) rowErrors.Add("Mã sản phẩm trống");
+                    else if (pDto.ProductCode.Length > 50) rowErrors.Add("Mã sản phẩm quá 50 ký tự");
+                    
+                    if (string.IsNullOrWhiteSpace(pDto.ProductName)) rowErrors.Add("Tên sản phẩm trống");
+                    else if (pDto.ProductName.Length > 255) rowErrors.Add("Tên sản phẩm quá 255 ký tự");
+                    
+                    if (string.IsNullOrWhiteSpace(pDto.Unit)) rowErrors.Add("Đơn vị trống");
+                    else if (pDto.Unit.Length > 20) rowErrors.Add($"Đơn vị '{pDto.Unit}' quá 20 ký tự");
+                    
+                    if (pDto.CategoryName != null && pDto.CategoryName.Length > 255) rowErrors.Add("Tên danh mục quá 255 ký tự");
+                    if (pDto.BrandName != null && pDto.BrandName.Length > 255) rowErrors.Add("Tên thương hiệu quá 255 ký tự");
+                    
+                    if (pDto.CostPrice < 0) rowErrors.Add("Giá vốn không được âm");
+                    if (pDto.SalePrice < 0) rowErrors.Add("Giá bán không được âm");
+
+                    if (rowErrors.Any())
                     {
-                        var rowErrors = new List<string>();
-                        if (string.IsNullOrWhiteSpace(pDto.ProductCode)) rowErrors.Add("Mã sản phẩm trống");
-                        if (string.IsNullOrWhiteSpace(pDto.ProductName)) rowErrors.Add("Tên sản phẩm trống");
-                        if (string.IsNullOrWhiteSpace(pDto.Unit)) rowErrors.Add("Đơn vị trống");
-                        if (pDto.CostPrice < 0) rowErrors.Add("Giá vốn không được âm");
-                        if (pDto.SalePrice < 0) rowErrors.Add("Giá bán không được âm");
-
-                        if (rowErrors.Any())
-                        {
-                            errors.Add($"Sản phẩm '{pDto.ProductName ?? "Không tên"}': {string.Join(", ", rowErrors)}");
-                            continue;
-                        }
-
-                        // Check existing code
-                        bool isCodeExist = await _context.BranchProducts
-                            .AnyAsync(bp => bp.BranchId == branchId.Value && bp.Product.ProductCode.ToLower() == pDto.ProductCode.Trim().ToLower());
-
-                        if (isCodeExist)
-                        {
-                            errors.Add($"Sản phẩm '{pDto.ProductName}': Mã '{pDto.ProductCode}' đã tồn tại");
-                            continue;
-                        }
-
-                        // Auto-create category if missing
-                        if (dto.AutoCreateMissingCategories && !string.IsNullOrWhiteSpace(pDto.CategoryName))
-                        {
-                            var catName = pDto.CategoryName.Trim();
-                            var catKey = catName.ToLower();
-                            if (!categoryDict.ContainsKey(catKey))
-                            {
-                                var newCat = new ProductTaxonomy
-                                {
-                                    TaxonomyId = Guid.NewGuid(),
-                                    BranchId = branchId.Value,
-                                    Name = catName,
-                                    Type = "Category",
-                                    CreatedAt = currentLocalTime
-                                };
-                                _context.ProductTaxonomies.Add(newCat);
-                                categoryDict[catKey] = newCat; // Add to dict to prevent duplicates in same import
-                            }
-                            // Assign Taxonomy ID to product
-                            pDto.CategoryTaxonomyId = categoryDict[catKey].TaxonomyId;
-                        }
-
-                        // Auto-create brand if missing
-                        if (dto.AutoCreateMissingBrands && !string.IsNullOrWhiteSpace(pDto.BrandName))
-                        {
-                            var brandName = pDto.BrandName.Trim();
-                            var brandKey = brandName.ToLower();
-                            if (!brandDict.ContainsKey(brandKey))
-                            {
-                                var newBrand = new ProductTaxonomy
-                                {
-                                    TaxonomyId = Guid.NewGuid(),
-                                    BranchId = branchId.Value,
-                                    Name = brandName,
-                                    Type = "Brand",
-                                    CreatedAt = currentLocalTime
-                                };
-                                _context.ProductTaxonomies.Add(newBrand);
-                                brandDict[brandKey] = newBrand;
-                            }
-                            pDto.BrandTaxonomyId = brandDict[brandKey].TaxonomyId;
-                        }
-
-                        var product = _mapper.Map<Product>(pDto);
-                        product.ProductId = Guid.NewGuid();
-                        product.CreatedAt = currentLocalTime;
-                        product.CreatedBy = currentUserId;
-                        product.BranchId = branchId;
-
-                        product.ProductConversionUnits = new List<ProductConversionUnit>();
-                        product.BranchProducts = new List<BranchProduct>();
-
-                        _context.Products.Add(product);
-
-                        if (pDto.Images != null && pDto.Images.Any())
-                        {
-                            foreach (var imgUrl in pDto.Images)
-                            {
-                                _context.MediaResources.Add(new MediaResource
-                                {
-                                    MediaId = Guid.NewGuid(),
-                                    ProductId = product.ProductId,
-                                    MediaUrl = imgUrl.Trim(),
-                                    MediaType = "IMAGE",
-                                    IsPrimary = (short)(imgUrl.Trim() == pDto.ImageUrl?.Trim() ? 1 : 0),
-                                    CreatedAt = currentLocalTime
-                                });
-                            }
-                        }
-
-                        var branchProduct = new BranchProduct
-                        {
-                            BranchProductId = Guid.NewGuid(),
-                            BranchId = branchId.Value,
-                            ProductId = product.ProductId,
-                            ActualStock = pDto.ActualStock,
-                            AvailableStock = pDto.AvailableStock,
-                            ReservedStock = pDto.ReservedStock,
-                            ShelfLocation = !string.IsNullOrWhiteSpace(pDto.ShelfLocation) ? pDto.ShelfLocation : "Chưa xếp vị trí",
-                            MinimumStock = pDto.MinimumStock ?? 0,
-                            MaximumStock = pDto.MaximumStock ?? 0,
-                            CostPrice = pDto.CostPrice,
-                            SellPrice = pDto.SalePrice,
-                            DirectSale = (short?)(pDto.DirectSale ? 1 : 0),
-                            IsActive = 0,
-                            Product = null!
-                        };
-                        _context.BranchProducts.Add(branchProduct);
-
-                        successCount++;
+                        errors.Add($"Sản phẩm '{pDto.ProductName ?? "Không tên"}': {string.Join(", ", rowErrors)}");
+                        continue;
                     }
 
-                    await _context.SaveChangesAsync();
-                    await transaction.CommitAsync();
-
-                    return Ok(new ApiResponse<object>
+                    // OPTIMIZED: O(1) lookup instead of DB query
+                    var codeKey = pDto.ProductCode.Trim().ToLower();
+                    if (existingCodeSet.Contains(codeKey) || importedCodesInBatch.Contains(codeKey))
                     {
-                        Success = true,
-                        Message = $"Nhập thành công {successCount} sản phẩm" + (errors.Any() ? $", bỏ qua {errors.Count} sản phẩm lỗi." : "."),
-                        Data = new { successCount, errors }
-                    });
+                        errors.Add($"Sản phẩm '{pDto.ProductName}': Mã '{pDto.ProductCode}' đã tồn tại");
+                        continue;
+                    }
+
+                    // Auto-create category if missing
+                    if (dto.AutoCreateMissingCategories && !string.IsNullOrWhiteSpace(pDto.CategoryName))
+                    {
+                        var catName = pDto.CategoryName.Trim();
+                        var catKey = catName.ToLower();
+                        if (categoryDict.TryGetValue(catKey, out var existingCatId))
+                        {
+                            pDto.CategoryTaxonomyId = existingCatId;
+                        }
+                        else if (pendingCategoryKeys.Contains(catKey))
+                        {
+                            // Find the pending taxonomy ID
+                            var pendingCat = newTaxonomies.FirstOrDefault(t => t.Name.ToLower() == catKey && t.Type == "Category");
+                            pDto.CategoryTaxonomyId = pendingCat?.TaxonomyId ?? Guid.Empty;
+                        }
+                        else
+                        {
+                            var newCat = new ProductTaxonomy
+                            {
+                                TaxonomyId = Guid.NewGuid(),
+                                BranchId = branchId.Value,
+                                Name = catName,
+                                Type = "Category",
+                                CreatedAt = currentLocalTime
+                            };
+                            newTaxonomies.Add(newCat);
+                            pendingCategoryKeys.Add(catKey);
+                            pDto.CategoryTaxonomyId = newCat.TaxonomyId;
+                        }
+                    }
+
+                    // Auto-create brand if missing
+                    if (dto.AutoCreateMissingBrands && !string.IsNullOrWhiteSpace(pDto.BrandName))
+                    {
+                        var brandName = pDto.BrandName.Trim();
+                        var brandKey = brandName.ToLower();
+                        if (brandDict.TryGetValue(brandKey, out var existingBrandId))
+                        {
+                            pDto.BrandTaxonomyId = existingBrandId;
+                        }
+                        else if (pendingBrandKeys.Contains(brandKey))
+                        {
+                            var pendingBrand = newTaxonomies.FirstOrDefault(t => t.Name.ToLower() == brandKey && t.Type == "Brand");
+                            pDto.BrandTaxonomyId = pendingBrand?.TaxonomyId ?? Guid.Empty;
+                        }
+                        else
+                        {
+                            var newBrand = new ProductTaxonomy
+                            {
+                                TaxonomyId = Guid.NewGuid(),
+                                BranchId = branchId.Value,
+                                Name = brandName,
+                                Type = "Brand",
+                                CreatedAt = currentLocalTime
+                            };
+                            newTaxonomies.Add(newBrand);
+                            pendingBrandKeys.Add(brandKey);
+                            pDto.BrandTaxonomyId = newBrand.TaxonomyId;
+                        }
+                    }
+
+                    var product = _mapper.Map<Product>(pDto);
+                    product.ProductId = Guid.NewGuid();
+                    product.CreatedAt = currentLocalTime;
+                    product.CreatedBy = currentUserId;
+                    product.BranchId = branchId;
+                    product.ProductConversionUnits = new List<ProductConversionUnit>();
+                    product.BranchProducts = new List<BranchProduct>();
+
+                    // Track this code as imported
+                    importedCodesInBatch.Add(codeKey);
+
+                    if (pDto.Images != null && pDto.Images.Any())
+                    {
+                        foreach (var imgUrl in pDto.Images)
+                        {
+                            _context.MediaResources.Add(new MediaResource
+                            {
+                                MediaId = Guid.NewGuid(),
+                                ProductId = product.ProductId,
+                                MediaUrl = imgUrl.Trim(),
+                                MediaType = "IMAGE",
+                                IsPrimary = (short)(imgUrl.Trim() == pDto.ImageUrl?.Trim() ? 1 : 0),
+                                CreatedAt = currentLocalTime
+                            });
+                        }
+                    }
+
+                    var branchProduct = new BranchProduct
+                    {
+                        BranchProductId = Guid.NewGuid(),
+                        BranchId = branchId.Value,
+                        ProductId = product.ProductId,
+                        ActualStock = pDto.ActualStock > 0 ? pDto.ActualStock : 0,
+                        AvailableStock = pDto.ActualStock > 0 ? pDto.ActualStock : 0,
+                        ReservedStock = 0,
+                        ShelfLocation = !string.IsNullOrWhiteSpace(pDto.ShelfLocation) ? pDto.ShelfLocation : "Chưa xếp vị trí",
+                        MinimumStock = pDto.MinimumStock ?? 0,
+                        MaximumStock = pDto.MaximumStock ?? 0,
+                        CostPrice = pDto.CostPrice,
+                        SellPrice = pDto.SalePrice,
+                        DirectSale = (short?)(pDto.DirectSale ? 1 : 0),
+                        IsActive = 1,
+                        Product = null!
+                    };
+
+                    productsToInsert.Add(product);
+                    branchProductsToInsert.Add(branchProduct);
+                    // OPTIMIZATION: Batch save every 500 products to prevent EF tracker overload
+                    if (productsToInsert.Count >= batchSize)
+                    {
+                        // Save taxonomies first, then products
+                        if (newTaxonomies.Any())
+                        {
+                            _context.ProductTaxonomies.AddRange(newTaxonomies);
+                            await _context.SaveChangesAsync();
+                            // Add saved taxonomies to dicts so next batch uses them
+                            foreach (var t in newTaxonomies)
+                            {
+                                var key = t.Name.Trim().ToLower();
+                                if (t.Type == "Category")
+                                    categoryDict[key] = t.TaxonomyId;
+                                else
+                                    brandDict[key] = t.TaxonomyId;
+                            }
+                            newTaxonomies.Clear();
+                            pendingCategoryKeys.Clear();
+                            pendingBrandKeys.Clear();
+                        }
+
+                        _context.Products.AddRange(productsToInsert);
+                        _context.BranchProducts.AddRange(branchProductsToInsert);
+                        await _context.SaveChangesAsync();
+
+                        productsToInsert.Clear();
+                        branchProductsToInsert.Clear();
+                        _context.ChangeTracker.Clear(); // Clear tracker to free memory
+                    }
                 }
-                catch (Exception ex)
+
+                // Save remaining taxonomies and products
+                if (newTaxonomies.Any())
                 {
-                    await transaction.RollbackAsync();
-                    throw;
+                    _context.ProductTaxonomies.AddRange(newTaxonomies);
+                    await _context.SaveChangesAsync();
                 }
+                if (productsToInsert.Any())
+                {
+                    _context.Products.AddRange(productsToInsert);
+                    _context.BranchProducts.AddRange(branchProductsToInsert);
+                    await _context.SaveChangesAsync();
+                }
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = $"Nhập thành công {successCount} sản phẩm" + (errors.Any() ? $", bỏ qua {errors.Count} sản phẩm lỗi." : "."),
+                    Data = new { successCount, errors }
+                });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "Lỗi khi import", Errors = new() { ex.Message } });
+                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "Lỗi khi import: " + ex.Message, Errors = new() { ex.InnerException?.Message ?? "" } });
             }
         }
 
