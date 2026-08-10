@@ -207,61 +207,6 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         // ============================================================
-        // GET /api/inwardinventory/by-supplier/{supplierId}
-        // Lookup API - dung cho dropdown chon phieu nhap tham chieu
-        // trong form Xuat tra nha cung cap.
-        // ============================================================
-        [HttpGet("by-supplier/{supplierId:guid}")]
-        // Lookup API - khong yeu cau quyen cu the, chi can da dang nhap
-        public async Task<IActionResult> GetInwardBySupplier(Guid supplierId)
-        {
-            try
-            {
-                var branchId = _currentBranch.GetBranchId();
-                if (branchId == null)
-                    return BadRequest(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "Không xác định được chi nhánh."
-                    });
-
-                var tickets = await _context.StockTickets
-                    .Where(st => st.BranchId == branchId.Value
-                        && st.SupplierId == supplierId
-                        && st.Status == "COMPLETED"
-                        && (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST"))
-                    .OrderByDescending(st => st.CompletedAt ?? st.CreatedAt)
-                    .Select(st => new
-                    {
-                        stockTicketId = st.StockTicketId,
-                        ticketId = st.StockTicketId,
-                        ticketCode = st.TicketCode ?? "",
-                        createdAt = st.CreatedAt,
-                        itemsCount = st.StockTicketItems.Count
-                    })
-                    .ToListAsync();
-
-                return Ok(new ApiResponse<object>
-                {
-                    Success = true,
-                    Message = "Danh sach phieu nhap cua nha cung cap.",
-                    Data = tickets
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<object>
-                {
-                    Success = false,
-                    Message = "Loi khi lay danh sach phieu nhap.",
-                    Errors = new() { ex.Message }
-                });
-            }
-        }
-
-
-
-        // ============================================================
         // GET /api/inwardinventory/{id}
         // ============================================================
         [HttpGet("{id:guid}")]
