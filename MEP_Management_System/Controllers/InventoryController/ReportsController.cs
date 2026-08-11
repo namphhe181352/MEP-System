@@ -435,10 +435,14 @@ public class ReportsController : ControllerBase
             foreach (var e in ledgerIn)
                 entries.Add((e.TransactionTime, e.DocCode ?? "", e.DocType, e.UnitCostPrice, e.QtyChange));
 
-            // Dung BranchProduct.ActualStock lam ton cuoi ky de tinh nguoc ton dau ky
-            // Dam bao ton tuc thoi luon khop voi so du cuoi cung tren thẻ kho
+            // Ton tai thoi diem toDate = ton kho hien tai - bien dong SAU toDate
+            var qtyAfterToDate = await _context.InventoryLedgers
+                .Where(l => l.BranchProductId == branchProductId && l.BranchId == branchId && l.TransactionTime > to)
+                .SumAsync(l => (decimal?)l.QtyChange) ?? 0;
+
+            var stockAtToDate = bp.ActualStock - qtyAfterToDate;
             var inPeriodTotal = entries.Sum(e => e.Qty);
-            openingStock = (bp.ActualStock - inPeriodTotal);
+            openingStock = stockAtToDate - inPeriodTotal;
         }
         else
         {

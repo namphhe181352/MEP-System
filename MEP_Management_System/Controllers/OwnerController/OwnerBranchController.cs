@@ -431,6 +431,23 @@ namespace MEP_Management_System.Controllers.OwnerController
                     .Where(t => t.Type == "Category" && (t.BranchId == null || t.BranchId == id))
                     .ToListAsync();
 
+                var activeCategoryNames = categories
+                    .Select(c => c.Name)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                // Dọn sạch policy của nhóm hàng đã bị xóa (ko còn trong ProductTaxonomies)
+                var cleaned = policies
+                    .Where(p => string.IsNullOrEmpty(p.CategoryName) || activeCategoryNames.Contains(p.CategoryName))
+                    .ToList();
+
+                if (cleaned.Count != policies.Count && config != null)
+                {
+                    config.ConfigValue = System.Text.Json.JsonSerializer.Serialize(cleaned, _camelCaseJsonOptions);
+                    _context.SystemConfigs.Update(config);
+                    await _context.SaveChangesAsync();
+                    policies = cleaned;
+                }
+
                 foreach (var policy in policies)
                 {
                     if (policy.CategoryId == null && !string.IsNullOrEmpty(policy.CategoryName))

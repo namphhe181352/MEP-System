@@ -465,32 +465,36 @@ public class ReturnsController : ControllerBase
         ret.Status = "Completed";
         if (req?.Note != null) ret.Note = req.Note;
 
-        // Hoàn kho: tăng AvailableStock và ActualStock cho từng sản phẩm trả
-        foreach (var ri in ret.ReturnItems)
+        // Hoàn kho: EXCHANGE (doi hang ngang gia) → ton kho giu nguyen
+        // REFUND (tra hang hoan tien) → tang ton kho
+        if (ret.ReturnType == "REFUND")
         {
-            var bp = await _context.BranchProducts.FindAsync(ri.BranchProductId);
-            if (bp != null)
+            foreach (var ri in ret.ReturnItems)
             {
-                bp.AvailableStock += ri.Quantity;
-                bp.ActualStock += ri.Quantity;
-
-                // Ghi inventory_ledger cho tra hang khach (CUSTOMER_RETURN)
-                _context.InventoryLedgers.Add(new InventoryLedger
+                var bp = await _context.BranchProducts.FindAsync(ri.BranchProductId);
+                if (bp != null)
                 {
-                    LedgerId = Guid.NewGuid(),
-                    BranchId = bp.BranchId,
-                    BranchProductId = bp.BranchProductId,
-                    DocType = "CUSTOMER_RETURN",
-                    DocId = ret.ReturnOrderId,
-                    DocCode = ret.ReturnCode,
-                    TransactionTime = DateTime.UtcNow,
-                    QtyChange = ri.Quantity,
-                    UnitCostPrice = Math.Round(bp.CostPrice, 4),
-                    TotalCostValue = Math.Round(ri.Quantity * bp.CostPrice, 4),
-                    StockAfter = bp.ActualStock,
-                    AvgCostAfter = Math.Round(bp.CostPrice, 4),
-                    CreatedAt = DateTime.UtcNow
-                });
+                    bp.AvailableStock += ri.Quantity;
+                    bp.ActualStock += ri.Quantity;
+
+                    // Ghi inventory_ledger cho tra hang khach (CUSTOMER_RETURN)
+                    _context.InventoryLedgers.Add(new InventoryLedger
+                    {
+                        LedgerId = Guid.NewGuid(),
+                        BranchId = bp.BranchId,
+                        BranchProductId = bp.BranchProductId,
+                        DocType = "CUSTOMER_RETURN",
+                        DocId = ret.ReturnOrderId,
+                        DocCode = ret.ReturnCode,
+                        TransactionTime = DateTime.UtcNow,
+                        QtyChange = ri.Quantity,
+                        UnitCostPrice = Math.Round(bp.CostPrice, 4),
+                        TotalCostValue = Math.Round(ri.Quantity * bp.CostPrice, 4),
+                        StockAfter = bp.ActualStock,
+                        AvgCostAfter = Math.Round(bp.CostPrice, 4),
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
             }
         }
 
