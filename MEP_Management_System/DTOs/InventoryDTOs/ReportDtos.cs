@@ -76,6 +76,7 @@ public class StockMovementItemDto
     public string ProductName { get; set; } = null!;
     public string CategoryName { get; set; } = null!;
     public string BaseUnit { get; set; } = null!;
+    public bool IsDeleted { get; set; }
 
     // Số lượng
     public decimal OpeningStock { get; set; }
