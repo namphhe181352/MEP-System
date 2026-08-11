@@ -287,6 +287,15 @@ public class ReportService
             adjustQty = adjData.ToDictionary(x => x.BranchProductId, x => x.Qty);
             adjustValue = adjData.ToDictionary(x => x.BranchProductId, x => x.Value);
 
+            // Tong bien dong SAU ngay ket thuc (toDate -> hien tai)
+            // Dung de tinh nguoc ton cuoi ky chinh xac (ko bi anh huong boi giao dich sau ky)
+            var afterData = await _context.InventoryLedgers
+                .Where(l => l.BranchId == branchId.Value && l.TransactionTime > toDate)
+                .GroupBy(l => l.BranchProductId)
+                .Select(g => new { BranchProductId = g.Key, Qty = g.Sum(l => l.QtyChange) })
+                .ToListAsync();
+            var afterQty = afterData.ToDictionary(x => x.BranchProductId, x => x.Qty);
+
             // Build result
             var items = new List<StockMovementItemDto>();
             decimal totalOpeningV = 0, totalInwardV = 0, totalOutwardV = 0, totalAdjustV = 0, totalClosingV = 0;
@@ -301,9 +310,9 @@ public class ReportService
                 var adjQ = adjustQty.GetValueOrDefault(bpid, 0);
                 var adjV = adjustValue.GetValueOrDefault(bpid, 0);
 
-                // Dung BranchProduct.ActualStock lam ton cuoi ky (source of truth)
-                // Tinh nguoc ton dau ky de dam bao bao cao luon khop voi ton kho thuc te
-                var closingQ = bp.ActualStock;
+                // Ton cuoi ky = ton kho hien tai - bien dong SAU ngay ket thuc
+                // Ton dau ky = ton cuoi ky - nhap + xuat - dieu chinh (tinh nguoc)
+                var closingQ = bp.ActualStock - afterQty.GetValueOrDefault(bpid, 0);
                 var closingV = Math.Round(closingQ * bp.CostPrice, 2);
                 var openQ = closingQ - inQ + outQ - adjQ;
                 var openV = closingV - inV + outV - adjV;

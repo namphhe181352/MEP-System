@@ -2104,6 +2104,33 @@ namespace MEP_Management_System.Controllers.InventoryController
                     _context.ProductTaxonomies.Remove(tax);
                 }
 
+                // Don sach chinh sach doi tra theo nhom hang (CATEGORY_RETURN_POLICIES)
+                // de tranh ton dong policy cua category da bi xoa
+                var policyConfigs = await _context.SystemConfigs
+                    .Where(c => c.ConfigKey == "CATEGORY_RETURN_POLICIES")
+                    .ToListAsync();
+
+                foreach (var config in policyConfigs)
+                {
+                    if (string.IsNullOrWhiteSpace(config.ConfigValue)) continue;
+                    try
+                    {
+                        var policies = System.Text.Json.JsonSerializer.Deserialize<List<CategoryPolicyDto>>(config.ConfigValue);
+                        if (policies == null || policies.Count == 0) continue;
+
+                        var cleaned = policies
+                            .Where(p => !string.Equals(p.CategoryName, trimmed, StringComparison.OrdinalIgnoreCase))
+                            .ToList();
+
+                        if (cleaned.Count != policies.Count)
+                        {
+                            config.ConfigValue = System.Text.Json.JsonSerializer.Serialize(cleaned);
+                            _context.SystemConfigs.Update(config);
+                        }
+                    }
+                    catch { }
+                }
+
                 await _context.SaveChangesAsync();
 
                 return Ok(new ApiResponse<object>
