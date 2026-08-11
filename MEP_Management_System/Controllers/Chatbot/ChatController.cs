@@ -206,7 +206,7 @@ public class ChatController : ControllerBase
 
     private async Task<ChatResponse> ProcessChatAsync(string apiUrl, string apiKey, string model, List<object> messages, string userMessage, string branchId, CancellationToken cancellationToken)
     {
-        messages.Add(new { role = "user", content = userMessage });
+        // User message đã được thêm vào ở SendMessage, không thêm lại ở đây
 
         for (int iteration = 0; iteration < MaxSqlIterations; iteration++)
         {
@@ -217,19 +217,36 @@ public class ChatController : ControllerBase
                 return errorResponse!;
 
             var aiResponse = ExtractAiContent(respText) ?? "";
-            messages.Add(new { role = "assistant", content = aiResponse });
 
-            _logger.LogDebug("AI response (iteration {Iteration}): {Response}", iteration + 1, aiResponse);
-
+            // DeepSeek có thể trả response rỗng khi nhận request liên tiếp quá nhanh.
+            // Retry tối đa 2 lần với delay 1s giữa mỗi lần.
             if (string.IsNullOrWhiteSpace(aiResponse))
             {
-                return new ChatResponse
+                const int maxRetries = 2;
+                for (int retry = 0; retry < maxRetries; retry++)
                 {
-                    Success = true,
-                    Message = "OK",
-                    Data = "Không có phản hồi từ AI."
-                };
+                    _logger.LogWarning("AI returned empty response (retry {Retry}/{Max}), waiting 1s before retrying...", retry + 1, maxRetries);
+                    await Task.Delay(1000, cancellationToken);
+
+                    var (retrySuccess, retryRespText, retryError) = await CallAiApiAsync(apiUrl, apiKey, model, messages, cancellationToken);
+                    if (!retrySuccess) return retryError!;
+
+                    aiResponse = ExtractAiContent(retryRespText) ?? "";
+                    if (!string.IsNullOrWhiteSpace(aiResponse)) break;
+                }
+
+                if (string.IsNullOrWhiteSpace(aiResponse))
+                {
+                    return new ChatResponse
+                    {
+                        Success = true,
+                        Message = "OK",
+                        Data = "Dạ hệ thống AI đang bận, anh/chị vui lòng thử lại sau vài giây nhé."
+                    };
+                }
             }
+
+            messages.Add(new { role = "assistant", content = aiResponse });
 
             var (hasSql, sqlQuery) = ExtractSqlQuery(aiResponse);
 
@@ -460,7 +477,8 @@ public class ChatController : ControllerBase
 4. Khi hỏi số lượng tồn kho: PHẢI lấy từ cột **available_stock** trong bảng **branch_products**, KHÔNG phải từ bảng products
 5. Khi hỏi giá: PHẢI lấy từ **sell_price** trong bảng **branch_products** (vì mỗi chi nhánh có giá khác nhau)
 6. KHÔNG BAO GIỜ dùng `SELECT *` - luôn liệt kê cột cụ thể cần thiết (SELECT * bị hệ thống chặn)
-7. TẤT CẢ các cột ID (branch_id, product_id, category_id, user_id...) đều là kiểu UUID. TUYỆT ĐỐI không bao giờ so sánh ID với số nguyên (ví dụ: KHÔNG ĐƯỢC dùng branch_id = 1 hoặc branch_id = 2). Nếu cần tìm chi nhánh 1, hãy JOIN với bảng branches và tìm theo b.branch_name ILIKE '%1%'.
+7. TẤT CẢ các cột ID (branch_id, product_id, category_id, user_id...) đều là kiểu UUID. TUYỆT ĐỐI không bao giờ so sánh ID với số nguyên.
+8. ⚠️ KHÔNG ĐƯỢC TỰ BỊA DỮ LIỆU: Nếu query SQL bị lỗi hoặc hệ thống trả về kết quả rỗng/null, TUYỆT ĐỐI KHÔNG tự tạo ra dữ liệu giả (như bịa số liệu thanh toán, doanh thu). Hãy trả lời trung thực là ""Không tìm thấy dữ liệu"" hoặc ""Hệ thống đang gặp lỗi truy vấn, xin vui lòng thử lại"".
 
 ## DATABASE SCHEMA (PostgreSQL) - CHỈ được dùng đúng các bảng/cột dưới đây, KHÔNG được tự bịa bảng/cột khác
 
@@ -486,6 +504,7 @@ public class ChatController : ControllerBase
 - suppliers: supplier_id, supplier_name, contact_phone, contact_email, address, status, contact_person, tax_code, group_name, average_rating
 - purchase_orders: purchase_order_id, order_code, supplier_id, user_id, total_amount, status, approved_by, approved_at, expected_delivery_date, created_at
 - purchase_order_items: po_item_id, purchase_order_id, product_id, quantity, unit_price
+- supplier_payments: payment_id, supplier_id, amount, payment_date, is_deleted
 - stock_tickets: stock_ticket_id, ticket_code, branch_id, user_id, ticket_type, status, notes, created_at, supplier_id, total_amount
 - stock_ticket_items: ticket_item_id, stock_ticket_id, branch_product_id, system_quantity, actual_quantity, discrepancy
 - inventory_check_tickets: ticket_id, ticket_code, created_at, status, branch_id
@@ -576,7 +595,7 @@ SELECT
 FROM invoice_items ii
 JOIN invoices i ON ii.invoice_id = i.invoice_id
 JOIN orders o ON i.order_id = o.order_id
-JOIN branch_products bp ON oi.branch_product_id = bp.branch_product_id
+JOIN branch_products bp ON ii.branch_product_id = bp.branch_product_id
 WHERE DATE(i.created_at) = CURRENT_DATE AND i.status = 'Completed';
 --QUERY_END--
 ```
@@ -591,7 +610,7 @@ SELECT
 FROM invoice_items ii
 JOIN invoices i ON ii.invoice_id = i.invoice_id
 JOIN orders o ON i.order_id = o.order_id
-JOIN branch_products bp ON oi.branch_product_id = bp.branch_product_id
+JOIN branch_products bp ON ii.branch_product_id = bp.branch_product_id
 WHERE i.created_at >= '{firstDayOfMonthStr}' AND i.status = 'Completed';
 --QUERY_END--
 ```
@@ -606,7 +625,7 @@ SELECT
 FROM invoice_items ii
 JOIN invoices i ON ii.invoice_id = i.invoice_id
 JOIN orders o ON i.order_id = o.order_id
-JOIN branch_products bp ON oi.branch_product_id = bp.branch_product_id
+JOIN branch_products bp ON ii.branch_product_id = bp.branch_product_id
 WHERE DATE(i.created_at) = CURRENT_DATE - INTERVAL '1 day' AND i.status = 'Completed';
 --QUERY_END--
 ```
@@ -619,9 +638,30 @@ SELECT DATE(i.created_at) as date,
 FROM invoice_items ii
 JOIN invoices i ON ii.invoice_id = i.invoice_id
 JOIN orders o ON i.order_id = o.order_id
-JOIN branch_products bp ON oi.branch_product_id = bp.branch_product_id
+JOIN branch_products bp ON ii.branch_product_id = bp.branch_product_id
 WHERE i.created_at >= CURRENT_DATE - INTERVAL '7 days' AND i.status = 'Completed'
 GROUP BY DATE(i.created_at) ORDER BY date;
+--QUERY_END--
+```
+
+8. Tổng nợ nhà cung cấp (nếu hỏi chi tiết từng nhà cung cấp thì lấy công thức này GROUP BY supplier_id):
+```sql
+--QUERY_START--
+SELECT
+    (SELECT COALESCE(SUM(total_amount), 0) FROM purchase_orders WHERE status IN ('APPROVED', 'PENDING')) +
+    (SELECT COALESCE(SUM(total_amount), 0) FROM stock_tickets WHERE ticket_type = 'PURCHASE' AND status = 'COMPLETED') -
+    (SELECT COALESCE(SUM(amount), 0) FROM supplier_payments WHERE is_deleted = 0) AS total_debt
+--QUERY_END--
+```
+
+9. Phân tích phương thức thanh toán trong 30 ngày qua:
+```sql
+--QUERY_START--
+SELECT p.method as payment_method, count(*) as count, sum(p.amount) as total 
+FROM payments p
+JOIN invoices i ON p.invoice_id = i.invoice_id
+WHERE p.status = 'Confirmed' AND i.status = 'Completed' AND p.paid_at >= CURRENT_DATE - INTERVAL '30 days'
+GROUP BY p.method
 --QUERY_END--
 ```
 
