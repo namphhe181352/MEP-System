@@ -1887,14 +1887,70 @@ namespace MEP_Management_System.Controllers.InventoryController
                     tax.Name = newName;
                 }
 
+                // Cập nhật tên nhóm hàng trong cấu hình đổi/trả (SystemConfigs)
+                var config = await _context.SystemConfigs
+                    .FirstOrDefaultAsync(c => c.BranchId == branchId && c.ConfigKey == "CATEGORY_RETURN_POLICIES");
+
+                string debugBefore = config?.ConfigValue ?? "null";
+                string debugAfter = "not updated";
+
+                if (config != null && !string.IsNullOrWhiteSpace(config.ConfigValue))
+                {
+                    try
+                    {
+                        var caseInsOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                        var camelOptions = new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
+                        
+                        var policies = System.Text.Json.JsonSerializer.Deserialize<List<CategoryPolicyDto>>(config.ConfigValue, caseInsOptions);
+                        if (policies != null)
+                        {
+                            bool policyUpdated = false;
+                            foreach (var policy in policies)
+                            {
+                                bool matchById = tax != null && policy.CategoryId == tax.TaxonomyId;
+                                bool matchByName = policy.CategoryName != null && policy.CategoryName.Equals(oldName, StringComparison.OrdinalIgnoreCase);
+
+                                if (matchById || matchByName)
+                                {
+                                    policy.CategoryName = newName;
+                                    // Bổ sung CategoryId nếu trước đó bị thiếu
+                                    if (tax != null && policy.CategoryId == null)
+                                    {
+                                        policy.CategoryId = tax.TaxonomyId;
+                                    }
+                                    policyUpdated = true;
+                                }
+                            }
+                            if (policyUpdated)
+                            {
+                                config.ConfigValue = System.Text.Json.JsonSerializer.Serialize(policies, camelOptions);
+                                debugAfter = config.ConfigValue;
+                                _context.SystemConfigs.Update(config);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        debugAfter = "error: " + ex.Message;
+                    }
+                }
+
                 await _context.SaveChangesAsync();
 
+                // Trả về thông tin debug để theo dõi xem cấu hình có được cập nhật thành công hay không
                 return Ok(new ApiResponse<object>
                 {
                     Success = true,
                     Message = $"Đã đổi tên nhóm hàng '{oldName}' thành '{newName}' cho {affectedProducts.Count} sản phẩm",
-                    Data = new { UpdatedCount = affectedProducts.Count }
+                    Data = new 
+                    { 
+                        UpdatedCount = affectedProducts.Count,
+                        DebugConfigBefore = debugBefore,
+                        DebugConfigAfter = debugAfter 
+                    }
                 });
+
+
             }
             catch (Exception ex)
             {
