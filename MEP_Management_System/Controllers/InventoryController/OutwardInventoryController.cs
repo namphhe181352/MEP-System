@@ -160,7 +160,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Include(st => st.StockTicketItems)
                         .ThenInclude(item => item.BranchProduct)
                             .ThenInclude(bp => bp.Product)
-                    .Where(st => st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER")
+                    .Where(st => (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER") && !(st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT")))
                     .AsQueryable();
 
                 // Lọc theo branch từ token - áp dụng cho TẤT CẢ user (bao gồm Owner)
