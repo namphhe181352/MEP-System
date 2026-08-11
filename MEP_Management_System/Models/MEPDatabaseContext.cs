@@ -1678,6 +1678,7 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("created_at");
             entity.Property(e => e.BranchId).HasColumnName("branch_id");
+            entity.Property(e => e.CustomerId).HasColumnName("customer_id");
             entity.HasOne(d => d.Invoice).WithMany(p => p.Payments)
                 .HasForeignKey(d => d.InvoiceId)
                 .HasConstraintName("payments_invoice_id_fkey");

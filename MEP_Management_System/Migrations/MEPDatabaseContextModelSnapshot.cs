@@ -138,7 +138,7 @@ namespace MEP_Management_System.Migrations
                     b.Property<short?>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("smallint")
-                        .HasDefaultValue((short)1)
+                        .HasDefaultValue((short)0)
                         .HasColumnName("is_active");
 
                     b.Property<decimal?>("MaximumStock")
@@ -1538,6 +1538,10 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<Guid?>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
                     b.Property<Guid?>("InvoiceId")
                         .HasColumnType("uuid")
                         .HasColumnName("invoice_id");
@@ -1570,6 +1574,8 @@ namespace MEP_Management_System.Migrations
 
                     b.HasKey("PaymentId")
                         .HasName("payments_pkey");
+
+                    b.HasIndex("CustomerId");
 
                     b.HasIndex("InvoiceId");
 
@@ -3702,10 +3708,17 @@ namespace MEP_Management_System.Migrations
 
             modelBuilder.Entity("MEP_Management_System.Models.Payment", b =>
                 {
+                    b.HasOne("MEP_Management_System.Models.Customer", "Customer")
+                        .WithMany("Payments")
+                        .HasForeignKey("CustomerId")
+                        .HasConstraintName("payments_customer_id_fkey");
+
                     b.HasOne("MEP_Management_System.Models.Invoice", "Invoice")
                         .WithMany("Payments")
                         .HasForeignKey("InvoiceId")
                         .HasConstraintName("payments_invoice_id_fkey");
+
+                    b.Navigation("Customer");
 
                     b.Navigation("Invoice");
                 });
@@ -4251,6 +4264,8 @@ namespace MEP_Management_System.Migrations
             modelBuilder.Entity("MEP_Management_System.Models.Customer", b =>
                 {
                     b.Navigation("Orders");
+
+                    b.Navigation("Payments");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.ExpenseCategory", b =>

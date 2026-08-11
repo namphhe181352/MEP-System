@@ -707,7 +707,7 @@ public class OwnerDashboardController : ControllerBase
                 .Where(o => o.CustomerId == c.CustomerId)
                 .MaxAsync(o => (DateTime?)o.CreatedAt);
             var lastPayment = await _context.Payments
-                .Where(p => p.Invoice != null && p.Invoice.Order.CustomerId == c.CustomerId && p.Status == "Confirmed")
+                .Where(p => p.Status == "Confirmed" && (p.Invoice != null && p.Invoice.Order.CustomerId == c.CustomerId || p.CustomerId == c.CustomerId))
                 .MaxAsync(p => (DateTime?)p.CreatedAt);
 
             items.Add(new MEP_Management_System.DTOs.CustomerDebtListItemDto

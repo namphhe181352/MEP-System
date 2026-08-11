@@ -150,7 +150,8 @@ namespace MEP_Management_System.Services
 
         /// <summary>
         /// Tính công nợ hiện tại dùng công thức thống nhất:
-        ///   TotalPurchased = POs(APPROVED|COMPLETED) + StockTickets(PURCHASE, COMPLETED, CompletedAt &lt;= asOfDate)
+        ///   TotalPurchased = POs(APPROVED|PENDING) + StockTickets(PURCHASE, COMPLETED, CompletedAt &lt;= asOfDate)
+        ///   PO COMPLETED được tính qua StockTicket, không tính PO để tránh double-count
         ///   TotalPaid = SupplierPayments(IsDeleted=0, PaymentDate &lt;= asOfDate)
         ///   CurrentDebt = TotalPurchased - TotalPaid
         ///   Status = "Còn nợ" nếu CurrentDebt > 0, ngược lại "Hết nợ"
@@ -161,7 +162,7 @@ namespace MEP_Management_System.Services
 
             var poPurchased = await _context.PurchaseOrders
                 .Where(po => po.SupplierId == supplierId
-                          && (po.Status == "APPROVED" || po.Status == "COMPLETED")
+                          && (po.Status == "APPROVED" || po.Status == "PENDING")
                           && po.CreatedAt <= asOf)
                 .SumAsync(po => (decimal?)(po.TotalAmount ?? 0)) ?? 0m;
 
@@ -203,10 +204,10 @@ namespace MEP_Management_System.Services
 
             var asOf = asOfDate ?? DateTime.UtcNow;
 
-            // 1 query cho POs
+            // 1 query cho POs (chỉ APPROVED/PENDING, COMPLETED tính qua StockTicket)
             var poPurchases = await _context.PurchaseOrders
                 .Where(po => ids.Contains(po.SupplierId)
-                          && (po.Status == "APPROVED" || po.Status == "COMPLETED")
+                          && (po.Status == "APPROVED" || po.Status == "PENDING")
                           && po.CreatedAt <= asOf)
                 .GroupBy(po => po.SupplierId)
                 .Select(g => new { SupplierId = g.Key, Total = g.Sum(po => po.TotalAmount ?? 0) })

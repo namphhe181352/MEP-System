@@ -23,15 +23,18 @@ public class InventoryCheckController : ControllerBase
     private readonly MEPDatabaseContext _context;
     private readonly IHubContext<InventoryHub> _hub;
     private readonly ICurrentBranchAccessor _currentBranch;
+    private readonly InventoryLedgerService _ledgerService;
 
     public InventoryCheckController(
         MEPDatabaseContext context,
         IHubContext<InventoryHub> hub,
-        ICurrentBranchAccessor currentBranch)
+        ICurrentBranchAccessor currentBranch,
+        InventoryLedgerService ledgerService)
     {
         _context = context;
         _hub = hub;
         _currentBranch = currentBranch;
+        _ledgerService = ledgerService;
     }
 
     #region Helper Methods
@@ -1089,14 +1092,22 @@ public class InventoryCheckController : ControllerBase
                 //   (đây là chênh lệch DO KIỂM KÊ phát hiện ra)
                 var discrepancy = detail.ActualQuantity - detail.SystemQuantity;
 
+                // Lưu tồn kho gốc TRƯỚC KHI điều chỉnh để dùng cho logging
+                var originalActualStock = branchProduct.ActualStock;
+
                 // Bước 2: new_stock = tồn hiện tại + discrepancy
                 //   CỘNG DỒN, không ghi đè
                 //   Điều này giữ nguyên mọi giao dịch phát sinh giữa Fill và Approve
-                var newActualStock = branchProduct.ActualStock + discrepancy;
+                var newActualStock = originalActualStock + discrepancy;
 
-                // Bước 3: Cập nhật tồn kho
-                branchProduct.ActualStock = newActualStock;
-                branchProduct.AvailableStock = newActualStock;
+                // Bước 3: Cập nhật tồn kho bằng Atomic SQL (đồng bộ với Inward/Outward)
+                // Tránh race condition khi có giao dịch khác cùng thao tác trên sản phẩm này
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    UPDATE branch_products
+                    SET actual_stock = actual_stock + {discrepancy},
+                        available_stock = available_stock + {discrepancy}
+                    WHERE branch_product_id = {branchProduct.BranchProductId}
+                ");
 
                 // Ghi nhận điều chỉnh vào StockTicket nếu có chênh lệch
                 if (discrepancy != 0)
@@ -1110,7 +1121,10 @@ public class InventoryCheckController : ControllerBase
                         TicketType = discrepancy > 0 ? "BALANCE_ADJUST" : "WRITE_OFF",
                         Status = "COMPLETED",
                         Notes = $"INVENTORY_ADJUSTMENT | Sinh tự động từ phiếu kiểm kê #{ticket.TicketCode}",
-                        CreatedAt = DateTime.UtcNow
+                        CreatedAt = DateTime.UtcNow,
+                        CompletedAt = DateTime.UtcNow,
+                        ConfirmedBy = userId.Value,
+                        TotalAmount = Math.Abs(discrepancy) * branchProduct.CostPrice
                     };
 
                     var directionItem = new StockTicketItem
@@ -1127,11 +1141,30 @@ public class InventoryCheckController : ControllerBase
                     _context.StockTickets.Add(directionTicket);
                     _context.StockTicketItems.Add(directionItem);
                     linkedStockTicketIds.Add(directionTicket.StockTicketId);
+
+                    // Ghi inventory_ledger (single source of truth cho báo cáo xuất nhập tồn)
+                    var ledger = new InventoryLedger
+                    {
+                        LedgerId = Guid.NewGuid(),
+                        BranchId = branchId.Value,
+                        BranchProductId = branchProduct.BranchProductId,
+                        DocType = "BALANCE_ADJUST",
+                        DocId = directionTicket.StockTicketId,
+                        DocCode = directionTicket.TicketCode,
+                        TransactionTime = DateTime.UtcNow,
+                        QtyChange = discrepancy,
+                        UnitCostPrice = Math.Round(branchProduct.CostPrice, 4),
+                        TotalCostValue = Math.Round(discrepancy * branchProduct.CostPrice, 4),
+                        StockAfter = newActualStock,
+                        AvgCostAfter = Math.Round(branchProduct.CostPrice, 4),
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _context.InventoryLedgers.Add(ledger);
                 }
 
                 // Log khi phát hiện có giao dịch bán/nhập xen vào trong lúc kiểm kê
-                // So sánh SystemQuantity (tại Fill) với ActualStock tại Approve
-                var stockChangeDuringCheck = branchProduct.ActualStock - detail.SystemQuantity;
+                // So sánh SystemQuantity (tại Fill) với ActualStock GỐC tại Approve (trước điều chỉnh)
+                var stockChangeDuringCheck = originalActualStock - detail.SystemQuantity;
                 if (stockChangeDuringCheck != 0)
                 {
                     var systemLog = new SystemLog
@@ -1142,7 +1175,7 @@ public class InventoryCheckController : ControllerBase
                         TableName = "InventoryCheckTickets",
                         EntityType = "InventoryCheck",
                         EntityId = ticket.TicketId,
-                        Description = $"Phiếu {ticket.TicketCode} có chênh lệch {stockChangeDuringCheck} tại sản phẩm {detail.Product?.ProductName ?? detail.ProductId.ToString()} ({detail.Product?.ProductCode ?? "—"}) do giao dịch phát sinh trong lúc kiểm kê (SystemQuantity={detail.SystemQuantity}, ActualStock tại Approve={branchProduct.ActualStock}). Discrepancy kiểm kê: {discrepancy}",
+                        Description = $"Phiếu {ticket.TicketCode} có chênh lệch {stockChangeDuringCheck} tại sản phẩm {detail.Product?.ProductName ?? detail.ProductId.ToString()} ({detail.Product?.ProductCode ?? "—"}) do giao dịch phát sinh trong lúc kiểm kê (SystemQuantity={detail.SystemQuantity}, ActualStock gốc tại Approve={originalActualStock}). Discrepancy kiểm kê: {discrepancy}",
                         Level = "INFO",
                         Source = "InventoryCheckController",
                         Timestamp = DateTime.UtcNow

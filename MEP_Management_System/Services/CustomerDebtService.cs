@@ -22,7 +22,7 @@ public class CustomerDebtService
             .SumAsync(i => (decimal?)i.TotalAmount) ?? 0m;
 
         var totalPaid = await _context.Payments
-            .Where(p => p.Invoice != null && p.Invoice.Order.CustomerId == customerId && p.Status == "Confirmed")
+            .Where(p => p.Status == "Confirmed" && (p.Invoice != null && p.Invoice.Order.CustomerId == customerId || p.CustomerId == customerId))
             .SumAsync(p => (decimal?)(p.Amount - (p.ChangeAmount ?? 0))) ?? 0m;
 
         var totalRefunded = await _context.RefundRecords
@@ -54,9 +54,9 @@ public class CustomerDebtService
             .ToDictionaryAsync(x => x.CustomerId, x => x.Total);
 
         var paid = await _context.Payments
-            .Where(p => p.Invoice != null && p.Invoice.Order.CustomerId.HasValue
-                        && idList.Contains(p.Invoice.Order.CustomerId.Value) && p.Status == "Confirmed")
-            .GroupBy(p => p.Invoice!.Order.CustomerId!.Value)
+            .Where(p => p.Status == "Confirmed" && ((p.Invoice != null && p.Invoice.Order.CustomerId.HasValue
+                        && idList.Contains(p.Invoice.Order.CustomerId.Value)) || (p.CustomerId.HasValue && idList.Contains(p.CustomerId.Value))))
+            .GroupBy(p => p.CustomerId ?? p.Invoice!.Order.CustomerId!.Value)
             .Select(g => new { CustomerId = g.Key, Total = g.Sum(p => (decimal?)(p.Amount - (p.ChangeAmount ?? 0))) ?? 0m })
             .ToDictionaryAsync(x => x.CustomerId, x => x.Total);
 

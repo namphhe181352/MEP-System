@@ -6,6 +6,9 @@ public partial class Payment
 
     public Guid? InvoiceId { get; set; }
 
+    /// <summary>FK to Customer for standalone debt repayments (when InvoiceId is null).</summary>
+    public Guid? CustomerId { get; set; }
+
     public string Method { get; set; } = "";
 
     public decimal Amount { get; set; }
@@ -30,4 +33,5 @@ public partial class Payment
     public Guid? BranchId { get; set; }
 
     public virtual Invoice Invoice { get; set; } = null!;
+    public virtual Customer? Customer { get; set; }
 }
