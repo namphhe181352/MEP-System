@@ -316,6 +316,7 @@ public class ReportService
                     ProductName = bp.Product?.ProductName ?? "",
                     CategoryName = bp.Product?.CategoryName ?? "",
                     BaseUnit = bp.Product?.BaseUnit ?? "",
+                    IsDeleted = bp.IsActive == -1 || bp.Product?.Status == -1,
                     OpeningStock = openQ, OpeningValue = openV,
                     InwardQuantity = inQ, InwardValue = inV,
                     OutwardQuantity = outQ, OutwardValue = outV,
@@ -401,6 +402,7 @@ public class ReportService
                 ProductId = bp.ProductId, BranchProductId = bpid,
                 ProductCode = bp.Product?.ProductCode ?? "", ProductName = bp.Product?.ProductName ?? "",
                 CategoryName = bp.Product?.CategoryName ?? "", BaseUnit = bp.Product?.BaseUnit ?? "",
+                IsDeleted = bp.IsActive == -1 || bp.Product?.Status == -1,
                 OpeningStock = openQ, OpeningValue = Math.Round(openV, 2),
                 InwardQuantity = inQ, InwardValue = Math.Round(inV, 2),
                 OutwardQuantity = outQ, OutwardValue = Math.Round(outV, 2),
@@ -448,9 +450,7 @@ public class ReportService
         // Enforce SaaS tenant isolation (BranchId == null cho sản phẩm cũ, BranchId == branchId cho sp mới)
         var productsQuery = _context.BranchProducts
             .Include(bp => bp.Product)
-            .Where(bp => bp.BranchId == branchId.Value && 
-                         bp.IsActive != -1 && 
-                         (bp.Product.Status == null || bp.Product.Status != -1) &&
+            .Where(bp => bp.BranchId == branchId.Value &&
                          (bp.Product.BranchId == null || bp.Product.BranchId == branchId.Value));
 
         // Ưu tiên filter theo CategoryId (Guid) - chính xác hơn
@@ -765,6 +765,7 @@ public class ReportService
                 ProductName = bp.Product?.ProductName ?? "",
                 CategoryName = bp.Product?.CategoryName ?? "",
                 BaseUnit = bp.Product?.BaseUnit ?? "",
+                IsDeleted = bp.IsActive == -1 || bp.Product?.Status == -1,
                 OpeningStock = openingStock,
                 InwardQuantity = inwardInPeriod2,
                 OutwardQuantity = outwardInPeriod2,
