@@ -90,7 +90,6 @@ public static class DatabaseSeeder
             // SYSTEM / OWNER
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000035"), PermissionCode = "OWNER_MANAGE", PermissionName = "Quản lý owner" },
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000036"), PermissionCode = "SYSTEM_MANAGE", PermissionName = "Quản lý hệ thống" },
-            new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000037"), PermissionCode = "REPORT_VIEW", PermissionName = "Xem báo cáo" },
             // STAFF
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000038"), PermissionCode = "STAFF_VIEW", PermissionName = "Xem nhân viên" },
             new() { PermissionId = Guid.Parse("00000000-0000-0000-0000-000000000039"), PermissionCode = "STAFF_CREATE", PermissionName = "Tạo nhân viên" },
@@ -196,8 +195,8 @@ public static class DatabaseSeeder
         // 3. ROLE-PERMISSION MAPPING
         // Admin: tất cả 12 permission
         // Owner: tất cả trừ USER_MANAGE (do Admin quản)
-        // SalesStaff: STOCK_VIEW, POS_SALE, RETURN_PROCESS, CUSTOMER_MANAGE, REPORT_VIEW
-        // InventoryStaff: STOCK_VIEW, STOCK_MANAGE, STOCK_TRANSFER, PRODUCT_MANAGE, REPORT_VIEW
+        // SalesStaff: STOCK_VIEW, POS_SALE, RETURN_PROCESS, CUSTOMER_MANAGE
+        // InventoryStaff: STOCK_VIEW, STOCK_MANAGE, STOCK_TRANSFER, PRODUCT_MANAGE
         // CommunityUser: STOCK_VIEW (chỉ xem giá)
         // ============================================================
         var rolePerms = new List<(Guid RoleId, Guid PermId)>
@@ -257,7 +256,7 @@ public static class DatabaseSeeder
             (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000033")), // PROMOTION_VIEW
             (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000035")), // OWNER_MANAGE
             (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000036")), // SYSTEM_MANAGE
-            (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000037")), // REPORT_VIEW
+            (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000030")), // STOCK_TRANSFER
             (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000038")), // STAFF_VIEW
             (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000039")), // STAFF_CREATE
             (Guid.Parse("10000000-0000-0000-0000-000000000002"), Guid.Parse("00000000-0000-0000-0000-000000000040")), // STAFF_UPDATE

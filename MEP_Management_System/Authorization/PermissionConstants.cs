@@ -76,7 +76,6 @@ public static class PermissionConstants
     // === SYSTEM / OWNER ===
     public const string OWNER_MANAGE = "OWNER_MANAGE";
     public const string SYSTEM_MANAGE = "SYSTEM_MANAGE";
-    public const string REPORT_VIEW = "REPORT_VIEW";
 
     // === STAFF / EMPLOYEE (Nhân viên) ===
     public const string STAFF_VIEW = "STAFF_VIEW";

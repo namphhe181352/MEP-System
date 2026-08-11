@@ -225,11 +225,10 @@ public class ReportService
         var fromDate = request.FromDate.Date;
         var toDate = request.ToDate.Date.AddDays(1).AddTicks(-1);
 
-        // Lấy danh sách sản phẩm trong kho
+        // Lấy danh sách sản phẩm trong kho (bao gồm cả sản phẩm đã xóa nếu có giao dịch trong kỳ)
         var productsQuery = _context.BranchProducts
             .Include(bp => bp.Product)
-            .Where(bp => bp.BranchId == branchId.Value && bp.IsActive != -1
-                && (bp.Product.Status == null || bp.Product.Status != -1)
+            .Where(bp => bp.BranchId == branchId.Value
                 && (bp.Product.BranchId == null || bp.Product.BranchId == branchId.Value));
 
         if (request.CategoryId.HasValue && request.CategoryId != Guid.Empty)

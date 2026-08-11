@@ -418,23 +418,6 @@ public class ReportsController : ControllerBase
         var ledgerBefore = await _context.InventoryLedgers
             .Where(l => l.BranchProductId == branchProductId && l.BranchId == branchId && l.TransactionTime < from)
             .SumAsync(l => (decimal?)l.QtyChange) ?? 0;
-        openingStock = ledgerBefore;
-
-        // Fallback nếu ledger trống
-        if (ledgerBefore == 0 && await _context.InventoryLedgers.CountAsync() == 0)
-        {
-            var stBefore = await _context.StockTicketItems
-                .Where(sti => sti.BranchProductId == branchProductId && sti.StockTicket.BranchId == branchId
-                    && sti.StockTicket.Status == "COMPLETED" && sti.StockTicket.CreatedAt < from)
-                .SumAsync(sti => (decimal?)(sti.StockTicket.TicketType == "PURCHASE" || sti.StockTicket.TicketType == "CUSTOMER_RETURN" ? sti.Discrepancy : -sti.Discrepancy)) ?? 0;
-
-            var invBefore = await _context.InvoiceItems
-                .Where(ii => ii.BranchProductId == branchProductId && ii.Invoice.Order.BranchId == branchId
-                    && ii.Invoice.Status == "Completed" && ii.Invoice.CreatedAt < from)
-                .SumAsync(ii => (decimal?)(-(ii.Quantity * (ii.ConvertValue ?? 1m)))) ?? 0;
-
-            openingStock = stBefore + invBefore;
-        }
 
         // === Bước 2: Lấy giao dịch TRONG KỲ (fromDate -> toDate) ===
         var entries = new List<(DateTime Time, string Doc, string Type, decimal Price, decimal Qty)>();
@@ -451,10 +434,33 @@ public class ReportsController : ControllerBase
         {
             foreach (var e in ledgerIn)
                 entries.Add((e.TransactionTime, e.DocCode ?? "", e.DocType, e.UnitCostPrice, e.QtyChange));
+
+            // Dung BranchProduct.ActualStock lam ton cuoi ky de tinh nguoc ton dau ky
+            // Dam bao ton tuc thoi luon khop voi so du cuoi cung tren thẻ kho
+            var inPeriodTotal = entries.Sum(e => e.Qty);
+            openingStock = (bp.ActualStock - inPeriodTotal);
         }
         else
         {
-            // Fallback từ bảng gốc
+            // Fallback: dung ledger truoc ky neu co, hoac tinh tu StockTicket + Invoice
+            openingStock = ledgerBefore;
+
+            if (ledgerBefore == 0 && await _context.InventoryLedgers.CountAsync() == 0)
+            {
+                var stBefore = await _context.StockTicketItems
+                    .Where(sti => sti.BranchProductId == branchProductId && sti.StockTicket.BranchId == branchId
+                        && sti.StockTicket.Status == "COMPLETED" && sti.StockTicket.CreatedAt < from)
+                    .SumAsync(sti => (decimal?)(sti.StockTicket.TicketType == "PURCHASE" || sti.StockTicket.TicketType == "CUSTOMER_RETURN" ? sti.Discrepancy : -sti.Discrepancy)) ?? 0;
+
+                var invBefore = await _context.InvoiceItems
+                    .Where(ii => ii.BranchProductId == branchProductId && ii.Invoice.Order.BranchId == branchId
+                        && ii.Invoice.Status == "Completed" && ii.Invoice.CreatedAt < from)
+                    .SumAsync(ii => (decimal?)(-(ii.Quantity * (ii.ConvertValue ?? 1m)))) ?? 0;
+
+                openingStock = stBefore + invBefore;
+            }
+
+            // Fallback entries tu StockTicket + Invoice
             var stIn = await _context.StockTicketItems
                 .Where(sti => sti.BranchProductId == branchProductId && sti.StockTicket.BranchId == branchId
                     && sti.StockTicket.Status == "COMPLETED"

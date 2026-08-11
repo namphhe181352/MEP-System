@@ -74,7 +74,7 @@ public class AdminRolesController : ControllerBase
             "STAFF_VIEW", "STAFF_CREATE", "STAFF_UPDATE", "STAFF_DELETE", "STAFF_ASSIGN_BRANCH",
             "SHIFT_VIEW", "SHIFT_CREATE", "SHIFT_UPDATE", "SHIFT_FORCE_CLOSE",
             "PRINT_VIEW", "PROMOTION_VIEW",
-            "REPORT_VIEW", "PRODUCT_CATEGORY_MANAGE", "STOCK_CHECK_COUNT"
+            "PRODUCT_CATEGORY_MANAGE", "STOCK_CHECK_COUNT"
         };
         var existingCodes = await _context.Permissions
             .Where(p => requiredCodes.Contains(p.PermissionCode))
