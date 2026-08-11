@@ -854,7 +854,7 @@ public class ReportService
             .Select(ii => new
             {
                 Date = ii.Invoice.CreatedAt!.Value.Date,
-                Cost = ii.Quantity * (ii.BranchProduct.CostPrice > 0 ? ii.BranchProduct.CostPrice : 0m)
+                Cost = ii.Quantity * (ii.ConvertValue ?? 1m) * (ii.CostPrice > 0 ? ii.CostPrice : (ii.BranchProduct.CostPrice > 0 ? ii.BranchProduct.CostPrice : 0m))
             })
             .ToListAsync();
 
@@ -1045,6 +1045,8 @@ public class ReportService
         var query = _context.BranchProducts
             .Include(bp => bp.Product)
             .Where(bp => bp.BranchId == branchId.Value
+                && bp.IsActive == 1
+                && (bp.Product.Status == null || bp.Product.Status != -1)
                 && bp.MinimumStock.HasValue
                 && (request.IncludeZeroStock
                     ? bp.ActualStock <= bp.MinimumStock
@@ -1132,9 +1134,6 @@ public class ReportService
                 && ii.Invoice.CreatedAt.Value <= toDate)
             .ToListAsync();
 
-        // Debug
-        Console.WriteLine($"[ProductProfitReport] branchId={branchId.Value}, fromDate={fromDate}, toDate={toDate}, invoiceItems.Count={invoiceItems.Count}");
-
         // Lọc theo nhóm sản phẩm nếu có
         var filteredItems = invoiceItems;
 
@@ -1178,7 +1177,6 @@ public class ReportService
                 ii.BranchProduct.Product.ProductCode,
                 ii.BranchProduct.Product.ProductName,
                 ii.BranchProduct.Product.CategoryName,
-                ii.BranchProduct.CostPrice
             })
             .Select(g => new
             {
@@ -1186,9 +1184,9 @@ public class ReportService
                 g.Key.ProductCode,
                 g.Key.ProductName,
                 g.Key.CategoryName,
-                QuantitySold = g.Sum(ii => ii.Quantity),
+                QuantitySold = g.Sum(ii => ii.Quantity * (ii.ConvertValue ?? 1m)),
                 Revenue = g.Sum(ii => ii.Quantity * ii.SellPrice),
-                Cost = g.Sum(ii => ii.Quantity * g.Key.CostPrice)
+                Cost = g.Sum(ii => ii.Quantity * (ii.ConvertValue ?? 1m) * (ii.CostPrice > 0 ? ii.CostPrice : ii.BranchProduct.CostPrice))
             })
             .ToList();
 
