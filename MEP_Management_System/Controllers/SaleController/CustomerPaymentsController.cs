@@ -88,6 +88,7 @@ public class CustomerPaymentsController : ControllerBase
         {
             PaymentId = Guid.NewGuid(),
             InvoiceId = null,
+            CustomerId = customerId,
             Method = request.Method ?? "Cash",
             Amount = request.Amount,
             Status = "Confirmed",

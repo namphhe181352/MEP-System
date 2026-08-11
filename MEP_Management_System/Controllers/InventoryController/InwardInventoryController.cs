@@ -451,8 +451,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     // Tìm BranchProduct
                     var branchProduct = await _context.BranchProducts
                         .FirstOrDefaultAsync(bp =>
-                            (isGuid && (bp.BranchProductId == parsedId || bp.ProductId == parsedId))
-                            || (!isGuid && bp.Product != null && bp.Product.ProductCode == item.Id)
+                            ((isGuid && (bp.BranchProductId == parsedId || bp.ProductId == parsedId))
+                            || (!isGuid && bp.Product != null && bp.Product.ProductCode == item.Id))
                             && bp.BranchId == resolvedBranchId.Value);
 
                     Guid actualBranchProductId;
@@ -886,21 +886,36 @@ namespace MEP_Management_System.Controllers.InventoryController
                     // Atomic UPDATE: cộng tồn kho trực tiếp trong DB, tránh xung đột
                     try
                     {
-                        await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                            UPDATE branch_products
-                            SET actual_stock = actual_stock + {item.Discrepancy},
-                                available_stock = available_stock + {item.Discrepancy},
-                                is_active = CASE WHEN is_active = -1 THEN 1 ELSE is_active END,
-                                direct_sale = CASE WHEN is_active = -1 THEN 1 ELSE direct_sale END,
-                                cost_price = CASE
-                                    WHEN (actual_stock + {item.Discrepancy}) > 0
-                                    THEN ROUND((
-                                        (actual_stock * cost_price) + ({item.Discrepancy} * {unitPrice})
-                                    ) / (actual_stock + {item.Discrepancy}), 2)
-                                    ELSE {unitPrice}
-                                END
-                            WHERE branch_product_id = {item.BranchProductId}
-                        ");
+                        // CUSTOMER_RETURN: không tính lại cost_price để tránh làm loãng giá vốn bình quân
+                        if (stockTicket.TicketType == "CUSTOMER_RETURN")
+                        {
+                            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                                UPDATE branch_products
+                                SET actual_stock = actual_stock + {item.Discrepancy},
+                                    available_stock = available_stock + {item.Discrepancy},
+                                    is_active = CASE WHEN is_active = -1 THEN 1 ELSE is_active END,
+                                    direct_sale = CASE WHEN is_active = -1 THEN 1 ELSE direct_sale END
+                                WHERE branch_product_id = {item.BranchProductId}
+                            ");
+                        }
+                        else
+                        {
+                            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                                UPDATE branch_products
+                                SET actual_stock = actual_stock + {item.Discrepancy},
+                                    available_stock = available_stock + {item.Discrepancy},
+                                    is_active = CASE WHEN is_active = -1 THEN 1 ELSE is_active END,
+                                    direct_sale = CASE WHEN is_active = -1 THEN 1 ELSE direct_sale END,
+                                    cost_price = CASE
+                                        WHEN (actual_stock + {item.Discrepancy}) > 0
+                                        THEN ROUND((
+                                            (actual_stock * cost_price) + ({item.Discrepancy} * {unitPrice})
+                                        ) / (actual_stock + {item.Discrepancy}), 2)
+                                        ELSE {unitPrice}
+                                    END
+                                WHERE branch_product_id = {item.BranchProductId}
+                            ");
+                        }
                     }
                     catch (Exception ex) when (ex is DbUpdateConcurrencyException || ex is DbUpdateException)
                     {

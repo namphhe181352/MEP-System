@@ -503,6 +503,24 @@ namespace MEP_Management_System.Services
                     branchProduct.ActualStock += item.SoLuong;
                     branchProduct.AvailableStock += item.SoLuong;
 
+                    // Ghi inventory_ledger cho import Excel
+                    _context.InventoryLedgers.Add(new InventoryLedger
+                    {
+                        LedgerId = Guid.NewGuid(),
+                        BranchId = preview.BranchId,
+                        BranchProductId = actualBranchProductId,
+                        DocType = "PURCHASE",
+                        DocId = stockTicket.StockTicketId,
+                        DocCode = stockTicket.TicketCode,
+                        TransactionTime = DateTime.UtcNow,
+                        QtyChange = item.SoLuong,
+                        UnitCostPrice = Math.Round(item.DonGiaNhap, 4),
+                        TotalCostValue = Math.Round(item.SoLuong * item.DonGiaNhap, 4),
+                        StockAfter = branchProduct.ActualStock,
+                        AvgCostAfter = Math.Round(branchProduct.CostPrice, 4),
+                        CreatedAt = DateTime.UtcNow
+                    });
+
                     // Tạo StockTicketItem - snapshot UnitPrice tại thời điểm nhập
                     var ticketItem = new StockTicketItem
                     {

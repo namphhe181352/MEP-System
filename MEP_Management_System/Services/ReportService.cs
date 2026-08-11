@@ -295,16 +295,19 @@ public class ReportService
             foreach (var bp in products)
             {
                 var bpid = bp.BranchProductId;
-                var openQ = openingStock.GetValueOrDefault(bpid, 0);
-                var openV = openingValues.GetValueOrDefault(bpid, 0);
                 var inQ = inwardQty.GetValueOrDefault(bpid, 0);
                 var inV = inwardValue.GetValueOrDefault(bpid, 0);
                 var outQ = outwardQty.GetValueOrDefault(bpid, 0);
                 var outV = outwardValue.GetValueOrDefault(bpid, 0);
                 var adjQ = adjustQty.GetValueOrDefault(bpid, 0);
                 var adjV = adjustValue.GetValueOrDefault(bpid, 0);
-                var closingQ = openQ + inQ - outQ + adjQ;
-                var closingV = Math.Round(closingQ * bp.CostPrice, 2); // GT_Cuối = SL_Cuối × Giá vốn BQ hiện tại
+
+                // Dung BranchProduct.ActualStock lam ton cuoi ky (source of truth)
+                // Tinh nguoc ton dau ky de dam bao bao cao luon khop voi ton kho thuc te
+                var closingQ = bp.ActualStock;
+                var closingV = Math.Round(closingQ * bp.CostPrice, 2);
+                var openQ = closingQ - inQ + outQ - adjQ;
+                var openV = closingV - inV + outV - adjV;
 
                 items.Add(new StockMovementItemDto
                 {
@@ -349,8 +352,8 @@ public class ReportService
         // Pre-period queries
         var inwardPurchaseBefore = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && st.TicketType == "PURCHASE" && st.CreatedAt < fromDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
         var inwardReturnBefore = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && st.TicketType == "CUSTOMER_RETURN" && st.CreatedAt < fromDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
-        var outwardTicketsBefore = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER") && st.CreatedAt < fromDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
-        var adjustmentBefore = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && st.TicketType == "BALANCE_ADJUST" && st.CreatedAt < fromDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
+        var outwardTicketsBefore = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER") && !(st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT")) && st.CreatedAt < fromDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
+        var adjustmentBefore = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && (st.TicketType == "BALANCE_ADJUST" || (st.TicketType == "WRITE_OFF" && st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT"))) && st.CreatedAt < fromDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.StockTicket != null && s.StockTicket.TicketType == "WRITE_OFF" ? -s.Discrepancy : s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
 
         // Sales trước kỳ - dùng invoice_items cho cả SL và giá trị
         var salesBefore = await _context.InvoiceItems.Where(ii => ii.Invoice.Order.BranchId == branchId && ii.Invoice.Status == "Completed" && ii.Invoice.CreatedAt < fromDate).GroupBy(ii => ii.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(ii => ii.Quantity * (ii.ConvertValue ?? 1m)), Value = g.Sum(ii => (ii.Quantity * (ii.ConvertValue ?? 1m)) * (ii.CostPrice > 0 ? ii.CostPrice : ii.BranchProduct.CostPrice)) }).ToDictionaryAsync(x => x.Key, x => new { x.Qty, x.Value });
@@ -358,8 +361,8 @@ public class ReportService
         // In-period queries
         var inwardPurchaseIn = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && st.TicketType == "PURCHASE" && st.CreatedAt >= fromDate && st.CreatedAt <= toDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
         var inwardReturnIn = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && st.TicketType == "CUSTOMER_RETURN" && st.CreatedAt >= fromDate && st.CreatedAt <= toDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
-        var outwardTicketsIn = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER") && st.CreatedAt >= fromDate && st.CreatedAt <= toDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
-        var adjustmentIn = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && st.TicketType == "BALANCE_ADJUST" && st.CreatedAt >= fromDate && st.CreatedAt <= toDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
+        var outwardTicketsIn = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER") && !(st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT")) && st.CreatedAt >= fromDate && st.CreatedAt <= toDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
+        var adjustmentIn = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && (st.TicketType == "BALANCE_ADJUST" || (st.TicketType == "WRITE_OFF" && st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT"))) && st.CreatedAt >= fromDate && st.CreatedAt <= toDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.StockTicket != null && s.StockTicket.TicketType == "WRITE_OFF" ? -s.Discrepancy : s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
 
         // Sales trong kỳ - dùng invoice_items
         var salesIn = await _context.InvoiceItems.Where(ii => ii.Invoice.Order.BranchId == branchId && ii.Invoice.Status == "Completed" && ii.Invoice.CreatedAt >= fromDate && ii.Invoice.CreatedAt <= toDate).GroupBy(ii => ii.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(ii => ii.Quantity * (ii.ConvertValue ?? 1m)), Value = g.Sum(ii => (ii.Quantity * (ii.ConvertValue ?? 1m)) * (ii.CostPrice > 0 ? ii.CostPrice : ii.BranchProduct.CostPrice)) }).ToDictionaryAsync(x => x.Key, x => new { x.Qty, x.Value });

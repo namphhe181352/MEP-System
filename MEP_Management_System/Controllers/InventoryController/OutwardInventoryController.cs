@@ -1061,6 +1061,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                 stockTicket.Status = "COMPLETED";
                 stockTicket.CompletedAt = DateTime.UtcNow;
                 stockTicket.ConfirmedBy = currentUserId;
+                stockTicket.TotalAmount = stockTicket.StockTicketItems.Sum(item =>
+                    item.Discrepancy * (item.UnitPrice ?? 0));
 
                 // ============================================================
                 // TRỪ NỢ NCC: Tạo SupplierPayment khi xuất trả hàng cho NCC

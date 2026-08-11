@@ -76,8 +76,10 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                      */
 
                     // 1. Nợ đầu kỳ: (Tổng mua tháng trước) - (Tổng chi tháng trước)
+                    // PO APPROVED/PENDING: chưa confirm → vẫn tính nợ
+                    // PO COMPLETED: đã confirm → tính qua StockTicket, không tính PO để tránh double-count
                     decimal openingPurchased = s.PurchaseOrders
-                        .Where(po => po.CreatedAt < currentMonth && (po.Status == "APPROVED" || po.Status == "COMPLETED"))
+                        .Where(po => po.CreatedAt < currentMonth && (po.Status == "APPROVED" || po.Status == "PENDING"))
                         .Sum(po => po.TotalAmount ?? 0);
 
                     decimal openingStockTicketDebt = s.StockTickets
@@ -91,9 +93,11 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     decimal openingDebt = openingPurchased + openingStockTicketDebt - openingPaid;
 
                     // 2. Phát sinh mua trong kỳ (Tháng hiện tại)
+                    // PO APPROVED/PENDING: chưa confirm → tính vào phát sinh mua
+                    // PO COMPLETED: tính qua StockTicket bên dưới, tránh double-count
                     decimal purchasedInPeriod = s.PurchaseOrders
                         .Where(po => po.CreatedAt >= currentMonth
-                                  && (po.Status == "COMPLETED" || po.Status == "APPROVED"))
+                                  && (po.Status == "APPROVED" || po.Status == "PENDING"))
                         .Sum(po => po.TotalAmount ?? 0);
 
                     decimal stockTicketPurchasedInPeriod = s.StockTickets
