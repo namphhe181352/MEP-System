@@ -161,5 +161,25 @@ namespace MEP_Management_System.UnitTests.Controllers
             Assert.False(response.Success);
             Assert.Contains("Mật khẩu hiện tại không đúng", response.Message);
         }
+
+        [Fact]
+        public async Task ChangePassword_SamePassword_ReturnsBadRequest()
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var userId = Guid.NewGuid();
+            var hashedPassword = BCrypt.Net.BCrypt.HashPassword("Password123!");
+            context.Users.Add(new User { UserId = userId, PasswordHash = hashedPassword });
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context, userId);
+            var request = new ChangePasswordRequest { CurrentPassword = "Password123!", NewPassword = "Password123!" };
+
+            var result = await controller.ChangePassword(request);
+
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
+            var response = Assert.IsType<ApiResponse<bool>>(badRequest.Value);
+            Assert.False(response.Success);
+            Assert.Contains("Mật khẩu mới không được trùng với mật khẩu cũ", response.Message);
+        }
     }
 }
