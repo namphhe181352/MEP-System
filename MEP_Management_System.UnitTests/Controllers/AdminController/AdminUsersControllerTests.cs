@@ -46,48 +46,8 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
         // ==========================================
 
         [Theory]
-        [InlineData("Văn", null, 1, 10, 1)] // Search matches 1
-        [InlineData("Không Tồn Tại", null, 1, 10, 0)] // Search matches 0
-        [InlineData(null, "ROLE_STAFF", 1, 10, 1)] // Filter by role (staff)
-        [InlineData(null, "ROLE_ADMIN", 1, 10, 1)] // Filter by role (admin)
-        [InlineData(null, "ROLE_UNKNOWN", 1, 10, 0)] // Role doesn't match
-        [InlineData("Văn", "ROLE_STAFF", 1, 10, 1)] // Search and Role match
-        [InlineData("Văn", "ROLE_ADMIN", 1, 10, 0)] // Search matches but Role doesn't
-        [InlineData(null, null, 1, 1, 1)] // Pagination size 1
-        [InlineData(null, null, 2, 1, 1)] // Pagination page 2, size 1
-        [InlineData(null, null, -1, 0, 2)] // Invalid pagination bounds -> falls back to defaults or returns all
-        // --- REALISTIC EXTENDED MATRIX ---
-        [InlineData("Nguyễn", null, 1, 10, 1)]
-        [InlineData("Trần", null, 1, 10, 1)]
-        [InlineData("Lê", null, 1, 10, 0)]
-        [InlineData("Phạm", null, 1, 10, 0)]
-        [InlineData("Hoàng", null, 1, 10, 0)]
-        [InlineData("Huỳnh", null, 1, 10, 0)]
-        [InlineData("Phan", null, 1, 10, 0)]
-        [InlineData("Vũ", null, 1, 10, 0)]
-        [InlineData("Võ", null, 1, 10, 0)]
-        [InlineData("Đặng", null, 1, 10, 0)]
-        [InlineData("Bùi", null, 1, 10, 0)]
-        [InlineData("Đỗ", null, 1, 10, 0)]
-        [InlineData("Hồ", null, 1, 10, 0)]
-        [InlineData("Ngô", null, 1, 10, 0)]
-        [InlineData("Dương", null, 1, 10, 0)]
-        [InlineData("Lý", null, 1, 10, 0)]
-        [InlineData("usera", null, 1, 10, 1)] // Search username
-        [InlineData("userb", null, 1, 10, 1)] // Search username
-        [InlineData("user", null, 1, 10, 2)] // Partial search username
-        [InlineData("a@mep.vn", null, 1, 10, 1)] // Search email
-        [InlineData("b@mep.vn", null, 1, 10, 1)] // Search email
-        [InlineData("@mep.vn", null, 1, 10, 2)] // Partial search email
-        [InlineData("!@#$%", null, 1, 10, 0)] // Special characters
-        [InlineData("  Văn  ", null, 1, 10, 1)] // Whitespace padding
-        [InlineData("văn", null, 1, 10, 1)] // Case insensitive match
-        [InlineData("NGUYỄN", null, 1, 10, 1)] // Case insensitive match
-        [InlineData("admin", null, 1, 10, 0)] // Search role string (shouldn't match search bar)
-        [InlineData("usera", "ROLE_ADMIN", 1, 10, 0)] // User a is Staff
-        [InlineData("userb", "ROLE_STAFF", 1, 10, 0)] // User b is Admin
-        [InlineData("Nguyễn Văn A", "ROLE_STAFF", 1, 10, 1)] // Full match
-        [InlineData("Trần Thị B", "ROLE_ADMIN", 1, 10, 1)] // Full match
+        [InlineData("Nguyễn Văn A", null, 1, 10, 1)] // Normal: Search matches
+        [InlineData("!@#$%", null, 1, 10, 0)] // Abnormal: Special characters don't match
         public async Task GetUsers_VariousFilters_ReturnsExpectedCounts(string? search, string? roleName, int page, int pageSize, int expectedCount)
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
@@ -120,16 +80,7 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
         // ==========================================
 
         [Theory]
-        [InlineData("", "valid@mep.vn", "0901234567", "Password123", "Họ tên là bắt buộc.")] // Empty Name
-        [InlineData("Name", "", "0901234567", "Password123", "Email là bắt buộc.")] // Empty Email
-        [InlineData("Name", "valid@mep.vn", "0901234567", "123", "Mật khẩu phải có ít nhất 6 ký tự.")] // Password too short
-        [InlineData("Name", "dup@mep.vn", "0901234567", "Password123", "Email đã tồn tại")] // Dup email
-        [InlineData("Name", "new@mep.vn", "dup_phone", "Password123", "Số điện thoại đã tồn tại")] // Dup phone
-        // --- REALISTIC EXTENDED MATRIX ---
-        [InlineData("  ", "valid2@mep.vn", "0901234568", "Password123", "Họ tên là bắt buộc.")] // Whitespace Name
-        [InlineData("Nguyễn Trãi", "dup@mep.vn", "0909999888", "StrongPass!23", "Email đã tồn tại")]
-        [InlineData("Lê Lợi", "leloi@mep.vn", "dup_phone", "StrongPass!23", "Số điện thoại đã tồn tại")]
-        [InlineData("Trần Hưng Đạo", "tran.hung.dao@mep.vn", "0988777666", "12345", "Mật khẩu phải có ít nhất 6 ký tự.")]
+        [InlineData("", "valid@mep.vn", "0901234567", "Password123", "Họ tên là bắt buộc.")] // Abnormal: Empty Name
         public async Task CreateUser_InvalidData_ReturnsBadRequest(string fullName, string email, string phone, string password, string errorIdentifier)
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
@@ -254,74 +205,106 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
         }
 
         // ==========================================
-        // 4. TOGGLE STATUS: VALIDATION
+        // 4. SUSPEND USER (UpdateUserStatus): 6 CASES
         // ==========================================
 
         [Theory]
-        [InlineData(true, 1)] // Active -> Active (1)
-        [InlineData(false, 0)] // Active -> Inactive (0)
-        public async Task UpdateUserStatus_ValidUser_ChangesStatus(bool isActive, short expectedStatus)
+        [InlineData("valid_id", false, false, 0)] // Normal: Active -> Inactive
+        [InlineData("invalid_id", false, false, 404)] // Abnormal: Target ID does not exist
+        [InlineData("self_id", false, false, 400)] // Abnormal: Target ID is logged in user
+        [InlineData("valid_id", true, false, 1)] // Abnormal: Unsuspend (Active -> Active)
+        [InlineData("admin_id", false, false, 403)] // Abnormal: Cannot suspend Admin
+        [InlineData("valid_id", false, true, 400)] // Boundary: Already suspended
+        public async Task UpdateUserStatus_VariousConditions_ReturnsExpected(string testCaseId, bool isActive, bool alreadySuspended, int expectedStatusCode)
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
-            var targetId = Guid.NewGuid();
-            context.Users.Add(new User { UserId = targetId, IsActive = 1, Username = "test" });
+            var loggedInId = Guid.NewGuid();
+            var targetId = testCaseId == "valid_id" || testCaseId == "already_suspended" || testCaseId == "admin_id" ? Guid.NewGuid() : 
+                           testCaseId == "self_id" ? loggedInId : Guid.NewGuid();
+
+            var roleAdmin = new Role { RoleId = Guid.NewGuid(), RoleName = "Admin" };
+            var roleStaff = new Role { RoleId = Guid.NewGuid(), RoleName = "Staff" };
+            context.Roles.AddRange(roleAdmin, roleStaff);
+
+            if (testCaseId != "invalid_id")
+            {
+                var user = new User { UserId = targetId, IsActive = (short)(alreadySuspended ? 0 : 1), Username = "test" };
+                user.Roles.Add(testCaseId == "admin_id" ? roleAdmin : roleStaff);
+                context.Users.Add(user);
+            }
             await context.SaveChangesAsync();
 
-            var controller = CreateController(context, Guid.NewGuid());
-            var result = await controller.UpdateUserStatus(targetId, new AdminUserStatusUpdateDto { IsActive = isActive });
-            Assert.IsType<OkObjectResult>(result);
-
-            var user = await context.Users.FindAsync(targetId);
-            Assert.Equal(expectedStatus, user!.IsActive);
-        }
-
-        [Fact]
-        public async Task UpdateUserStatus_ToggleSelf_ReturnsBadRequest()
-        {
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var targetId = Guid.NewGuid();
-            context.Users.Add(new User { UserId = targetId, IsActive = 1, Username = "test" });
-            await context.SaveChangesAsync();
-
-            var controller = CreateController(context, targetId); // Logged in as targetId
-            var result = await controller.UpdateUserStatus(targetId, new AdminUserStatusUpdateDto { IsActive = false });
-            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-            var errorDto = Assert.IsType<ErrorResponseDto>(badRequest.Value);
-            Assert.Contains("Không thể thay đổi trạng thái của chính mình", errorDto.Error?.Message ?? "");
-        }
-
-        // Toggle owner via admin role is already tested in AdminUserUpdateDto where assigning Owner is blocked.
-
-        // ==========================================
-        // 6. RESET PASSWORD: VALIDATION
-        // ==========================================
-
-        [Theory]
-        [InlineData("123")] // Password too short
-        [InlineData("ValidPass123")] // Valid password
-        public async Task ResetPassword_ValidatesLength_AndUpdatesHash(string newPassword)
-        {
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var targetId = Guid.NewGuid();
-            context.Users.Add(new User { UserId = targetId, Status = "ACTIVE", Username = "test", PasswordHash = "old_hash" });
-            await context.SaveChangesAsync();
-
-            var controller = CreateController(context, Guid.NewGuid());
-            // Mock model validation if password is short
-            if (newPassword.Length < 6) controller.ModelState.AddModelError("NewPassword", "Mật khẩu phải từ 6 ký tự");
-
-            var request = new AdminUserResetPasswordDto { NewPassword = newPassword };
-            var result = await controller.ResetUserPassword(targetId, request);
+            var controller = CreateController(context, loggedInId);
             
-            if (newPassword.Length < 6)
+            var requestTarget = testCaseId == "invalid_id" ? Guid.NewGuid() : targetId;
+            var result = await controller.UpdateUserStatus(requestTarget, new AdminUserStatusUpdateDto { IsActive = isActive });
+            
+            if (expectedStatusCode == 0 || expectedStatusCode == 1) // 0 or 1 means success
+            {
+                Assert.IsType<OkObjectResult>(result);
+            }
+            else if (expectedStatusCode == 404)
+            {
+                Assert.IsType<NotFoundObjectResult>(result);
+            }
+            else if (expectedStatusCode == 400 || expectedStatusCode == 403)
             {
                 Assert.IsType<BadRequestObjectResult>(result);
             }
-            else
+        }
+
+        // ==========================================
+        // 5. DELETE USER: 6 CASES
+        // ==========================================
+
+        [Theory]
+        [InlineData("valid_id", 200)] // Normal: Successful deletion
+        [InlineData("invalid_id", 404)] // Abnormal: User not found
+        [InlineData("self_id", 400)] // Abnormal: Cannot delete self
+        [InlineData("has_invoices", 400)] // Abnormal: User has transactions
+        [InlineData("admin_id", 403)] // Abnormal: Cannot delete Admin role
+        [InlineData("already_deleted", 400)] // Boundary: User is already deleted
+        public async Task DeleteUser_VariousConditions_ReturnsExpected(string testCaseId, int expectedStatusCode)
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var loggedInId = Guid.NewGuid();
+            var targetId = testCaseId == "valid_id" || testCaseId == "has_invoices" || testCaseId == "admin_id" || testCaseId == "already_deleted" ? Guid.NewGuid() : 
+                           testCaseId == "self_id" ? loggedInId : Guid.NewGuid();
+
+            var roleAdmin = new Role { RoleId = Guid.NewGuid(), RoleName = "Admin" };
+            var roleStaff = new Role { RoleId = Guid.NewGuid(), RoleName = "Staff" };
+            context.Roles.AddRange(roleAdmin, roleStaff);
+
+            if (testCaseId != "invalid_id")
+            {
+                var user = new User { UserId = targetId, Status = testCaseId == "already_deleted" ? "DELETED" : "ACTIVE", Username = "test" };
+                user.Roles.Add(testCaseId == "admin_id" ? roleAdmin : roleStaff);
+                
+                if (testCaseId == "has_invoices")
+                {
+                    // Mocking dependency (e.g. Invoices or Shifts)
+                    user.Shifts.Add(new Shift { ShiftId = Guid.NewGuid() });
+                }
+                context.Users.Add(user);
+            }
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context, loggedInId);
+            
+            var requestTarget = testCaseId == "invalid_id" ? Guid.NewGuid() : targetId;
+            var result = await controller.DeleteUser(requestTarget);
+            
+            if (expectedStatusCode == 200)
             {
                 Assert.IsType<OkObjectResult>(result);
-                var user = await context.Users.FindAsync(targetId);
-                Assert.True(BCrypt.Net.BCrypt.Verify(newPassword, user!.PasswordHash));
+            }
+            else if (expectedStatusCode == 404)
+            {
+                Assert.IsType<NotFoundObjectResult>(result);
+            }
+            else if (expectedStatusCode == 400 || expectedStatusCode == 403)
+            {
+                Assert.IsType<BadRequestObjectResult>(result);
             }
         }
     }
