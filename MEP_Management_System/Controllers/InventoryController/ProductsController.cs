@@ -189,14 +189,16 @@ namespace MEP_Management_System.Controllers.InventoryController
                                           (bp.Product.BranchId == null || bp.Product.BranchId == branchId));
 
 
-                // Search by product name, code, or barcode
+                // Search by product name, code, barcode, category or brand
                 if (!string.IsNullOrWhiteSpace(@params.SearchTerm))
                 {
                     string search = @params.SearchTerm.Trim().ToLower();
                     query = query.Where(bp =>
                         bp.Product.ProductCode.ToLower().Contains(search) ||
                         bp.Product.ProductName.ToLower().Contains(search) ||
-                        (bp.Product.Barcode != null && bp.Product.Barcode.ToLower().Contains(search))
+                        (bp.Product.Barcode != null && bp.Product.Barcode.ToLower().Contains(search)) ||
+                        (bp.Product.CategoryName != null && bp.Product.CategoryName.ToLower().Contains(search)) ||
+                        (bp.Product.BrandName != null && bp.Product.BrandName.ToLower().Contains(search))
                     );
                 }
 
@@ -1548,6 +1550,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var productGroupings = await _context.BranchProducts
                     .Include(bp => bp.Product)
                     .Where(bp => bp.BranchId == branchId && bp.Product.CategoryName != null && bp.Product.CategoryName != "")
+                    .Where(bp => bp.IsActive != -1 && (bp.Product.Status == null || bp.Product.Status != -1) && (bp.Product.BranchId == null || bp.Product.BranchId == branchId))
                     .GroupBy(bp => bp.Product.CategoryName)
                     .Select(g => new { Name = g.Key!, Count = g.Count() })
                     .ToListAsync();
@@ -1557,19 +1560,27 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Select(t => t.Name)
                     .ToListAsync();
 
-                var dict = productGroupings.ToDictionary(g => g.Name, g => g.Count);
-                foreach (var tax in taxonomies)
+                var dict = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                foreach (var g in productGroupings)
                 {
-                    if (!dict.ContainsKey(tax)) dict[tax] = 0;
+                    if (dict.ContainsKey(g.Name)) dict[g.Name] += g.Count;
+                    else dict[g.Name] = g.Count;
                 }
 
-                var result = dict.Select(kv => new TaxonomyItemDto
+                var resultList = new List<TaxonomyItemDto>();
+                foreach (var tax in taxonomies)
                 {
-                    Name = kv.Key,
-                    ProductCount = kv.Value
-                })
-                .OrderBy(x => x.Name)
-                .ToList();
+                    int count = dict.ContainsKey(tax) ? dict[tax] : 0;
+                    resultList.Add(new TaxonomyItemDto { Name = tax, ProductCount = count });
+                    dict.Remove(tax);
+                }
+
+                foreach (var kv in dict)
+                {
+                    resultList.Add(new TaxonomyItemDto { Name = kv.Key, ProductCount = kv.Value });
+                }
+
+                var result = resultList.OrderBy(x => x.Name).ToList();
 
                 return Ok(new ApiResponse<List<TaxonomyItemDto>>
                 {
@@ -1612,6 +1623,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var productGroupings = await _context.BranchProducts
                     .Include(bp => bp.Product)
                     .Where(bp => bp.BranchId == branchId && bp.Product.BrandName != null && bp.Product.BrandName != "")
+                    .Where(bp => bp.IsActive != -1 && (bp.Product.Status == null || bp.Product.Status != -1) && (bp.Product.BranchId == null || bp.Product.BranchId == branchId))
                     .GroupBy(bp => bp.Product.BrandName)
                     .Select(g => new { Name = g.Key!, Count = g.Count() })
                     .ToListAsync();
@@ -1621,19 +1633,27 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Select(t => t.Name)
                     .ToListAsync();
 
-                var dict = productGroupings.ToDictionary(g => g.Name, g => g.Count);
-                foreach (var tax in taxonomies)
+                var dict = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                foreach (var g in productGroupings)
                 {
-                    if (!dict.ContainsKey(tax)) dict[tax] = 0;
+                    if (dict.ContainsKey(g.Name)) dict[g.Name] += g.Count;
+                    else dict[g.Name] = g.Count;
                 }
 
-                var result = dict.Select(kv => new TaxonomyItemDto
+                var resultList = new List<TaxonomyItemDto>();
+                foreach (var tax in taxonomies)
                 {
-                    Name = kv.Key,
-                    ProductCount = kv.Value
-                })
-                .OrderBy(x => x.Name)
-                .ToList();
+                    int count = dict.ContainsKey(tax) ? dict[tax] : 0;
+                    resultList.Add(new TaxonomyItemDto { Name = tax, ProductCount = count });
+                    dict.Remove(tax);
+                }
+
+                foreach (var kv in dict)
+                {
+                    resultList.Add(new TaxonomyItemDto { Name = kv.Key, ProductCount = kv.Value });
+                }
+
+                var result = resultList.OrderBy(x => x.Name).ToList();
 
                 return Ok(new ApiResponse<List<TaxonomyItemDto>>
                 {
