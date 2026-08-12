@@ -157,8 +157,6 @@ public class AdminRolesController : ControllerBase
         var assignedCodes = permissionsToAssign.Select(p => p.PermissionCode).ToHashSet();
         var actionToViewPrefixes = new Dictionary<string, string[]>
         {
-            { "STOCK_INWARD_CREATE", new[] { "STOCK_INWARD_" } },
-            { "STOCK_OUTWARD_CREATE", new[] { "STOCK_OUTWARD_" } },
             { "STOCK_CHECK_VIEW", new[] { "STOCK_CHECK_" } },
             { "PRODUCT_VIEW", new[] { "PRODUCT_" } },
             { "SALE_VIEW", new[] { "SALE_", "CUSTOMER_", "PAYMENT_" } },
