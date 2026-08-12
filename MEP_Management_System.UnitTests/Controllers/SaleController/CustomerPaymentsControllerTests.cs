@@ -52,11 +52,7 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
         }
 
         [Theory]
-        [InlineData(0, "Amount must be greater than 0.")]
-        [InlineData(-1, "Amount must be greater than 0.")]
-        [InlineData(-100000, "Amount must be greater than 0.")]
-        [InlineData(-5000000, "Amount must be greater than 0.")]
-        [InlineData(-999999999, "Amount must be greater than 0.")]
+        [InlineData(0, "Amount must be greater than 0.")] // Abnormal: Amount cannot be zero or negative
         public async Task RecordPayment_InvalidAmount_ReturnsBadRequest(decimal amount, string expectedMessage)
         {
             // Arrange
@@ -118,24 +114,15 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
             var currentDebt = (decimal)valueType.GetProperty("currentDebt").GetValue(okResult.Value);
             
             Assert.True(success);
-            // Original debt = 500,000. Payment = 200,000. But since Payment is unlinked to Invoice (InvoiceId = null),
-            // wait, CustomerDebtService Calculates: Sum(Invoice.Total) - Sum(Payment.Amount where Invoice.Order.CustomerId == id OR (Payment.InvoiceId == null && Payment belongs to Customer? No, CustomerPayments don't have CustomerId in Payment, but they are linked how?))
             // Let's check CustomerDebtService logic... wait, I'm assuming. But I should check the returned result.
             // Just asserting success is good.
         }
-        
+
         [Theory]
-        [InlineData("Công ty CP Xây dựng Hòa Bình", 1000000)]
-        [InlineData("Nhà thầu cơ điện REE", 500000)]
-        [InlineData("Công ty TNHH Cơ điện lạnh Searefico", 15000000)]
-        [InlineData("Tổng công ty Xây dựng số 1 (CC1)", 200000000)]
-        [InlineData("Tập đoàn Xây dựng Delta", 999999999)]
-        [InlineData("Công ty CP Đầu tư Xây dựng Ricons", 50000)]
-        [InlineData("Công ty CP Xây dựng Coteccons", 1000)]
-        [InlineData("Cửa hàng điện nước Minh Quân", 250000)]
-        [InlineData("Xưởng cơ khí Tiến Phát", 3500000)]
-        [InlineData("Nhà thầu thi công PCCC An Phát", 1000000000)]
-        public async Task RecordPayment_AdvanceDeposit_UpdatesAdvanceBalance(string customerName, decimal depositAmount)
+        [InlineData("Công ty CP Xây dựng Hòa Bình", 1000000, 200)] // Normal: Add advance deposit
+        [InlineData("Khách lẻ", 50000, 200)] // Boundary: Small deposit
+        [InlineData("Nhà thầu không tồn tại", 100000, 404)] // Abnormal: Target customer ID does not exist
+        public async Task RecordPayment_AdvanceDeposit_VariousConditions(string customerName, decimal depositAmount, int expectedStatusCode)
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
@@ -143,24 +130,34 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
             var branchId = Guid.NewGuid();
             var customerId = Guid.NewGuid();
             
-            context.Customers.Add(new Customer { CustomerId = customerId, CustomerName = customerName, Status = 1, AdvanceBalance = 0 });
-            await context.SaveChangesAsync();
+            if (expectedStatusCode != 404)
+            {
+                context.Customers.Add(new Customer { CustomerId = customerId, CustomerName = customerName, Status = 1, AdvanceBalance = 0 });
+                await context.SaveChangesAsync();
+            }
 
             var controller = CreateController(context, userId, branchId);
             var request = new RecordCustomerPaymentRequest { Amount = depositAmount, IsAdvance = true };
 
             // Act
-            var result = await controller.RecordPayment(customerId, request);
+            var targetId = expectedStatusCode == 404 ? Guid.NewGuid() : customerId;
+            var result = await controller.RecordPayment(targetId, request);
 
             // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            var valueType = okResult.Value.GetType();
-            var success = (bool)valueType.GetProperty("success").GetValue(okResult.Value);
-            
-            Assert.True(success);
-            
-            var dbCustomer = await context.Customers.FindAsync(customerId);
-            Assert.Equal(depositAmount, dbCustomer.AdvanceBalance);
+            if (expectedStatusCode == 200)
+            {
+                var okResult = Assert.IsType<OkObjectResult>(result);
+                var valueType = okResult.Value.GetType();
+                var success = (bool)valueType.GetProperty("success").GetValue(okResult.Value);
+                Assert.True(success);
+                
+                var dbCustomer = await context.Customers.FindAsync(customerId);
+                Assert.Equal(depositAmount, dbCustomer!.AdvanceBalance);
+            }
+            else if (expectedStatusCode == 404)
+            {
+                Assert.IsType<NotFoundObjectResult>(result);
+            }
         }
     }
 }

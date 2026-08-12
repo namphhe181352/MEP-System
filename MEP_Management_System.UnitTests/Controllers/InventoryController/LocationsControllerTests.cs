@@ -32,6 +32,7 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
             var claims = new List<Claim>();
             if (userId.HasValue) claims.Add(new Claim("userId", userId.Value.ToString()));
             if (branchId.HasValue) claims.Add(new Claim("branchId", branchId.Value.ToString()));
+            claims.Add(new Claim(ClaimTypes.Role, "Owner"));
 
             var identity = new ClaimsIdentity(claims, "TestAuthType");
             controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) } };

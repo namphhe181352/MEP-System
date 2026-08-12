@@ -45,6 +45,7 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController.Suppli
             {
                 claims.Add(new Claim("branchId", branchId.Value.ToString()));
             }
+            claims.Add(new Claim(ClaimTypes.Role, "Owner"));
 
             var identity = new ClaimsIdentity(claims, "TestAuthType");
             var claimsPrincipal = new ClaimsPrincipal(identity);
@@ -74,7 +75,7 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController.Suppli
                 PurchaseOrderId = Guid.NewGuid(), 
                 SupplierId = supplierId, 
                 TotalAmount = 55000000, 
-                Status = "COMPLETED",
+                Status = "APPROVED",
                 CreatedAt = lastMonth
             });
 
