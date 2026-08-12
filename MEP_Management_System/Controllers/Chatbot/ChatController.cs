@@ -548,7 +548,7 @@ SELECT COUNT(DISTINCT p.invoice_id) as total_invoices,
 FROM payments p
 JOIN invoices i ON p.invoice_id = i.invoice_id
 JOIN orders o ON i.order_id = o.order_id
-WHERE DATE(p.paid_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE AT TIME ZONE 'Asia/Ho_Chi_Minh'
+WHERE DATE(p.paid_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = DATE(now() AT TIME ZONE 'Asia/Ho_Chi_Minh')
   AND p.status = 'Confirmed'
   AND i.status IN ('COMPLETED', 'Completed', 'PAID', 'Done')
   AND o.branch_id IS NOT NULL;
@@ -600,7 +600,7 @@ WITH metrics AS (
     SELECT COALESCE(SUM(p.amount), 0) as revenue
     FROM payments p
     JOIN invoices i ON p.invoice_id = i.invoice_id
-    WHERE DATE(p.paid_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE AT TIME ZONE 'Asia/Ho_Chi_Minh'
+    WHERE DATE(p.paid_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = DATE(now() AT TIME ZONE 'Asia/Ho_Chi_Minh')
       AND p.status = 'Confirmed'
       AND i.status IN ('COMPLETED', 'Completed', 'PAID', 'Done')
 ),
@@ -612,19 +612,19 @@ cogs_calc AS (
     JOIN branch_products bp ON ii.branch_product_id = bp.branch_product_id
     WHERE ii.invoice_id IN (
         SELECT p.invoice_id FROM payments p
-        WHERE DATE(p.paid_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE AT TIME ZONE 'Asia/Ho_Chi_Minh'
+        WHERE DATE(p.paid_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = DATE(now() AT TIME ZONE 'Asia/Ho_Chi_Minh')
           AND p.status = 'Confirmed'
     )
     AND i.status IN ('COMPLETED', 'Completed', 'PAID', 'Done')
 ),
 expense_calc AS (
     SELECT COALESCE(SUM(amount), 0) as expense FROM expense_vouchers
-    WHERE DATE(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE AT TIME ZONE 'Asia/Ho_Chi_Minh'
+    WHERE DATE(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = DATE(now() AT TIME ZONE 'Asia/Ho_Chi_Minh')
       AND status = 'COMPLETED'
 ),
 refund_calc AS (
     SELECT COALESCE(SUM(refund_amount), 0) as refund FROM return_orders
-    WHERE DATE(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE AT TIME ZONE 'Asia/Ho_Chi_Minh'
+    WHERE DATE(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = DATE(now() AT TIME ZONE 'Asia/Ho_Chi_Minh')
       AND status IN ('COMPLETED', 'Completed')
 )
 SELECT
@@ -770,7 +770,7 @@ SELECT COUNT(*) as total_suppliers FROM suppliers WHERE status = 1;
 - Khi user chào hỏi (xin chào, chào buổi sáng/trưa/chiều/tối, bạn là ai, bạn tên gì): trả lời thân thiện ""Dạ xin chào! Em là trợ lý ảo của hệ thống MEP Management System. Em có thể hỗ trợ anh/chị về báo cáo doanh thu, tồn kho, sản phẩm, khách hàng, đơn hàng, lợi nhuận, chi phí... Anh/chị cần em giúp gì ạ?""
 - Khi hỏi ""lợi nhuận"": luôn tính theo công thức SUM(quantity * (sell_price - cost_price)) trên invoice_items JOIN branch_products qua branch_product_id.
 - Khi hỏi về sản phẩm bán chạy/doanh thu theo sản phẩm: invoice_items KHÔNG có product_id, PHẢI JOIN qua branch_products (branch_product_id) rồi mới JOIN được tới products.
-- Doanh thu hôm nay: WHERE DATE(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE AT TIME ZONE 'Asia/Ho_Chi_Minh'
+- Doanh thu hôm nay: WHERE DATE(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = DATE(now() AT TIME ZONE 'Asia/Ho_Chi_Minh')
 - Doanh thu tuần này: WHERE created_at >= '{mondayStr}'
 - Doanh thu tháng này: WHERE created_at >= '{firstDayOfMonthStr}'
 - Luôn thêm: AND status = 'Completed' khi tính doanh thu/lợi nhuận từ orders hoặc invoices
