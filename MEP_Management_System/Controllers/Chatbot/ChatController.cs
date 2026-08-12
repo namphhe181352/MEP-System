@@ -506,7 +506,6 @@ Bạn là trợ lý ảo cho hệ thống quản lý kho và bán hàng MEP Mana
   (LƯU Ý: invoice_items KHÔNG có product_id. Muốn lấy product_id/product_name phải JOIN qua branch_products bằng branch_product_id)
 - order_discount_tiers: order_discount_tier_id, min_order_value, discount_percent, is_active
 - invoices: invoice_id, invoice_code, order_id, user_id, total_amount, sub_total_amount, discount_percent, discount_amount, payment_method, status, note, created_at
-- invoice_items: invoice_item_id, invoice_id, branch_product_id, quantity, sell_price
 - payments: payment_id, invoice_id, method, amount, status, cash_received, change_amount, paid_at
 - refund_records: refund_id, refund_code, order_id, invoice_id, customer_id, user_id, refund_amount, refund_method, status, reason, created_at
 - return_orders: return_order_id, return_code, order_id, user_id, refund_amount, refund_method, status, note, created_at, return_type
@@ -695,7 +694,7 @@ FROM metrics m, cogs_calc c, expense_calc e, refund_calc r;
 SELECT 
     (SELECT COALESCE(SUM(total_amount), 0) FROM purchase_orders WHERE status IN ('APPROVED', 'PENDING'))
     + (SELECT COALESCE(SUM(total_amount), 0) FROM stock_tickets WHERE ticket_type = 'PURCHASE' AND status = 'COMPLETED')
-    - (SELECT COALESCE(SUM(""Amount""), 0) FROM ""SupplierPayments"" WHERE ""IsDeleted"" = 0)
+    - (SELECT COALESCE(SUM(Amount), 0) FROM SupplierPayments WHERE IsDeleted = 0)
     AS total_supplier_debt;
 --QUERY_END--
 ```
@@ -715,7 +714,7 @@ LEFT JOIN (
     SELECT supplier_id, SUM(total_amount) AS amount FROM stock_tickets WHERE ticket_type = 'PURCHASE' AND status = 'COMPLETED' GROUP BY supplier_id
 ) st ON s.supplier_id = st.supplier_id
 LEFT JOIN (
-    SELECT ""SupplierId"" AS supplier_id, SUM(""Amount"") AS amount FROM ""SupplierPayments"" WHERE ""IsDeleted"" = 0 GROUP BY ""SupplierId""
+    SELECT SupplierId AS supplier_id, SUM(Amount) AS amount FROM SupplierPayments WHERE IsDeleted = 0 GROUP BY SupplierId
 ) paid ON s.supplier_id = paid.supplier_id
 WHERE (COALESCE(po.amount, 0) + COALESCE(st.amount, 0) - COALESCE(paid.amount, 0)) > 0
 ORDER BY current_debt DESC;
@@ -741,7 +740,7 @@ SELECT DATE_TRUNC('month', i.created_at) as month,
 FROM invoice_items ii
 JOIN invoices i ON ii.invoice_id = i.invoice_id
 JOIN orders o ON i.order_id = o.order_id
-JOIN branch_products bp ON oi.branch_product_id = bp.branch_product_id
+JOIN branch_products bp ON ii.branch_product_id = bp.branch_product_id
 WHERE i.created_at >= ('{firstDayOfMonthStr}'::date - INTERVAL '12 months') AND i.status = 'Completed'
 GROUP BY DATE_TRUNC('month', i.created_at) ORDER BY month;
 --QUERY_END--
@@ -801,6 +800,7 @@ SELECT COUNT(*) as total_suppliers FROM suppliers WHERE status = 1;
 - LƯU Ý KHI LỌC NHÂN VIÊN: LUÔN truy vấn từ bảng staff_assignments JOIN với users (lọc u.status = 'ACTIVE'). Để loại trừ chủ cửa hàng, hãy JOIN thêm với user_roles và roles (lọc r.role_name != 'Owner').
 - TUYỆT ĐỐI KHÔNG được viết SQL đụng tới các bảng ngoài danh sách DATABASE SCHEMA ở trên (ví dụ: permissions, otp_verifications, system_configs, system_logs, store_approvals, hay bất kỳ bảng nào có tiền tố forum_/community_). Nếu user hỏi về những nội dung đó, trả lời rằng chatbot không hỗ trợ truy vấn thông tin này.
 - TUYỆT ĐỐI KHÔNG được viết INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE hay bất kỳ câu lệnh nào không phải SELECT.
+- LƯU Ý VỀ TÊN BẢNG SupplierPayments: LUÔN dùng tên không trích dẫn (unquoted) SupplierPayments, KHÔNG dùng các dạng trích dẫn khác. Ví dụ đúng: FROM SupplierPayments WHERE IsDeleted = 0.
 
 ## 🚫 CHẶN CÂU HỎI NGOÀI PHẠM VI CHO PHÉP
 
