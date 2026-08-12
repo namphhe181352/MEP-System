@@ -76,7 +76,7 @@ public class SqlExecutor
         "product_conversion_units", "customers", "orders", "order_items",
         "order_discount_tiers", "invoices", "invoice_items", "payments",
         "refund_records", "return_orders", "return_items",
-        "suppliers", "SupplierPayments",
+        "suppliers", "SupplierPayments", "supplier_payments", "\"SupplierPayments\"",
         "purchase_orders", "purchase_order_items", "stock_tickets", "stock_ticket_items",
         "inventory_check_tickets", "inventory_check_details",
         "inventory_transfer_tickets", "inventory_transfer_details",
@@ -230,6 +230,9 @@ public class SqlExecutor
                 return (false, validation.Message, null);
             }
 
+            // Inject branch_id filter vào SQL để đảm bảo AI luôn query đúng chi nhánh
+            sql = InjectBranchIdFilter(sql, branchId);
+
             _logger.LogInformation("Executing SQL (branchId={BranchId}): {Sql}", branchId, sql);
 
             var result = await ExecuteSelectAsync(sql, branchId);
@@ -325,5 +328,66 @@ public class SqlExecutor
         {
             await connection.CloseAsync();
         }
+    }
+
+    /// <summary>
+    /// Inject branch_id filter vào SQL query tự động.
+    /// Khi query các bảng có branch_id (orders, customers, expense_vouchers...),
+    /// tự động thêm filter branch_id = 'xxx'.
+    /// Khi query payments/invoices không có branch_id, phải JOIN với orders để lọc.
+    /// </summary>
+    private static string InjectBranchIdFilter(string sql, string? branchId)
+    {
+        if (string.IsNullOrWhiteSpace(branchId) || string.IsNullOrWhiteSpace(sql))
+            return sql;
+
+        var sqlUpper = sql.ToUpperInvariant();
+
+        // Tìm vị trí để insert branch_id filter - phải insert TRƯỚC GROUP BY, ORDER BY, LIMIT
+        var insertPos = sql.Length;
+        var keywords = new[] { "GROUP BY", "ORDER BY", "LIMIT", ";", "--" };
+        foreach (var kw in keywords)
+        {
+            var pos = sqlUpper.LastIndexOf(kw);
+            if (pos >= 0 && pos < insertPos)
+                insertPos = pos;
+        }
+
+        // 1. Query trực tiếp bảng orders - thêm branch_id filter
+        if ((sqlUpper.Contains("FROM ORDERS") || sqlUpper.Contains("JOIN ORDERS ")) && !sqlUpper.Contains("BRANCH_ID"))
+        {
+            // Tìm alias của orders
+            var ordersAlias = "orders";
+            if (sqlUpper.Contains(" orders o ") || sqlUpper.Contains("orders AS o") || sqlUpper.Contains("orders o\n"))
+                ordersAlias = "o";
+
+            var branchFilter = $" AND {ordersAlias}.branch_id = '{branchId}'";
+            sql = sql.Insert(insertPos, branchFilter);
+        }
+
+        // 2. Query trực tiếp bảng customers
+        if ((sqlUpper.Contains("FROM CUSTOMERS") || sqlUpper.Contains("JOIN CUSTOMERS")) && !sqlUpper.Contains("CUSTOMERS.BRANCH_ID"))
+        {
+            var alias = sqlUpper.Contains(" customers c ") || sqlUpper.Contains("customers AS c") ? "c" : "customers";
+            var branchFilter = $" AND {alias}.branch_id = '{branchId}'";
+            sql = sql.Insert(insertPos, branchFilter);
+        }
+
+        // 3. Query payments/invoices - cần JOIN với orders để lọc
+        if ((sqlUpper.Contains("PAYMENTS") || sqlUpper.Contains("INVOICES")) && !sqlUpper.Contains("JOIN ORDERS"))
+        {
+            if (sqlUpper.Contains("JOIN INVOICES") && !sqlUpper.Contains("JOIN ORDERS O"))
+            {
+                sql = sql.Replace("JOIN invoices i", "JOIN invoices i JOIN orders o ON i.order_id = o.order_id");
+                sql = sql.Insert(insertPos, $" AND o.branch_id = '{branchId}'");
+            }
+            else if (sqlUpper.Contains("JOIN PAYMENTS") && !sqlUpper.Contains("JOIN ORDERS"))
+            {
+                sql = sql.Replace("JOIN payments p", "JOIN payments p JOIN invoices i ON p.invoice_id = i.invoice_id JOIN orders o ON i.order_id = o.order_id");
+                sql = sql.Insert(insertPos, $" AND o.branch_id = '{branchId}'");
+            }
+        }
+
+        return sql;
     }
 }
