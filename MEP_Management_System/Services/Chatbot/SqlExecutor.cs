@@ -358,32 +358,33 @@ public class SqlExecutor
         {
             // Tìm alias của orders
             var ordersAlias = "orders";
-            if (sqlUpper.Contains(" orders o ") || sqlUpper.Contains("orders AS o") || sqlUpper.Contains("orders o\n"))
+            if (sqlUpper.Contains(" ORDERS O ") || sqlUpper.Contains("ORDERS AS O") || sqlUpper.Contains("ORDERS O\n") || sqlUpper.Contains("ORDERS O\r\n"))
                 ordersAlias = "o";
 
             var branchFilter = $" AND {ordersAlias}.branch_id = '{branchId}'";
             sql = sql.Insert(insertPos, branchFilter);
         }
 
-        // 2. Query trực tiếp bảng customers
-        if ((sqlUpper.Contains("FROM CUSTOMERS") || sqlUpper.Contains("JOIN CUSTOMERS")) && !sqlUpper.Contains("CUSTOMERS.BRANCH_ID"))
-        {
-            var alias = sqlUpper.Contains(" customers c ") || sqlUpper.Contains("customers AS c") ? "c" : "customers";
-            var branchFilter = $" AND {alias}.branch_id = '{branchId}'";
-            sql = sql.Insert(insertPos, branchFilter);
-        }
+        // 2. Bảng customers KHÔNG có branch_id - RLS lọc thông qua orders nên KHÔNG
+        // inject branch_id filter (sẽ gây lỗi "column customers.branch_id does not exist").
+        // Các query JOIN customers sẽ được RLS tự lọc qua orders.branch_id trong
+        // policy hoặc qua JOIN với orders đã có filter branch_id.
 
         // 3. Query payments/invoices - cần JOIN với orders để lọc
         if ((sqlUpper.Contains("PAYMENTS") || sqlUpper.Contains("INVOICES")) && !sqlUpper.Contains("JOIN ORDERS"))
         {
             if (sqlUpper.Contains("JOIN INVOICES") && !sqlUpper.Contains("JOIN ORDERS O"))
             {
+                var oldLen = sql.Length;
                 sql = sql.Replace("JOIN invoices i", "JOIN invoices i JOIN orders o ON i.order_id = o.order_id");
+                insertPos += (sql.Length - oldLen);
                 sql = sql.Insert(insertPos, $" AND o.branch_id = '{branchId}'");
             }
             else if (sqlUpper.Contains("JOIN PAYMENTS") && !sqlUpper.Contains("JOIN ORDERS"))
             {
+                var oldLen = sql.Length;
                 sql = sql.Replace("JOIN payments p", "JOIN payments p JOIN invoices i ON p.invoice_id = i.invoice_id JOIN orders o ON i.order_id = o.order_id");
+                insertPos += (sql.Length - oldLen);
                 sql = sql.Insert(insertPos, $" AND o.branch_id = '{branchId}'");
             }
         }
