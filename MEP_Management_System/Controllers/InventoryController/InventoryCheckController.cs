@@ -105,6 +105,32 @@ public class InventoryCheckController : ControllerBase
         });
     }
 
+    private async Task TryWriteSystemLog(Guid userId, string action, string tableName,
+        string entityType, Guid entityId, string description)
+    {
+        try
+        {
+            _context.SystemLogs.Add(new SystemLog
+            {
+                LogId = Guid.NewGuid(),
+                UserId = userId,
+                Action = action,
+                TableName = tableName,
+                EntityType = entityType,
+                EntityId = entityId,
+                Description = description,
+                Level = "INFO",
+                Source = "InventoryCheckController",
+                Timestamp = DateTime.UtcNow
+            });
+            await _context.SaveChangesAsync();
+        }
+        catch
+        {
+            // Silent — không làm fail request chính
+        }
+    }
+
     private async Task SendNotificationToUser(
         Guid recipientUserId,
         NotificationType type,
@@ -469,6 +495,10 @@ public class InventoryCheckController : ControllerBase
                 userId.Value);
 
             await transaction.CommitAsync();
+
+            await TryWriteSystemLog(userId.Value, "CREATE_INVENTORY_CHECK", "inventory_check_tickets",
+                "InventoryCheck", ticket.TicketId,
+                $"Tạo phiếu kiểm kê {ticket.TicketCode}");
 
             // Reload với navigation properties
             var createdTicket = await _context.InventoryCheckTickets
@@ -902,6 +932,10 @@ public class InventoryCheckController : ControllerBase
 
             await transaction.CommitAsync();
 
+            await TryWriteSystemLog(userId.Value, "FILL_INVENTORY_CHECK", "inventory_check_tickets",
+                "InventoryCheck", ticket.TicketId,
+                $"Nhập số lượng kiểm kê phiếu {ticket.TicketCode}");
+
             var updatedTicket = await _context.InventoryCheckTickets
                 .Include(t => t.Details).ThenInclude(d => d.Product)
                 .Include(t => t.CreatedByUser)
@@ -1220,6 +1254,10 @@ public class InventoryCheckController : ControllerBase
 
             await transaction.CommitAsync();
 
+            await TryWriteSystemLog(userId.Value, "APPROVE_INVENTORY_CHECK", "inventory_check_tickets",
+                "InventoryCheck", ticket.TicketId,
+                $"Duyệt phiếu kiểm kê {ticket.TicketCode}, chênh lệch: {ticket.Details.Sum(d => Math.Abs(d.Discrepancy))}");
+
             var updatedTicket = await _context.InventoryCheckTickets
                 .Include(t => t.Details).ThenInclude(d => d.Product)
                 .Include(t => t.CreatedByUser)
@@ -1363,6 +1401,10 @@ public class InventoryCheckController : ControllerBase
 
             await transaction.CommitAsync();
 
+            await TryWriteSystemLog(userId.Value, "REJECT_INVENTORY_CHECK", "inventory_check_tickets",
+                "InventoryCheck", ticket.TicketId,
+                $"Yêu cầu đếm lại phiếu {ticket.TicketCode} (lần {ticket.RecountNumber}): {dto.Reason}");
+
             var updatedTicket = await _context.InventoryCheckTickets
                 .Include(t => t.Details).ThenInclude(d => d.Product)
                 .Include(t => t.CreatedByUser)
@@ -1455,6 +1497,10 @@ public class InventoryCheckController : ControllerBase
             ticket.CancelledReason = dto?.Reason;
 
             await _context.SaveChangesAsync();
+
+            await TryWriteSystemLog(userId.Value, "CANCEL_INVENTORY_CHECK", "inventory_check_tickets",
+                "InventoryCheck", ticket.TicketId,
+                $"Hủy phiếu kiểm kê {ticket.TicketCode}" + (dto?.Reason != null ? $": {dto.Reason}" : ""));
 
             // SignalR notification
             await _hub.Clients.Group($"Branch_{branchId.Value}")
