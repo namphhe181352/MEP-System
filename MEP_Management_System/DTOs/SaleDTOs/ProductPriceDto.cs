@@ -14,6 +14,8 @@ public class ProductPriceDto
     public decimal? AvailableStock { get; set; }
     public string? ImageUrl { get; set; }
     public string? ProductStatus { get; set; }
+    /// <summary>Đơn vị cơ bản có được phép bán trực tiếp không.</summary>
+    public bool DirectSale { get; set; }
 
     /// <summary>Các đơn vị quy đổi có thể bán (ví dụ: Cuộn, Hộp).</summary>
     public List<ConversionUnitDto>? ConversionUnits { get; set; }

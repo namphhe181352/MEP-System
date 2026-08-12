@@ -300,7 +300,9 @@ public class InvoicesController : ControllerBase
                 return BadRequest(ApiErrorResponse.Create("MSG-59", $"Đơn vị '{request.SelectedUnit}' không hợp lệ cho sản phẩm này"));
 
             convertValue = convUnit.ConvertValue;
-            unitPrice = convUnit.Price; // Giá của đơn vị quy đổi
+            // Chỉ dùng giá từ DB nếu frontend không gửi UnitPrice
+            if (request.UnitPrice == null)
+                unitPrice = convUnit.Price;
         }
 
         // Tính actual quantity (đã quy đổi về BaseUnit)
@@ -322,16 +324,15 @@ public class InvoicesController : ControllerBase
                 return BadRequest(ApiErrorResponse.Create("MSG-59", $"Insufficient stock. Available: {currentStock} {bp.Product.BaseUnit}"));
             }
 
-            // Validate floor price with proper unit conversion scaling
-            // effectiveCost = costPrice * convertValue / baseConvertValue
-            var baseConvUnit = bp.Product.ProductConversionUnits.FirstOrDefault(u => u.UnitName == bp.Product.BaseUnit);
-            var baseConvertValue = baseConvUnit?.ConvertValue ?? 1m;
-            var effectiveCost = bp.CostPrice * convertValue / baseConvertValue;
-
-            if (unitPrice < effectiveCost)
+            // Validate floor price cho đơn vị cơ bản (không áp dụng cho đơn vị quy đổi)
+            var isBaseUnit = string.IsNullOrEmpty(request.SelectedUnit) || request.SelectedUnit == bp.Product.BaseUnit;
+            if (isBaseUnit)
             {
-                await transaction.RollbackAsync();
-                return BadRequest(ApiErrorResponse.Create("MSG-63", "Giá bán không được thấp hơn giá sàn."));
+                if (unitPrice < bp.CostPrice)
+                {
+                    await transaction.RollbackAsync();
+                    return BadRequest(ApiErrorResponse.Create("MSG-63", "Giá bán không được thấp hơn giá sàn."));
+                }
             }
 
             var existingItem = invoice.InvoiceItems

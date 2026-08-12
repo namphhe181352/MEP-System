@@ -43,8 +43,9 @@ public class ProductsController : ControllerBase
             AvailableStock = b.AvailableStock,
             ImageUrl = b.Product?.MediaResources?.Where(m => m.IsPrimary == 1).Select(m => m.MediaUrl).FirstOrDefault(),
             ProductStatus = b.Product?.Status == 1 ? "active" : "inactive",
+            DirectSale = b.DirectSale == 1,
             ConversionUnits = b.Product?.ProductConversionUnits
-                ?.Where(u => u.DirectSale == 1 || u.DirectSale == null)
+                ?.Where(u => u.DirectSale == 1)
                 .Select(u => new ConversionUnitDto
                 {
                     ConversionId = u.ConversionId,
@@ -61,14 +62,15 @@ public class ProductsController : ControllerBase
     {
         var branchId = GetBranchId();
 
-        // Query with Include for related data
+        // Hiển thị sản phẩm nếu: (IsActive=1) HOẶC (có ít nhất 1 đơn vị quy đổi được phép bán)
         IQueryable<BranchProduct> query = _context.BranchProducts
             .AsNoTracking()
             .Include(b => b.Product)
             .ThenInclude(p => p!.ProductConversionUnits)
             .Include(b => b.Product)
             .ThenInclude(p => p!.MediaResources)
-            .Where(b => b.BranchId == branchId && b.IsActive == 1 && b.Product != null && b.Product.Status == 1 && (b.Product.BranchId == null || b.Product.BranchId == branchId));
+            .Where(b => b.BranchId == branchId && b.Product != null && (b.Product.BranchId == null || b.Product.BranchId == branchId))
+            .Where(b => b.IsActive == 1 || b.Product!.ProductConversionUnits.Any(u => u.DirectSale == 1));
 
         if (!string.IsNullOrWhiteSpace(search))
         {

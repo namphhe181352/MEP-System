@@ -574,6 +574,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                     product.CreatedAt = currentLocalTime;
                     product.CreatedBy = currentUserId;
                     product.BranchId = branchId;
+                    // Tự động active nếu có đơn vị được phép bán
+                    var hasSellable = dto.DirectSale == true || (dto.ConversionUnits != null && dto.ConversionUnits.Any(u => u.DirectSale == true));
+                    product.Status = hasSellable ? (short)1 : (short)0;
 
                     product.ProductConversionUnits = new List<ProductConversionUnit>();
                     product.BranchProducts = new List<BranchProduct>();
@@ -661,7 +664,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                         CostPrice = dto.CostPrice,
                         SellPrice = dto.SalePrice,
                         DirectSale = (short?)(dto.DirectSale ? 1 : 0),
-                        IsActive = 0,
+                        // Tự động kích hoạt nếu có đơn vị được phép bán
+                        IsActive = (short)(dto.DirectSale == true || (dto.ConversionUnits != null && dto.ConversionUnits.Any(u => u.DirectSale == true)) ? 1 : 0),
                         Product = null!
                     };
                     _context.BranchProducts.Add(branchProduct);
@@ -1059,6 +1063,28 @@ namespace MEP_Management_System.Controllers.InventoryController
                     bp.SellPrice = dto.SalePrice;
                     bp.DirectSale = (short?)(dto.DirectSale ? 1 : 0);
 
+                    // Tự động đồng bộ trạng thái Hoạt động với trạng thái bán của các đơn vị
+                    var hasAnySellableUnit = dto.DirectSale == true
+                        || (dto.ConversionUnits != null && dto.ConversionUnits.Any(u => u.DirectSale == true));
+                    if (hasAnySellableUnit)
+                    {
+                        // Có ít nhất 1 đơn vị được bán → BẬT Hoạt động
+                        if (bp.IsActive != 1)
+                        {
+                            bp.IsActive = 1;
+                            if (bp.Product != null) bp.Product.Status = 1;
+                        }
+                    }
+                    else
+                    {
+                        // TẤT CẢ các đơn vị đều không được bán → TẮT Hoạt động
+                        if (bp.IsActive != 0)
+                        {
+                            bp.IsActive = 0;
+                            if (bp.Product != null) bp.Product.Status = 0;
+                        }
+                    }
+
                     _context.BranchProducts.Update(bp);
 
                     var oldMedia = await _context.MediaResources.Where(m => m.ProductId == id).ToListAsync();
@@ -1264,7 +1290,31 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 short statusVal = isActive ? (short)1 : (short)0;
                 bp.IsActive = statusVal;
-                bp.DirectSale = statusVal;
+                if (isActive)
+                {
+                    // Khi bật Hoạt động, nếu chưa có đơn vị nào được bán thì tự động bật DirectSale
+                    if (bp.DirectSale != 1)
+                    {
+                        var hasAnySellableUnit = await _context.ProductConversionUnits
+                            .AnyAsync(u => u.ProductId == bp.ProductId && u.DirectSale == 1);
+                        if (!hasAnySellableUnit)
+                        {
+                            bp.DirectSale = 1;
+                        }
+                    }
+                }
+                else
+                {
+                    // Khi tắt Hoạt động, tắt tất cả đơn vị bán
+                    bp.DirectSale = 0;
+                    var conversionUnits = await _context.ProductConversionUnits
+                        .Where(u => u.ProductId == bp.ProductId && u.DirectSale == 1)
+                        .ToListAsync();
+                    foreach (var cu in conversionUnits)
+                    {
+                        cu.DirectSale = 0;
+                    }
+                }
 
                 if (bp.Product != null)
                 {
@@ -1345,7 +1395,29 @@ namespace MEP_Management_System.Controllers.InventoryController
                 {
                     short statusVal = request.IsActive ? (short)1 : (short)0;
                     bp.IsActive = statusVal;
-                    bp.DirectSale = statusVal;
+                    if (request.IsActive)
+                    {
+                        if (bp.DirectSale != 1)
+                        {
+                            var hasAnySellableUnit = await _context.ProductConversionUnits
+                                .AnyAsync(u => u.ProductId == bp.ProductId && u.DirectSale == 1);
+                            if (!hasAnySellableUnit)
+                            {
+                                bp.DirectSale = 1;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        bp.DirectSale = 0;
+                        var conversionUnits = await _context.ProductConversionUnits
+                            .Where(u => u.ProductId == bp.ProductId && u.DirectSale == 1)
+                            .ToListAsync();
+                        foreach (var cu in conversionUnits)
+                        {
+                            cu.DirectSale = 0;
+                        }
+                    }
 
                     if (bp.Product != null)
                     {
@@ -1468,7 +1540,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 Images = p.MediaResources.Select(m => m.MediaUrl).ToList(),
 
                 // Sales & Status
-                DirectSale = bp.DirectSale == 1 || bp.DirectSale == null,
+                DirectSale = bp.DirectSale == 1,
                 SalesChannelLinked = p.SalesChannelLinked == 1,
                 IsActive = bp.IsActive == 1,
 
@@ -1531,10 +1603,11 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 var productGroupings = await _context.BranchProducts
-                    .Include(bp => bp.Product)
                     .Where(bp => bp.BranchId == branchId && bp.Product.CategoryName != null && bp.Product.CategoryName != "")
                     .Where(bp => bp.IsActive != -1 && (bp.Product.Status == null || bp.Product.Status != -1) && (bp.Product.BranchId == null || bp.Product.BranchId == branchId))
-                    .GroupBy(bp => bp.Product.CategoryName)
+                    .Select(bp => new { bp.ProductId, bp.Product.CategoryName })
+                    .Distinct()
+                    .GroupBy(x => x.CategoryName)
                     .Select(g => new { Name = g.Key!, Count = g.Count() })
                     .ToListAsync();
 
@@ -1604,10 +1677,11 @@ namespace MEP_Management_System.Controllers.InventoryController
                 }
 
                 var productGroupings = await _context.BranchProducts
-                    .Include(bp => bp.Product)
                     .Where(bp => bp.BranchId == branchId && bp.Product.BrandName != null && bp.Product.BrandName != "")
                     .Where(bp => bp.IsActive != -1 && (bp.Product.Status == null || bp.Product.Status != -1) && (bp.Product.BranchId == null || bp.Product.BranchId == branchId))
-                    .GroupBy(bp => bp.Product.BrandName)
+                    .Select(bp => new { bp.ProductId, bp.Product.BrandName })
+                    .Distinct()
+                    .GroupBy(x => x.BrandName)
                     .Select(g => new { Name = g.Key!, Count = g.Count() })
                     .ToListAsync();
 
@@ -1836,10 +1910,15 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var newName = dto.NewName.Trim();
                 var oldName = dto.OldName.Trim();
 
-                var affectedProducts = await _context.BranchProducts
-                    .Include(bp => bp.Product)
+                var affectedProductIds = await _context.BranchProducts
                     .Where(bp => bp.BranchId == branchId && bp.Product.CategoryName != null && bp.Product.CategoryName.ToLower() == oldName.ToLower())
-                    .Select(bp => bp.Product)
+                    .Where(bp => bp.IsActive != -1 && (bp.Product.Status == null || bp.Product.Status != -1) && (bp.Product.BranchId == null || bp.Product.BranchId == branchId))
+                    .Select(bp => bp.ProductId)
+                    .Distinct()
+                    .ToListAsync();
+
+                var affectedProducts = await _context.Products
+                    .Where(p => affectedProductIds.Contains(p.ProductId))
                     .ToListAsync();
 
                 var tax = await _context.ProductTaxonomies
@@ -1978,10 +2057,15 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var newName = dto.NewName.Trim();
                 var oldName = dto.OldName.Trim();
 
-                var affectedProducts = await _context.BranchProducts
-                    .Include(bp => bp.Product)
+                var affectedProductIds = await _context.BranchProducts
                     .Where(bp => bp.BranchId == branchId && bp.Product.BrandName != null && bp.Product.BrandName.ToLower() == oldName.ToLower())
-                    .Select(bp => bp.Product)
+                    .Where(bp => bp.IsActive != -1 && (bp.Product.Status == null || bp.Product.Status != -1) && (bp.Product.BranchId == null || bp.Product.BranchId == branchId))
+                    .Select(bp => bp.ProductId)
+                    .Distinct()
+                    .ToListAsync();
+
+                var affectedProducts = await _context.Products
+                    .Where(p => affectedProductIds.Contains(p.ProductId))
                     .ToListAsync();
 
                 var tax = await _context.ProductTaxonomies
@@ -2053,10 +2137,15 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 var trimmed = name.Trim();
 
-                var affectedProducts = await _context.BranchProducts
-                    .Include(bp => bp.Product)
+                var affectedProductIds = await _context.BranchProducts
                     .Where(bp => bp.BranchId == branchId && bp.Product.CategoryName != null && bp.Product.CategoryName.ToLower() == trimmed.ToLower())
-                    .Select(bp => bp.Product)
+                    .Where(bp => bp.IsActive != -1 && (bp.Product.Status == null || bp.Product.Status != -1) && (bp.Product.BranchId == null || bp.Product.BranchId == branchId))
+                    .Select(bp => bp.ProductId)
+                    .Distinct()
+                    .ToListAsync();
+
+                var affectedProducts = await _context.Products
+                    .Where(p => affectedProductIds.Contains(p.ProductId))
                     .ToListAsync();
 
                 var tax = await _context.ProductTaxonomies
@@ -2155,10 +2244,15 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                 var trimmed = name.Trim();
 
-                var affectedProducts = await _context.BranchProducts
-                    .Include(bp => bp.Product)
+                var affectedProductIds = await _context.BranchProducts
                     .Where(bp => bp.BranchId == branchId && bp.Product.BrandName != null && bp.Product.BrandName.ToLower() == trimmed.ToLower())
-                    .Select(bp => bp.Product)
+                    .Where(bp => bp.IsActive != -1 && (bp.Product.Status == null || bp.Product.Status != -1) && (bp.Product.BranchId == null || bp.Product.BranchId == branchId))
+                    .Select(bp => bp.ProductId)
+                    .Distinct()
+                    .ToListAsync();
+
+                var affectedProducts = await _context.Products
+                    .Where(p => affectedProductIds.Contains(p.ProductId))
                     .ToListAsync();
 
                 var tax = await _context.ProductTaxonomies
