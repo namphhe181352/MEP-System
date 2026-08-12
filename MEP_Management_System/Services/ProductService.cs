@@ -118,7 +118,7 @@ namespace MEP_Management_System.Services
                 ImageUrl = bp.Product.MediaResources.FirstOrDefault(m => m.IsPrimary == 1)?.MediaUrl
                     ?? bp.Product.MediaResources.FirstOrDefault()?.MediaUrl,
                 Images = bp.Product.MediaResources.Select(m => m.MediaUrl).ToList(),
-                DirectSale = bp.DirectSale == 1 || bp.DirectSale == null,
+                DirectSale = bp.DirectSale == 1,
                 SalesChannelLinked = bp.Product.SalesChannelLinked == 1,
                 IsActive = bp.IsActive == 1,
                 Attributes = bp.Product.ProductAttributes.Select(a => new ProductAttributeDto
@@ -175,8 +175,9 @@ namespace MEP_Management_System.Services
                 Unit = bp.Product?.BaseUnit,
                 AvailableStock = bp.AvailableStock,
                 ImageUrl = bp.Product?.MediaResources?.Where(m => m.IsPrimary == 1).Select(m => m.MediaUrl).FirstOrDefault(),
+                DirectSale = bp.DirectSale == 1,
                 ConversionUnits = bp.Product?.ProductConversionUnits
-                    ?.Where(u => u.DirectSale == 1 || u.DirectSale == null)
+                    ?.Where(u => u.DirectSale == 1)
                     .Select(u => new ConversionUnitDto
                     {
                         ConversionId = u.ConversionId,
