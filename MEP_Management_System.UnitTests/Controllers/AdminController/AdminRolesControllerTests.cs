@@ -53,16 +53,16 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
         }
 
         [Fact]
-        public async Task GetRoles_FiltersOutSpecificStaffRoles_ReturnsFilteredRoles()
+        public async Task GetRoles_ReturnsAllRoles()
         {
             // Arrange
             using var context = new MEPDatabaseContext(_dbContextOptions);
             context.Roles.AddRange(
                 new Role { RoleId = Guid.NewGuid(), RoleName = "Admin" },
                 new Role { RoleId = Guid.NewGuid(), RoleName = "Owner" },
-                new Role { RoleId = Guid.NewGuid(), RoleName = "Staff" }, // Should be filtered out
-                new Role { RoleId = Guid.NewGuid(), RoleName = "SalesStaff" }, // Should be filtered out
-                new Role { RoleId = Guid.NewGuid(), RoleName = "InventoryStaff" } // Should be filtered out
+                new Role { RoleId = Guid.NewGuid(), RoleName = "Staff" },
+                new Role { RoleId = Guid.NewGuid(), RoleName = "SalesStaff" },
+                new Role { RoleId = Guid.NewGuid(), RoleName = "InventoryStaff" }
             );
             await context.SaveChangesAsync();
 
@@ -75,9 +75,10 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
             var okResult = Assert.IsType<OkObjectResult>(result);
             var roles = Assert.IsAssignableFrom<IEnumerable<AdminRoleDto>>(okResult.Value);
             
-            Assert.Equal(2, roles.Count()); // Only Admin and Owner
+            Assert.Equal(5, roles.Count());
             Assert.Contains(roles, r => r.RoleName == "Admin");
             Assert.Contains(roles, r => r.RoleName == "Owner");
+            Assert.Contains(roles, r => r.RoleName == "Staff");
         }
 
         [Fact]
@@ -155,6 +156,80 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
             var badRequest = Assert.IsType<BadRequestObjectResult>(result);
             var errorResponse = Assert.IsType<ErrorResponseDto>(badRequest.Value);
             Assert.Equal("Không thể chỉnh sửa quyền của Admin.", errorResponse.Error.Message);
+        }
+        [Fact]
+        public async Task ConfigureRolePermissions_RoleNotFound_ReturnsNotFound()
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var controller = CreateController(context);
+            var dto = new AdminRolePermissionUpdateDto { PermissionIds = new List<Guid>() };
+            var result = await controller.ConfigureRolePermissions(Guid.NewGuid(), dto);
+            Assert.IsType<NotFoundObjectResult>(result);
+        }
+
+
+        [Fact]
+        public async Task ConfigureRolePermissions_EmptyPermissions_ClearsAllPermissions()
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var roleId = Guid.NewGuid();
+            var role = new Role { RoleId = roleId, RoleName = "Staff" };
+            var perm = new Permission { PermissionId = Guid.NewGuid(), PermissionCode = "TEST", PermissionName = "Test" };
+            role.Permissions.Add(perm);
+            context.Roles.Add(role);
+            context.Permissions.Add(perm);
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context, Guid.NewGuid());
+            var dto = new AdminRolePermissionUpdateDto { PermissionIds = new List<Guid>() };
+
+            var result = await controller.ConfigureRolePermissions(roleId, dto);
+
+            Assert.IsType<OkObjectResult>(result);
+            var updatedRole = await context.Roles.Include(r => r.Permissions).FirstOrDefaultAsync(r => r.RoleId == roleId);
+            Assert.Empty(updatedRole!.Permissions);
+        }
+
+        [Fact]
+        public async Task GetRolePermissionMatrix_ReturnsMatrix()
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var role = new Role { RoleId = Guid.NewGuid(), RoleName = "Staff" };
+            var perm = new Permission { PermissionId = Guid.NewGuid(), PermissionCode = "EXPENSE_VIEW", PermissionName = "Expense View" };
+            role.Permissions.Add(perm);
+            context.Roles.Add(role);
+            context.Permissions.Add(perm);
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context);
+            var result = await controller.GetRolePermissionMatrix();
+
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var matrix = okResult.Value as IEnumerable<object>;
+            Assert.NotNull(matrix);
+            Assert.Single(matrix);
+        }
+
+        [Fact]
+        public async Task ConfigureRolePermissions_InvalidPermissions_ReturnsBadRequest()
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var roleId = Guid.NewGuid();
+            var role = new Role { RoleId = roleId, RoleName = "Staff" };
+            var validPerm = new Permission { PermissionId = Guid.NewGuid(), PermissionCode = "TEST", PermissionName = "Test" };
+            context.Roles.Add(role);
+            context.Permissions.Add(validPerm);
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context, Guid.NewGuid());
+            // Guid.NewGuid() is not in the database
+            var dto = new AdminRolePermissionUpdateDto { PermissionIds = new List<Guid> { validPerm.PermissionId, Guid.NewGuid() } };
+
+            var result = await controller.ConfigureRolePermissions(roleId, dto);
+
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            var errorResponse = Assert.IsType<ErrorResponseDto>(badRequest.Value);
+            Assert.Contains("Quyền không tồn tại", errorResponse.Error.Message);
         }
     }
 }

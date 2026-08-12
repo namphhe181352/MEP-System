@@ -128,7 +128,8 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
                 BranchId = branchId, 
                 ProductId = productId,
                 ActualStock = actualStock,
-                MinimumStock = minStock 
+                MinimumStock = minStock,
+                IsActive = 1
             });
             
             await context.SaveChangesAsync();
