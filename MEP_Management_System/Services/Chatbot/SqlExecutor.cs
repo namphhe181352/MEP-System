@@ -95,7 +95,7 @@ public class SqlExecutor
         @"\bdblink[a-z_]*\b",
         @"\blo_import\b", @"\blo_export\b",
         @"\bcopy\b",
-        @"\bcurrent_setting\b", @"\bset_config\b",
+        @"\bset_config\b",
         @"\bpg_sleep\b",
         @"\bDROP\b", @"\bDELETE\b", @"\bINSERT\b", @"\bUPDATE\b",
         @"\bTRUNCATE\b", @"\bALTER\b", @"\bCREATE\b", @"\bGRANT\b", @"\bREVOKE\b",
@@ -230,8 +230,14 @@ public class SqlExecutor
                 return (false, validation.Message, null);
             }
 
-            // Inject branch_id filter vào SQL để đảm bảo AI luôn query đúng chi nhánh
-            sql = InjectBranchIdFilter(sql, branchId);
+            // Kiểm tra an toàn: AI phải tự dùng current_setting cho các bảng không có RLS
+            var sqlUpper = sql.ToUpperInvariant();
+            if ((sqlUpper.Contains("PAYMENTS") || sqlUpper.Contains("INVOICES") || sqlUpper.Contains("CUSTOMERS") || sqlUpper.Contains("INVOICE_ITEMS") || sqlUpper.Contains("RETURN_ORDERS")) && !sqlUpper.Contains("CURRENT_SETTING"))
+            {
+                var msg = "Query bị từ chối vì thiếu điều kiện lọc chi nhánh an toàn. Bảng payments/invoices/customers/invoice_items/return_orders CHƯA CÓ RLS, bạn BẮT BUỘC phải dùng current_setting('app.current_branch_id', true) để lọc chi nhánh!";
+                _logger.LogWarning("SQL validation failed: {Reason} | SQL: {Sql}", msg, sql);
+                return (false, msg, null);
+            }
 
             _logger.LogInformation("Executing SQL (branchId={BranchId}): {Sql}", branchId, sql);
 
@@ -330,65 +336,5 @@ public class SqlExecutor
         }
     }
 
-    /// <summary>
-    /// Inject branch_id filter vào SQL query tự động.
-    /// Khi query các bảng có branch_id (orders, customers, expense_vouchers...),
-    /// tự động thêm filter branch_id = 'xxx'.
-    /// Khi query payments/invoices không có branch_id, phải JOIN với orders để lọc.
-    /// </summary>
-    private static string InjectBranchIdFilter(string sql, string? branchId)
-    {
-        if (string.IsNullOrWhiteSpace(branchId) || string.IsNullOrWhiteSpace(sql))
-            return sql;
 
-        var sqlUpper = sql.ToUpperInvariant();
-
-        // Tìm vị trí để insert branch_id filter - phải insert TRƯỚC GROUP BY, ORDER BY, LIMIT
-        var insertPos = sql.Length;
-        var keywords = new[] { "GROUP BY", "ORDER BY", "LIMIT", ";", "--" };
-        foreach (var kw in keywords)
-        {
-            var pos = sqlUpper.LastIndexOf(kw);
-            if (pos >= 0 && pos < insertPos)
-                insertPos = pos;
-        }
-
-        // 1. Query trực tiếp bảng orders - thêm branch_id filter
-        if ((sqlUpper.Contains("FROM ORDERS") || sqlUpper.Contains("JOIN ORDERS ")) && !sqlUpper.Contains("BRANCH_ID"))
-        {
-            // Tìm alias của orders
-            var ordersAlias = "orders";
-            if (sqlUpper.Contains(" ORDERS O ") || sqlUpper.Contains("ORDERS AS O") || sqlUpper.Contains("ORDERS O\n") || sqlUpper.Contains("ORDERS O\r\n"))
-                ordersAlias = "o";
-
-            var branchFilter = $" AND {ordersAlias}.branch_id = '{branchId}'";
-            sql = sql.Insert(insertPos, branchFilter);
-        }
-
-        // 2. Bảng customers KHÔNG có branch_id - RLS lọc thông qua orders nên KHÔNG
-        // inject branch_id filter (sẽ gây lỗi "column customers.branch_id does not exist").
-        // Các query JOIN customers sẽ được RLS tự lọc qua orders.branch_id trong
-        // policy hoặc qua JOIN với orders đã có filter branch_id.
-
-        // 3. Query payments/invoices - cần JOIN với orders để lọc
-        if ((sqlUpper.Contains("PAYMENTS") || sqlUpper.Contains("INVOICES")) && !sqlUpper.Contains("JOIN ORDERS"))
-        {
-            if (sqlUpper.Contains("JOIN INVOICES") && !sqlUpper.Contains("JOIN ORDERS O"))
-            {
-                var oldLen = sql.Length;
-                sql = sql.Replace("JOIN invoices i", "JOIN invoices i JOIN orders o ON i.order_id = o.order_id");
-                insertPos += (sql.Length - oldLen);
-                sql = sql.Insert(insertPos, $" AND o.branch_id = '{branchId}'");
-            }
-            else if (sqlUpper.Contains("JOIN PAYMENTS") && !sqlUpper.Contains("JOIN ORDERS"))
-            {
-                var oldLen = sql.Length;
-                sql = sql.Replace("JOIN payments p", "JOIN payments p JOIN invoices i ON p.invoice_id = i.invoice_id JOIN orders o ON i.order_id = o.order_id");
-                insertPos += (sql.Length - oldLen);
-                sql = sql.Insert(insertPos, $" AND o.branch_id = '{branchId}'");
-            }
-        }
-
-        return sql;
-    }
 }
