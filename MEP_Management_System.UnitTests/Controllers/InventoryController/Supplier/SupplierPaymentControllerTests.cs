@@ -36,6 +36,7 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController.Suppli
             {
                 claims.Add(new Claim(ClaimTypes.NameIdentifier, userId.Value.ToString()));
             }
+            claims.Add(new Claim(ClaimTypes.Role, "Owner"));
 
             var identity = new ClaimsIdentity(claims, "TestAuthType");
             var claimsPrincipal = new ClaimsPrincipal(identity);

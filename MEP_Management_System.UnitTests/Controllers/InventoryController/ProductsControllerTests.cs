@@ -44,6 +44,7 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
                 claims.Add(new Claim("branchId", branchId.Value.ToString()));
                 _mockBranchAccessor.Setup(x => x.GetBranchId()).Returns(branchId.Value);
             }
+            claims.Add(new Claim(ClaimTypes.Role, "Owner"));
             
             var identity = new ClaimsIdentity(claims, "TestAuthType");
             controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) } };
@@ -219,5 +220,8 @@ namespace MEP_Management_System.UnitTests.Controllers.InventoryController
             
             Assert.Equal(expectedCode, suggestion?.SuggestedCode);
         }
+
+
+
     }
 }

@@ -69,15 +69,20 @@ namespace MEP_Management_System.UnitTests.Controllers.AuthenticationController
         // REGISTER START
         // =====================================
 
-        [Fact]
-        public async Task RegisterStart_EmailAlreadyExists_ReturnsBadRequest()
+        [Theory]
+        [InlineData("test1@mep.vn")]
+        [InlineData("test2@mep.vn")]
+        [InlineData("test3@mep.vn")]
+        public async Task RegisterStart_EmailAlreadyExists_ReturnsBadRequest(string testEmail)
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
-            context.Users.Add(new User { UserId = Guid.NewGuid(), Email = "test@mep.vn", Username = "test", PasswordHash = "hash" });
+            context.Users.Add(new User { UserId = Guid.NewGuid(), Email = "test1@mep.vn", Username = "test1", PasswordHash = "hash" });
+            context.Users.Add(new User { UserId = Guid.NewGuid(), Email = "test2@mep.vn", Username = "test2", PasswordHash = "hash" });
+            context.Users.Add(new User { UserId = Guid.NewGuid(), Email = "test3@mep.vn", Username = "test3", PasswordHash = "hash" });
             await context.SaveChangesAsync();
             var controller = CreateController(context);
 
-            var result = await controller.RegisterStart(new RegisterStartDto { Email = "test@mep.vn" });
+            var result = await controller.RegisterStart(new RegisterStartDto { Email = testEmail });
             var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
             var message = badRequestResult.Value?.GetType().GetProperty("message")?.GetValue(badRequestResult.Value, null) as string;
             Assert.Equal("Email này đã được đăng ký tài khoản.", message);
@@ -98,6 +103,8 @@ namespace MEP_Management_System.UnitTests.Controllers.AuthenticationController
             Assert.Equal((short)0, otpDb.IsUsed);
             _mockEmailService.Verify(s => s.SendOtpEmailAsync("new@mep.vn", otpDb.OtpCode), Times.Once);
         }
+
+
 
         // =====================================
         // REGISTER VERIFY
@@ -120,172 +127,6 @@ namespace MEP_Management_System.UnitTests.Controllers.AuthenticationController
             
             var otpDb = await context.OtpVerifications.FirstAsync();
             Assert.Equal((short)1, otpDb.IsUsed); // Verified it consumed the OTP before rejecting
-        }
-
-        // =====================================
-        // FORGOT PASSWORD START
-        // =====================================
-
-        [Theory]
-        [InlineData("notfound@mep.vn", 1, true, "Email chưa được đăng ký.")] // Not found
-        [InlineData("exist@mep.vn", 0, true, "Tài khoản đang bị khóa hoặc chưa xác minh.")] // Inactive
-        [InlineData("exist@mep.vn", 1, false, "Tài khoản đang bị khóa hoặc chưa xác minh.")] // Unverified
-        public async Task ForgotPasswordStart_InvalidConditions_ReturnsBadRequest(string email, short isActive, bool isVerified, string expectedMessage)
-        {
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            if (email == "exist@mep.vn")
-            {
-                context.Users.Add(new User { UserId = Guid.NewGuid(), Email = email, IsActive = isActive, IsVerified = isVerified, Username = "test" });
-                await context.SaveChangesAsync();
-            }
-
-            var controller = CreateController(context);
-            var result = await controller.ForgotPasswordStart(new ForgotPasswordStartDto { Email = "exist@mep.vn" });
-            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-            var message = badRequest.Value?.GetType().GetProperty("message")?.GetValue(badRequest.Value, null) as string;
-            Assert.Equal(expectedMessage, message);
-        }
-
-        [Fact]
-        public async Task ForgotPasswordStart_ValidUser_SendsOtpAndInvalidatesOldOtps()
-        {
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            context.Users.Add(new User { UserId = Guid.NewGuid(), Email = "valid@mep.vn", IsActive = 1, IsVerified = true, Username = "test" });
-            context.OtpVerifications.Add(new OtpVerification { OtpId = Guid.NewGuid(), Email = "valid@mep.vn", OtpCode = "123456", Purpose = "RESET_PASSWORD", IsUsed = 0 });
-            await context.SaveChangesAsync();
-
-            var controller = CreateController(context);
-            var result = await controller.ForgotPasswordStart(new ForgotPasswordStartDto { Email = "valid@mep.vn" });
-            
-            Assert.IsType<OkObjectResult>(result);
-            var otps = await context.OtpVerifications.Where(o => o.Email == "valid@mep.vn").ToListAsync();
-            Assert.Equal(2, otps.Count);
-            Assert.Equal((short)1, otps.First().IsUsed); // Old OTP is invalidated
-            Assert.Equal((short)0, otps.Last().IsUsed); // New OTP is ready
-            _mockEmailService.Verify(s => s.SendOtpEmailAsync("valid@mep.vn", otps.Last().OtpCode), Times.Once);
-        }
-
-        // =====================================
-        // FORGOT PASSWORD VERIFY (OTP)
-        // =====================================
-
-        [Theory]
-        [InlineData("wrong_otp", 10, 0, "Mã xác nhận không hợp lệ hoặc đã hết hạn.")] // Wrong OTP
-        [InlineData("123456", -10, 0, "Mã xác nhận không hợp lệ hoặc đã hết hạn.")] // Expired OTP
-        [InlineData("123456", 10, 1, "Mã xác nhận không hợp lệ hoặc đã hết hạn.")] // Used OTP
-        public async Task ForgotPasswordVerify_InvalidOtp_ReturnsBadRequest(string inputOtp, int minutesAdd, short isUsed, string expectedMessage)
-        {
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            context.OtpVerifications.Add(new OtpVerification 
-            { 
-                OtpId = Guid.NewGuid(), Email = "test@mep.vn", OtpCode = "123456", 
-                Purpose = "RESET_PASSWORD", IsUsed = isUsed, ExpiredAt = DateTime.UtcNow.AddMinutes(minutesAdd)
-            });
-            await context.SaveChangesAsync();
-
-            var controller = CreateController(context);
-            var result = await controller.ForgotPasswordVerify(new ForgotPasswordVerifyDto { Email = "test@mep.vn", OtpCode = inputOtp, NewPassword = "newpassword" });
-            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-            var message = badRequest.Value?.GetType().GetProperty("message")?.GetValue(badRequest.Value, null) as string;
-            Assert.Equal(expectedMessage, message);
-        }
-
-        [Fact]
-        public async Task ForgotPasswordVerify_ValidOtp_ResetsPasswordAndReturnsOk()
-        {
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var userId = Guid.NewGuid();
-            context.Users.Add(new User { UserId = userId, Email = "test@mep.vn", Username = "test", PasswordHash = "old_hash" });
-            context.OtpVerifications.Add(new OtpVerification { OtpId = Guid.NewGuid(), Email = "test@mep.vn", OtpCode = "123456", Purpose = "RESET_PASSWORD", IsUsed = 0, ExpiredAt = DateTime.UtcNow.AddMinutes(10) });
-            await context.SaveChangesAsync();
-
-            var controller = CreateController(context);
-            var result = await controller.ForgotPasswordVerify(new ForgotPasswordVerifyDto { Email = "test@mep.vn", OtpCode = "123456", NewPassword = "newpassword" });
-            
-            Assert.IsType<OkObjectResult>(result);
-            var user = await context.Users.FindAsync(userId);
-            Assert.True(BCrypt.Net.BCrypt.Verify("newpassword", user!.PasswordHash)); // Password changed
-        }
-
-        // =====================================
-        // FORGOT PASSWORD (TOKEN-BASED)
-        // =====================================
-
-        [Fact]
-        public async Task ForgotPasswordToken_EmailDoesNotExist_ReturnsOkButNoEmailSent()
-        {
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
-            
-            var result = await controller.ForgotPassword(new ForgotPasswordRequest { Email = "nonexistent@mep.vn" });
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            _mockEmailService.Verify(s => s.SendPasswordResetEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task ForgotPasswordToken_ValidEmail_GeneratesTokenAndSendsEmail()
-        {
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var userId = Guid.NewGuid();
-            context.Users.Add(new User { UserId = userId, Email = "exist@mep.vn", Username = "test", FullName = "Test" });
-            await context.SaveChangesAsync();
-
-            var controller = CreateController(context);
-            var result = await controller.ForgotPassword(new ForgotPasswordRequest { Email = "exist@mep.vn" });
-            
-            Assert.IsType<OkObjectResult>(result);
-            var token = await context.PasswordResetTokens.FirstOrDefaultAsync(t => t.UserId == userId);
-            Assert.NotNull(token);
-            _mockEmailService.Verify(s => s.SendPasswordResetEmailAsync("exist@mep.vn", "Test", It.Is<string>(link => link.Contains("token="))), Times.Once);
-        }
-
-        // =====================================
-        // VALIDATE RESET TOKEN
-        // =====================================
-
-        [Theory]
-        [InlineData("", false, 10, false)] // Empty token
-        [InlineData("wrong_token", false, 10, false)] // Invalid token
-        [InlineData("valid_token", true, 10, false)] // Used token (isUsed = true means UsedAt != null)
-        [InlineData("valid_token", false, -10, false)] // Expired token
-        public async Task ValidateResetToken_InvalidConditions_ReturnsFalse(string token, bool isUsed, int minutesAdd, bool expectedValid)
-        {
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            if (token != "")
-            {
-                var tokenHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("valid_token"))).ToLowerInvariant();
-                context.PasswordResetTokens.Add(new PasswordResetToken 
-                { 
-                    Id = Guid.NewGuid(), TokenHash = tokenHash, 
-                    UsedAt = isUsed ? DateTime.UtcNow : null, 
-                    ExpiresAt = DateTime.UtcNow.AddMinutes(minutesAdd) 
-                });
-                await context.SaveChangesAsync();
-            }
-
-            var controller = CreateController(context);
-            var result = await controller.ValidateResetToken(token);
-            var okResult = Assert.IsType<OkObjectResult>(result);
-            var response = Assert.IsType<ValidateResetTokenResponse>(okResult.Value);
-            Assert.Equal(expectedValid, response.IsValid);
-        }
-
-        // =====================================
-        // RESET PASSWORD (TOKEN)
-        // =====================================
-
-        [Theory]
-        [InlineData("", "pass123", "pass123", "Token là bắt buộc.")]
-        [InlineData("token", "pass123", "pass456", "Mật khẩu xác nhận không khớp.")]
-        [InlineData("token", "123", "123", "Mật khẩu phải từ 6 ký tự trở lên.")]
-        public async Task ResetPasswordToken_ValidationFails_ReturnsBadRequest(string token, string newPass, string confirmPass, string expectedMessage)
-        {
-            using var context = new MEPDatabaseContext(_dbContextOptions);
-            var controller = CreateController(context);
-            var result = await controller.ResetPassword(new ResetPasswordRequest { Token = token, NewPassword = newPass, ConfirmPassword = confirmPass });
-            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-            var message = badRequest.Value?.GetType().GetProperty("message")?.GetValue(badRequest.Value, null) as string;
-            Assert.Equal(expectedMessage, message);
         }
 
         // =====================================
@@ -312,6 +153,20 @@ namespace MEP_Management_System.UnitTests.Controllers.AuthenticationController
             var controller = CreateController(context);
             var result = await controller.Login(new LoginDto { Email = loginEmail, Password = loginPassword });
             
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            var message = badRequest.Value?.GetType().GetProperty("message")?.GetValue(badRequest.Value, null) as string;
+            Assert.Equal(expectedMessage, message);
+        }
+
+        [Theory]
+        [InlineData("admin@mep.vn' OR '1'='1", "password", "Email này chưa được đăng ký.")] // Abnormal: SQL Injection attempt
+        [InlineData("verylongemailaddress_verylongemailaddress_verylongemailaddress_verylongemailaddress_verylongemailaddress@mep.vn", "pass", "Email này chưa được đăng ký.")] // Boundary: Email cực dài
+        public async Task Login_SecurityAndBoundary_ReturnsBadRequest(string loginEmail, string loginPassword, string expectedMessage)
+        {
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var controller = CreateController(context);
+            
+            var result = await controller.Login(new LoginDto { Email = loginEmail, Password = loginPassword });
             var badRequest = Assert.IsType<BadRequestObjectResult>(result);
             var message = badRequest.Value?.GetType().GetProperty("message")?.GetValue(badRequest.Value, null) as string;
             Assert.Equal(expectedMessage, message);

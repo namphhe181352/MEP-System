@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using AutoMapper;
 using MEP_Management_System.Controllers.SaleController;
+using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.DTOs.SaleDTOs;
 using MEP_Management_System.Models;
@@ -227,17 +228,24 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
             var returnOrderId = Guid.NewGuid();
             var branchProductId = Guid.NewGuid();
             
+            context.Users.Add(new User { UserId = userId, Username = "test" });
+            context.Customers.Add(new Customer { CustomerId = customerId, CustomerName = "Test Customer" });
+            context.Branches.Add(new Branch { BranchId = branchId, BranchName = "Test Branch" });
+            
             context.BranchProducts.Add(new BranchProduct { BranchProductId = branchProductId, BranchId = branchId, AvailableStock = 10, ActualStock = 10 });
             
-            var order = new Order { OrderId = Guid.NewGuid(), BranchId = branchId, CustomerId = customerId };
+            var invoice = new Invoice { InvoiceId = Guid.NewGuid(), OrderId = Guid.NewGuid(), Status = "Completed" };
+            var order = new Order { OrderId = invoice.OrderId, BranchId = branchId, CustomerId = customerId, Invoice = invoice };
             context.Orders.Add(order);
-            context.Invoices.Add(new Invoice { InvoiceId = Guid.NewGuid(), OrderId = order.OrderId }); // needed for InvoiceId lookup
+            context.Invoices.Add(invoice); 
             
             context.ReturnOrders.Add(new ReturnOrder
             {
                 ReturnOrderId = returnOrderId,
                 OrderId = order.OrderId,
+                Order = order,
                 Status = "Pending",
+                ReturnType = "REFUND",
                 RefundMethod = "CASH",
                 UserId = userId,
                 ReturnItems = new List<ReturnItem>
@@ -255,7 +263,11 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
             // Act
             var result = await controller.FinalizeReturn(returnOrderId, request);
 
-            // Assert
+            if (result.Result is ObjectResult objResult && objResult.StatusCode != 200)
+            {
+                var responseJson = JsonSerializer.Serialize(objResult.Value);
+                Assert.Fail($"Failed with {objResult.StatusCode}: {responseJson}");
+            }
             var okResult = Assert.IsType<OkObjectResult>(result.Result);
             
             var dbReturnOrder = await context.ReturnOrders.FindAsync(returnOrderId);
@@ -269,5 +281,177 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
             Assert.NotNull(dbRefund);
             Assert.Equal(100000, dbRefund.RefundAmount);
         }
+
+
+
+
+
+        [Fact]
+        public async Task AddReturnItem_QuantityExceedsSold_ReturnsBadRequest()
+        {
+            // Arrange
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var userId = Guid.NewGuid();
+            var branchId = Guid.NewGuid();
+            var categoryId = Guid.NewGuid();
+            
+            SetupReturnPolicies(context, branchId, categoryId);
+
+            var productId = Guid.NewGuid();
+            var branchProductId = Guid.NewGuid();
+            context.Products.Add(new Product { ProductId = productId, ProductCode = "SP-01", ProductName = "Thép", CategoryTaxonomyId = categoryId });
+            context.BranchProducts.Add(new BranchProduct { BranchProductId = branchProductId, BranchId = branchId, ProductId = productId });
+            
+            var orderId = Guid.NewGuid();
+            var invoiceId = Guid.NewGuid();
+            var invoice = new Invoice
+            {
+                InvoiceId = invoiceId,
+                OrderId = orderId,
+                Status = "Completed",
+                CreatedAt = DateTime.UtcNow.AddDays(-2),
+                DiscountAmount = 0
+            };
+            
+            var invoiceItem = new InvoiceItem 
+            { 
+                InvoiceItemId = Guid.NewGuid(), 
+                InvoiceId = invoiceId, 
+                BranchProductId = branchProductId, 
+                Quantity = 5, // Sold 5
+                SellPrice = 10000 
+            };
+            
+            context.Orders.Add(new Order { OrderId = orderId, BranchId = branchId });
+            context.Invoices.Add(invoice);
+            context.InvoiceItems.Add(invoiceItem);
+            
+            var returnOrderId = Guid.NewGuid();
+            context.ReturnOrders.Add(new ReturnOrder
+            {
+                ReturnOrderId = returnOrderId,
+                OrderId = orderId,
+                Status = "Pending",
+                ReturnType = "REFUND"
+            });
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context, userId, branchId);
+            var request = new AddReturnItemRequest { ProductId = productId, Quantity = 10, Reason = "Trả lại" }; // Try to return 10
+
+            // Act
+            var result = await controller.AddReturnItem(returnOrderId, request);
+
+            // Assert
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
+            var response = Assert.IsType<MEP_Management_System.DTOs.SaleDTOs.ApiErrorResponse>(badRequest.Value);
+            Assert.Contains("Số lượng trả vượt quá", response.Error.Message);
+        }
+
+        [Fact]
+        public async Task CreateReturn_After7Days_ReturnsBadRequest()
+        {
+            // Arrange
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var userId = Guid.NewGuid();
+            var branchId = Guid.NewGuid();
+            var categoryId = Guid.NewGuid();
+            
+            SetupReturnPolicies(context, branchId, categoryId); // Default 30 days, but let's assume we are testing policy expiration
+
+            var orderId = Guid.NewGuid();
+            var invoiceId = Guid.NewGuid();
+            context.Users.Add(new User { UserId = userId, Username = "test" });
+            context.Branches.Add(new Branch { BranchId = branchId });
+            var order = new Order { OrderId = orderId, BranchId = branchId, UserId = userId };
+            context.Orders.Add(order);
+            context.Invoices.Add(new Invoice
+            {
+                InvoiceId = invoiceId,
+                OrderId = orderId,
+                Order = order,
+                Status = "Completed",
+                CreatedAt = DateTime.UtcNow.AddDays(-40), // Over 30 days
+                InvoiceItems = new List<InvoiceItem>()
+            });
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context, userId, branchId);
+            var request = new CreateReturnOrderRequest
+            {
+                InvoiceId = invoiceId,
+                RefundMethod = "CASH",
+                ReturnType = "REFUND"
+            };
+
+            // Act
+            var result = await controller.CreateReturn(request);
+
+            // Assert
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
+            var response = Assert.IsType<MEP_Management_System.DTOs.SaleDTOs.ApiErrorResponse>(badRequest.Value);
+            Assert.Contains("Đã quá thời hạn", response.Error.Message);
+        }
+
+        [Fact]
+        public async Task CreateReturn_PendingReturnExists_ReturnsBadRequest()
+        {
+            // Arrange
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var userId = Guid.NewGuid();
+            var branchId = Guid.NewGuid();
+            var orderId = Guid.NewGuid();
+            var invoiceId = Guid.NewGuid();
+            
+            context.Users.Add(new User { UserId = userId, Username = "test" });
+            context.Branches.Add(new Branch { BranchId = branchId });
+            var order = new Order { OrderId = orderId, BranchId = branchId, UserId = userId };
+            context.Orders.Add(order);
+            context.Invoices.Add(new Invoice { InvoiceId = invoiceId, OrderId = orderId, Order = order, Status = "Completed", CreatedAt = DateTime.UtcNow });
+            
+            context.ReturnOrders.Add(new ReturnOrder { ReturnOrderId = Guid.NewGuid(), OrderId = orderId, Status = "Pending" });
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context, userId, branchId);
+            var request = new CreateReturnOrderRequest { InvoiceId = invoiceId, ReturnType = "REFUND" };
+
+            // Act
+            var result = await controller.CreateReturn(request);
+
+            // Assert
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
+            var response = Assert.IsType<MEP_Management_System.DTOs.SaleDTOs.ApiErrorResponse>(badRequest.Value);
+            Assert.Contains("đang có phiếu đổi trả đang xử lý", response.Error.Message);
+        }
+
+        [Fact]
+        public async Task CreateReturn_InvoiceNotCompleted_ReturnsBadRequest()
+        {
+            // Arrange
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var userId = Guid.NewGuid();
+            var branchId = Guid.NewGuid();
+            var orderId = Guid.NewGuid();
+            var invoiceId = Guid.NewGuid();
+            
+            context.Users.Add(new User { UserId = userId, Username = "test" });
+            context.Branches.Add(new Branch { BranchId = branchId });
+            var order = new Order { OrderId = orderId, BranchId = branchId, UserId = userId };
+            context.Orders.Add(order);
+            context.Invoices.Add(new Invoice { InvoiceId = invoiceId, OrderId = orderId, Order = order, Status = "Draft" });
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context, userId, branchId);
+            var request = new CreateReturnOrderRequest { InvoiceId = invoiceId, ReturnType = "REFUND" };
+
+            // Act
+            var result = await controller.CreateReturn(request);
+
+            // Assert
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
+            var response = Assert.IsType<MEP_Management_System.DTOs.SaleDTOs.ApiErrorResponse>(badRequest.Value);
+            Assert.Contains("Chỉ hóa đơn đã hoàn tất mới được", response.Error.Message);
+        }
+
     }
 }
