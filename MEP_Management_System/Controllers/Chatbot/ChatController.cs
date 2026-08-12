@@ -206,7 +206,7 @@ public class ChatController : ControllerBase
 
     private async Task<ChatResponse> ProcessChatAsync(string apiUrl, string apiKey, string model, List<object> messages, string userMessage, string branchId, CancellationToken cancellationToken)
     {
-        // User message đã được thêm vào ở SendMessage, không thêm lại ở đây
+        bool lastQuerySucceeded = false;
 
         for (int iteration = 0; iteration < MaxSqlIterations; iteration++)
         {
@@ -273,6 +273,7 @@ public class ChatController : ControllerBase
             // trước khi chạy SQL, để Row Level Security tự lọc đúng chi nhánh -
             // không phụ thuộc vào việc AI có nhớ filter branch_id hay không.
             var execResult = await _sqlExecutor.ExecuteQueryAsync(sqlQuery!, branchId);
+            lastQuerySucceeded = execResult.success;
 
             if (!execResult.success)
             {
@@ -301,13 +302,16 @@ public class ChatController : ControllerBase
         }
 
         // Hết số vòng lặp SQL cho phép mà vẫn chưa có câu trả lời cuối cùng.
-        // Ép AI trả lời thẳng bằng dữ liệu đã có (không cho viết SQL nữa).
-        messages.Add(new
+        // Ép AI trả lời thẳng bằng dữ liệu đã có (nếu truy vấn cuối cùng thành công).
+        // Nếu truy vấn cuối cùng thất bại, cấm bịa số liệu.
+        if (!lastQuerySucceeded)
         {
-            role = "user",
-            content = "Dựa vào toàn bộ dữ liệu đã có ở trên, hãy trả lời câu hỏi của user ngay bây giờ bằng tiếng Việt. " +
-                      "KHÔNG được viết thêm SQL query nữa. Nếu chưa đủ dữ liệu để trả lời chính xác, hãy nói rõ là hệ thống chưa hỗ trợ truy vấn này."
-        });
+            messages.Add(new
+            {
+                role = "user",
+                content = "Quá trình truy vấn SQL đã bị lỗi hoặc không lấy được dữ liệu. BẠN TUYỆT ĐỐI KHÔNG ĐƯỢC BỊA SỐ LIỆU (hallucinate). Hãy trả lời user bằng đúng một câu duy nhất: 'Dạ hệ thống hiện chưa có đủ dữ liệu để trả lời hoặc truy vấn đang gặp lỗi, anh/chị vui lòng hỏi lại theo cách khác giúp em ạ.' KHÔNG viết thêm bất kỳ câu nào khác và KHÔNG sinh SQL nữa."
+            });
+        }
 
         var (finalSuccess, finalRespText, finalErrorResponse) = await CallAiApiAsync(apiUrl, apiKey, model, messages, cancellationToken);
         if (!finalSuccess)
@@ -344,7 +348,7 @@ public class ChatController : ControllerBase
         {
             model = model,
             messages = messages,
-            max_tokens = 2000,
+            max_tokens = 10000,
             temperature = 0.3
         };
 
@@ -363,7 +367,7 @@ public class ChatController : ControllerBase
 
         // Log ở mức Debug - response AI có thể chứa dữ liệu kinh doanh/PII
         // (AI thường lặp lại kết quả DB trong câu trả lời), tránh ghi vào log file.
-        _logger.LogDebug("Raw AI Response: {Response}", respText);
+        _logger.LogInformation("Raw AI Response: {Response}", respText);
 
         if (!resp.IsSuccessStatusCode)
         {
@@ -458,6 +462,7 @@ public class ChatController : ControllerBase
         var mondayStr = monday.ToString("yyyy-MM-dd");
         var firstDayOfMonthStr = firstDayOfMonth.ToString("yyyy-MM-dd");
         var lastDayOfMonth = firstDayOfMonth.AddMonths(1).AddDays(-1).ToString("yyyy-MM-dd");
+        var thirtyDaysAgoStr = today.AddDays(-30).ToString("yyyy-MM-dd");
 
         var prompt = $@"## NHIỆM VỤ CHÍNH
 Bạn là trợ lý ảo cho hệ thống quản lý kho và bán hàng MEP Management System.
@@ -471,13 +476,18 @@ Bạn là trợ lý ảo cho hệ thống quản lý kho và bán hàng MEP Mana
 
 ## ⚠️ QUY TẮC BẮT BUỘC - NẾU VI PHẠM SẼ TRẢ SAI DỮ LIỆU:
 1. Khi JOIN với bảng **products**: LUÔN LUÔN thêm `p.status = 1`
-2. Khi JOIN với bảng **branch_products**: LUÔN LUÔN thêm `bp.is_active = true`
-3. KHÔNG BAO GIỜ được trả thông tin sản phẩm đã xóa (status ≠ 1) hoặc đã ngừng kinh doanh (is_active ≠ true)
+2. Khi JOIN với bảng **branch_products**: LUÔN LUÔN thêm `bp.is_active = 1` (Lưu ý cột này là smallint, TUYỆT ĐỐI KHÔNG dùng = true)
+3. KHÔNG BAO GIỜ được trả thông tin sản phẩm đã xóa (status ≠ 1) hoặc đã ngừng kinh doanh (is_active ≠ 1)
 4. Khi hỏi số lượng tồn kho: PHẢI lấy từ cột **available_stock** trong bảng **branch_products**, KHÔNG phải từ bảng products
 5. Khi hỏi giá: PHẢI lấy từ **sell_price** trong bảng **branch_products** (vì mỗi chi nhánh có giá khác nhau)
 6. KHÔNG BAO GIỜ dùng `SELECT *` - luôn liệt kê cột cụ thể cần thiết (SELECT * bị hệ thống chặn)
 7. TẤT CẢ các cột ID (branch_id, product_id, category_id, user_id...) đều là kiểu UUID. TUYỆT ĐỐI không bao giờ so sánh ID với số nguyên.
 8. ⚠️ KHÔNG ĐƯỢC TỰ BỊA DỮ LIỆU: Nếu query SQL bị lỗi hoặc hệ thống trả về kết quả rỗng/null, TUYỆT ĐỐI KHÔNG tự tạo ra dữ liệu giả (như bịa số liệu thanh toán, doanh thu). Hãy trả lời trung thực là ""Không tìm thấy dữ liệu"" hoặc ""Hệ thống đang gặp lỗi truy vấn, xin vui lòng thử lại"".
+9. ⚠️ BẮT BUỘC TUÂN THỦ QUY TRÌNH 2 BƯỚC:
+   BẠN KHÔNG ĐƯỢC PHÉP TỰ TRẢ LỜI VÀ TỰ BỊA DỮ LIỆU TRONG CÙNG 1 LƯỢT CHAT (VÌ BẠN KHÔNG CÓ DATABASE).
+   - BƯỚC 1: Khi cần số liệu, PHẦN CONTENT (TRẢ LỜI CHÍNH THỨC) CỦA BẠN CHỈ ĐƯỢC CHỨA DUY NHẤT 1 BLOCK `--QUERY_START--...--QUERY_END--`. Không được viết thêm bất kỳ chữ nào khác. ĐỂ TRỐNG KẾT QUẢ VÀ DỪNG LẠI! (Hệ thống backend C# sẽ tự động parse block SQL của bạn, đem đi chạy trên Database thật).
+   - BƯỚC 2: Hệ thống sẽ tự động gửi lại cho bạn 1 tin nhắn chứa ""✅ Đây là kết quả từ database: ..."". CHỈ KHI NÀY bạn mới được phép đọc dữ liệu thật và xuất ra bảng markdown cho user.
+   TUYỆT ĐỐI KHÔNG ĐƯỢC GIẤU SQL VÀO PHẦN SUY LUẬN (REASONING) VÀ BỊA KẾT QUẢ VÀO CONTENT! TẤT CẢ SQL PHẢI Ở TRONG PHẦN CONTENT ĐỂ HỆ THỐNG PARSE.
 
 ## DATABASE SCHEMA (PostgreSQL) - CHỈ được dùng đúng các bảng/cột dưới đây, KHÔNG được tự bịa bảng/cột khác
 
@@ -526,7 +536,7 @@ Khi cần lấy dữ liệu, VIẾT SQL query trong block:
 
 ## SQL MẪU (QUAN TRỌNG: Xem muc CÁCH TÍNH DOANH THU VÀ LỢI NHUẬN bên dưới trước khi viết query):
 
-1. Tìm sản phẩm (LUÔN filter status=1 và is_active=true):
+1. Tìm sản phẩm (LUÔN filter status=1 và is_active=1):
 ```sql
 --QUERY_START--
 SELECT p.product_code, p.product_name, p.brand_name, bp.sell_price, bp.available_stock
@@ -678,31 +688,40 @@ FROM metrics m, cogs_calc c, expense_calc e, refund_calc r;
 --QUERY_END--
 ```
 
-8. Tổng nợ nhà cung cấp - PHẢI filter theo branch_id của user hiện tại (dùng session variable app.current_branch_id):
+8. Tổng nợ nhà cung cấp:
 ```sql
 --QUERY_START--
-SELECT COALESCE(
-    (SELECT COALESCE(SUM(po.total_amount), 0)
-     FROM purchase_orders po
-     JOIN suppliers s ON po.supplier_id = s.supplier_id
-     WHERE s.branch_id::text = current_setting('app.current_branch_id', true)
-       AND po.status IN ('APPROVED', 'PENDING')) +
-    (SELECT COALESCE(SUM(st.total_amount), 0)
-     FROM stock_tickets st
-     JOIN suppliers s ON st.supplier_id = s.supplier_id
-     WHERE s.branch_id::text = current_setting('app.current_branch_id', true)
-       AND st.ticket_type = 'PURCHASE' AND st.status = 'COMPLETED'
-       AND st.completed_at IS NOT NULL) -
-    (SELECT COALESCE(SUM(sp.amount), 0)
-     FROM ""SupplierPayments"" sp
-     JOIN suppliers s ON sp.supplier_id = s.supplier_id
-     WHERE s.branch_id::text = current_setting('app.current_branch_id', true)
-       AND sp.is_deleted = 0)
-, 0) AS total_supplier_debt
+SELECT 
+    (SELECT COALESCE(SUM(total_amount), 0) FROM purchase_orders WHERE status IN ('APPROVED', 'PENDING'))
+    + (SELECT COALESCE(SUM(total_amount), 0) FROM stock_tickets WHERE ticket_type = 'PURCHASE' AND status = 'COMPLETED')
+    - (SELECT COALESCE(SUM(""Amount""), 0) FROM ""SupplierPayments"" WHERE ""IsDeleted"" = 0)
+    AS total_supplier_debt;
 --QUERY_END--
 ```
 
-9. Phân tích phương thức thanh toán trong 30 ngày qua:
+9. Chi tiết công nợ theo từng nhà cung cấp:
+```sql
+--QUERY_START--
+SELECT 
+    s.supplier_name,
+    s.contact_phone,
+    COALESCE(po.amount, 0) + COALESCE(st.amount, 0) - COALESCE(paid.amount, 0) AS current_debt
+FROM suppliers s
+LEFT JOIN (
+    SELECT supplier_id, SUM(total_amount) AS amount FROM purchase_orders WHERE status IN ('APPROVED', 'PENDING') GROUP BY supplier_id
+) po ON s.supplier_id = po.supplier_id
+LEFT JOIN (
+    SELECT supplier_id, SUM(total_amount) AS amount FROM stock_tickets WHERE ticket_type = 'PURCHASE' AND status = 'COMPLETED' GROUP BY supplier_id
+) st ON s.supplier_id = st.supplier_id
+LEFT JOIN (
+    SELECT ""SupplierId"" AS supplier_id, SUM(""Amount"") AS amount FROM ""SupplierPayments"" WHERE ""IsDeleted"" = 0 GROUP BY ""SupplierId""
+) paid ON s.supplier_id = paid.supplier_id
+WHERE (COALESCE(po.amount, 0) + COALESCE(st.amount, 0) - COALESCE(paid.amount, 0)) > 0
+ORDER BY current_debt DESC;
+--QUERY_END--
+```
+
+10. Phân tích phương thức thanh toán trong 30 ngày qua:
 ```sql
 --QUERY_START--
 SELECT p.method as payment_method, count(*) as count, sum(p.amount) as total 
@@ -772,6 +791,7 @@ SELECT COUNT(*) as total_suppliers FROM suppliers WHERE status = 1;
 - Khi hỏi về sản phẩm bán chạy/doanh thu theo sản phẩm: invoice_items KHÔNG có product_id, PHẢI JOIN qua branch_products (branch_product_id) rồi mới JOIN được tới products.
 - Doanh thu hôm nay: WHERE DATE(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = DATE(now() AT TIME ZONE 'Asia/Ho_Chi_Minh')
 - Doanh thu tuần này: WHERE created_at >= '{mondayStr}'
+- Doanh thu 30 ngày: WHERE created_at >= '{thirtyDaysAgoStr}'
 - Doanh thu tháng này: WHERE created_at >= '{firstDayOfMonthStr}'
 - Luôn thêm: AND status = 'Completed' khi tính doanh thu/lợi nhuận từ orders hoặc invoices
 - LƯU Ý KHI LỌC SẢN PHẨM ĐÃ XÓA:
