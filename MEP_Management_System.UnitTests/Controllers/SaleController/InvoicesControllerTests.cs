@@ -260,7 +260,7 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
         [InlineData(null, -20, 1, 1, 1, 1)] // Page 1 size 1
         [InlineData(null, -20, 1, 2, 1, 1)] // Page 2 size 1
         [InlineData(null, -20, 1, -1, 10, 2)] // Invalid page -> valid page
-        public async Task GetInvoices_ReturnsPagedList(string? status, int fromDays, int toDays, int page, int size, int expectedCount)
+        public async Task GetInvoices_ReturnsPagedList(string? status, int? fromDays, int? toDays, int page, int size, int expectedCount)
         {
             using var context = new MEPDatabaseContext(_dbContextOptions);
             var branchId = Guid.NewGuid();
@@ -285,8 +285,8 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
 
             var controller = CreateController(context, Guid.NewGuid(), branchId);
             
-            DateTime? from = now.AddDays(fromDays);
-            DateTime? to = now.AddDays(toDays);
+            DateTime? from = fromDays.HasValue ? now.AddDays(fromDays.Value) : null;
+            DateTime? to = toDays.HasValue ? now.AddDays(toDays.Value) : null;
 
             var dbCount = await context.Invoices.CountAsync();
             var dbMatchCount = await context.Invoices.Include(i => i.Order).Where(i => i.Order.BranchId == branchId).CountAsync();
@@ -299,6 +299,75 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
             var pageResult = Assert.IsType<MEP_Management_System.DTOs.SaleDTOs.PageResultDto<InvoiceDto>>(okResult.Value);
             
             Assert.Equal(expectedCount, pageResult.Items.Count());
+        }
+
+        [Fact]
+        public async Task FinalizeInvoice_EmptyItems_ReturnsBadRequest()
+        {
+            // Arrange
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var userId = Guid.NewGuid();
+            var branchId = Guid.NewGuid();
+            var invoiceId = Guid.NewGuid();
+            var shiftId = Guid.NewGuid();
+            
+            context.Users.Add(new User { UserId = userId, Username = "test" });
+            context.Shifts.Add(new Shift { ShiftId = shiftId, BranchId = branchId, UserId = userId, Status = "OPEN" });
+            
+            var order = new Order { OrderId = Guid.NewGuid(), BranchId = branchId, UserId = userId, Status = "Draft" };
+            context.Orders.Add(order);
+            context.Invoices.Add(new Invoice
+            {
+                InvoiceId = invoiceId,
+                OrderId = order.OrderId,
+                ShiftId = shiftId,
+                UserId = userId,
+                Order = order,
+                Status = "Draft",
+                InvoiceItems = new List<InvoiceItem>() // Empty items
+            });
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context, userId, branchId);
+
+            // Act
+            var result = await controller.FinalizeInvoice(invoiceId);
+
+            // Assert
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
+            var response = Assert.IsType<MEP_Management_System.DTOs.SaleDTOs.ApiErrorResponse>(badRequest.Value);
+            Assert.Contains("at least 1 item", response.Error.Message);
+        }
+
+        [Fact]
+        public async Task AddItem_ProductInactive_ReturnsNotFound()
+        {
+            // Arrange
+            using var context = new MEPDatabaseContext(_dbContextOptions);
+            var userId = Guid.NewGuid();
+            var branchId = Guid.NewGuid();
+            var invoiceId = Guid.NewGuid();
+            var productId = Guid.NewGuid();
+            
+            var order = new Order { OrderId = Guid.NewGuid(), BranchId = branchId, UserId = userId, Status = "Draft" };
+            context.Orders.Add(order);
+            context.Invoices.Add(new Invoice { InvoiceId = invoiceId, OrderId = order.OrderId, Order = order, Status = "Draft" });
+            
+            // Inactive product
+            context.Products.Add(new Product { ProductId = productId, ProductCode = "INACTIVE" });
+            context.BranchProducts.Add(new BranchProduct { BranchProductId = Guid.NewGuid(), BranchId = branchId, ProductId = productId, IsActive = 0 });
+            await context.SaveChangesAsync();
+
+            var controller = CreateController(context, userId, branchId);
+            var request = new AddItemRequest { ProductId = productId, Quantity = 1 };
+
+            // Act
+            var result = await controller.AddItem(invoiceId, request);
+
+            // Assert
+            var notFound = Assert.IsType<NotFoundObjectResult>(result.Result);
+            var response = Assert.IsType<MEP_Management_System.DTOs.SaleDTOs.ApiErrorResponse>(notFound.Value);
+            Assert.Contains("inactive", response.Error.Message);
         }
 
     }
