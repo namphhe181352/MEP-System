@@ -34,7 +34,7 @@ namespace MEP_Management_System.Services
                 .Include(st => st.StockTicketItems)
                     .ThenInclude(item => item.BranchProduct)
                         .ThenInclude(bp => bp.Product)
-                .Where(st => st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST")
+                .Where(st => (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST") && !(st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT")))
                 .AsQueryable();
 
             // Lọc theo branch từ token - áp dụng cho TẤT CẢ user (bao gồm Owner)
@@ -108,7 +108,7 @@ namespace MEP_Management_System.Services
                         ? 0
                         : (i.UnitPrice ?? 0),
                     UnitPrice = i.UnitPrice,
-                    UnitName = i.BranchProduct?.Product?.BaseUnit
+                    UnitName = i.UnitName ?? i.BranchProduct?.Product?.BaseUnit
                 }).ToList() ?? new List<InwardInventoryItemResponseDto>()
             };
         }
