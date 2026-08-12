@@ -19,6 +19,9 @@ public partial class StockTicketItem
 
     public decimal? UnitPrice { get; set; }
 
+    /// <summary>Snapshot tên đơn vị cơ bản tại thời điểm tạo phiếu.</summary>
+    public string? UnitName { get; set; }
+
     /// <summary>FK tới dòng hàng của phiếu nhập gốc (dùng khi xuất trả NCC).</summary>
     public Guid? InwardTicketItemId { get; set; }
 

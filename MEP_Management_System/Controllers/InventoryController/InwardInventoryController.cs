@@ -450,6 +450,7 @@ namespace MEP_Management_System.Controllers.InventoryController
 
                     // Tìm BranchProduct
                     var branchProduct = await _context.BranchProducts
+                        .Include(bp => bp.Product)
                         .FirstOrDefaultAsync(bp =>
                             ((isGuid && (bp.BranchProductId == parsedId || bp.ProductId == parsedId))
                             || (!isGuid && bp.Product != null && bp.Product.ProductCode == item.Id))
@@ -615,7 +616,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                         SystemQuantity = branchProduct.ActualStock,
                         ActualQuantity = branchProduct.ActualStock,
                         Discrepancy = item.Quantity,
-                        UnitPrice = effectiveCostPrice // Snapshot giá nhập tại thời điểm tạo phiếu
+                        UnitPrice = effectiveCostPrice, // Snapshot giá nhập tại thời điểm tạo phiếu
+                        UnitName = branchProduct.Product?.BaseUnit ?? "" // Snapshot tên đơn vị cơ bản
                     };
 
                     _context.StockTicketItems.Add(ticketItem);
@@ -1364,7 +1366,7 @@ th {{ background: #f0f0f0; }}
                             ? 0
                             : effectivePrice,
                         UnitPrice = effectivePrice,
-                        UnitName = item.BranchProduct?.Product?.BaseUnit
+                        UnitName = item.UnitName ?? item.BranchProduct?.Product?.BaseUnit
                     };
                 }).ToList() ?? new()
             };
@@ -1445,7 +1447,7 @@ th {{ background: #f0f0f0; }}
                     ProductId = item.BranchProduct?.ProductId ?? Guid.Empty,
                     ProductCode = item.BranchProduct?.Product?.ProductCode ?? string.Empty,
                     ProductName = item.BranchProduct?.Product?.ProductName ?? string.Empty,
-                    UnitName = item.BranchProduct?.Product?.BaseUnit,
+                    UnitName = item.UnitName ?? item.BranchProduct?.Product?.BaseUnit,
                     OriginalQuantity = item.Discrepancy,
                     UnitPrice = item.UnitPrice ?? 0,
                     MaxReturnableQuantity = maxReturnable > 0 ? maxReturnable : 0,
