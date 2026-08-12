@@ -225,7 +225,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                         .ThenInclude(item => item.BranchProduct)
                             .ThenInclude(bp => bp.Product)
                     .Where(st => st.StockTicketId == id &&
-                        (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST") && !(st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT")));
+                        (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST"));
 
                 if (!IsOwner())
                 {
@@ -682,7 +682,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 var stockTicketQuery = _context.StockTickets
                     .Include(st => st.StockTicketItems)
                     .Where(st => st.StockTicketId == id &&
-                        (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST") && !(st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT")));
+                        (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST"));
 
                 if (!IsOwner())
                 {
@@ -803,7 +803,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Include(st => st.StockTicketItems)
                         .ThenInclude(item => item.BranchProduct)
                     .Where(st => st.StockTicketId == id &&
-                        (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST") && !(st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT")));
+                        (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST"));
 
                 if (!IsOwner())
                 {
@@ -1040,7 +1040,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Include(st => st.StockTicketItems)
                         .ThenInclude(item => item.BranchProduct)
                     .Where(st => st.StockTicketId == id &&
-                        (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST") && !(st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT")));
+                        (st.TicketType == "PURCHASE" || st.TicketType == "CUSTOMER_RETURN" || st.TicketType == "BALANCE_ADJUST"));
 
                 if (!IsOwner())
                 {
