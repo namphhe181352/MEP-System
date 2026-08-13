@@ -498,30 +498,23 @@ public class ReturnsController : ControllerBase
             }
         }
 
-        // Nếu hoàn tiền mặt: tạo RefundRecord
-        if (ret.RefundMethod == "CASH")
+        // Create RefundRecord for Shift cash balancing
+        var refund = new RefundRecord
         {
-            var customerId = ret.Order?.CustomerId;
-            if (customerId != null && customerId != Guid.Empty)
-            {
-                var refund = new RefundRecord
-                {
-                    RefundId = Guid.NewGuid(),
-                    RefundCode = $"RFD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString()[..4].ToUpper()}",
-                    OrderId = ret.OrderId,
-                    InvoiceId = (await _context.Invoices.FirstOrDefaultAsync(i => i.OrderId == ret.OrderId))?.InvoiceId,
-                    CustomerId = customerId.Value,
-                    UserId = ret.UserId,
-                    RefundAmount = ret.RefundAmount,
-                    RefundMethod = "CASH",
-                    Status = "REFUNDED",
-                    Reason = ret.Note,
-                    ProcessedAt = DateTime.UtcNow,
-                    CreatedAt = DateTime.UtcNow
-                };
-                _context.RefundRecords.Add(refund);
-            }
-        }
+            RefundId = Guid.NewGuid(),
+            RefundCode = $"RFD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString()[..4].ToUpper()}",
+            OrderId = ret.OrderId,
+            InvoiceId = (await _context.Invoices.FirstOrDefaultAsync(i => i.OrderId == ret.OrderId))?.InvoiceId,
+            CustomerId = ret.Order?.CustomerId ?? Guid.Empty,
+            UserId = ret.UserId,
+            RefundAmount = ret.RefundAmount,
+            RefundMethod = ret.RefundMethod ?? "CASH",
+            Status = "REFUNDED",
+            Reason = ret.Note,
+            ProcessedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.RefundRecords.Add(refund);
 
         await _context.SaveChangesAsync();
 

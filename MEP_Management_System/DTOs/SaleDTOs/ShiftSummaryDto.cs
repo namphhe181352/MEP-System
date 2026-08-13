@@ -19,12 +19,14 @@ public class ShiftSummaryDto
     public decimal? ActualCash { get; set; }
     public decimal? Variance { get; set; }
     public int TotalOrders { get; set; }
+    public int ReturnCount { get; set; }
     public int TotalRefunds { get; set; }
     public Guid OpenedByUserId { get; set; }
     public string? OpenedByUserName { get; set; }
     public Guid? ClosedByUserId { get; set; }
     public string? ClosedByUserName { get; set; }
     public string? ForceCloseReason { get; set; }
+    public string? Note { get; set; }
     public List<PaymentMethodSummary> PaymentBreakdown { get; set; } = new();
     public List<UserSalesSummary> SalesByUser { get; set; } = new();
 
