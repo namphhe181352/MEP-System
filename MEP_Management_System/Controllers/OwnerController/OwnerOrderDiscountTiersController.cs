@@ -7,6 +7,7 @@ using MEP_Management_System.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using MEP_Management_System.Services;
 
 namespace MEP_Management_System.Controllers.OwnerController;
 
@@ -17,10 +18,12 @@ namespace MEP_Management_System.Controllers.OwnerController;
 public class OwnerOrderDiscountTiersController : ControllerBase
 {
     private readonly MEPDatabaseContext _context;
+    private readonly ICurrentBranchAccessor _currentBranch;
 
-    public OwnerOrderDiscountTiersController(MEPDatabaseContext context)
+    public OwnerOrderDiscountTiersController(MEPDatabaseContext context, ICurrentBranchAccessor currentBranch)
     {
         _context = context;
+        _currentBranch = currentBranch;
     }
 
     /// <summary>
@@ -29,6 +32,8 @@ public class OwnerOrderDiscountTiersController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<OrderDiscountTierDto>> Create([FromBody] CreateOrderDiscountTierDto request)
     {
+        var resolvedBranchId = request.BranchId ?? _currentBranch.GetBranchId();
+
         // Validate MinOrderValue > 0
         if (request.MinOrderValue <= 0)
             return BadRequest(ApiErrorResponse.Create("MSG-02", "Ngưỡng giá trị phải lớn hơn 0"));
@@ -40,14 +45,14 @@ public class OwnerOrderDiscountTiersController : ControllerBase
         // Kiểm tra trùng MinOrderValue (theo branch nếu có)
         var existingTier = await _context.OrderDiscountTiers
             .AnyAsync(t => t.MinOrderValue == request.MinOrderValue
-                && t.BranchId == request.BranchId);
+                && t.BranchId == resolvedBranchId);
 
         if (existingTier)
             return Conflict(ApiErrorResponse.Create("MSG-03", $"Ngưỡng giá trị {request.MinOrderValue:N0} đã tồn tại"));
 
         var tier = new OrderDiscountTier
         {
-            BranchId = request.BranchId,
+            BranchId = resolvedBranchId,
             MinOrderValue = request.MinOrderValue,
             DiscountPercent = request.DiscountPercent,
             IsActive = true,
@@ -94,6 +99,8 @@ public class OwnerOrderDiscountTiersController : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<OrderDiscountTierDto>> Update(Guid id, [FromBody] UpdateOrderDiscountTierDto request)
     {
+        var resolvedBranchId = request.BranchId ?? _currentBranch.GetBranchId();
+
         var tier = await _context.OrderDiscountTiers
             .Include(t => t.Branch)
             .FirstOrDefaultAsync(t => t.OrderDiscountTierId == id);
@@ -112,13 +119,13 @@ public class OwnerOrderDiscountTiersController : ControllerBase
         // Kiểm tra trùng MinOrderValue (trừ chính bản thân, theo branch)
         var duplicateTier = await _context.OrderDiscountTiers
             .AnyAsync(t => t.MinOrderValue == request.MinOrderValue
-                && t.BranchId == request.BranchId
+                && t.BranchId == resolvedBranchId
                 && t.OrderDiscountTierId != id);
 
         if (duplicateTier)
             return Conflict(ApiErrorResponse.Create("MSG-03", $"Ngưỡng giá trị {request.MinOrderValue:N0} đã tồn tại"));
 
-        tier.BranchId = request.BranchId;
+        tier.BranchId = resolvedBranchId;
         tier.MinOrderValue = request.MinOrderValue;
         tier.DiscountPercent = request.DiscountPercent;
         tier.IsActive = request.IsActive;
