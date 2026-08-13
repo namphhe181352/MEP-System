@@ -88,10 +88,16 @@ public class ShiftsController : ControllerBase
                         .Include(i => i.Payments)
                         .ToListAsync();
 
-                    branchOpenShift.TotalRevenue = completedInvoices.Sum(i => i.TotalAmount);
+                    var shiftRefunds = await _context.RefundRecords
+                        .Where(r => r.UserId == branchOpenShift.UserId && r.CreatedAt >= branchOpenShift.StartedAt && r.CreatedAt <= DateTime.UtcNow && r.Status == "REFUNDED")
+                        .ToListAsync();
+                    var totalRefundAmount = shiftRefunds.Sum(r => r.RefundAmount);
+                    var cashRefundAmount = shiftRefunds.Where(r => r.RefundMethod == "CASH").Sum(r => r.RefundAmount);
+
+                    branchOpenShift.TotalRevenue = completedInvoices.Sum(i => i.TotalAmount) - totalRefundAmount;
                     branchOpenShift.TotalOrders = completedInvoices.Count;
                     var allPayments = completedInvoices.SelectMany(i => i.Payments).Where(p => p.Method == "Cash" && p.Status == "Confirmed").ToList();
-                    branchOpenShift.ExpectedCash = branchOpenShift.OpeningBalance + allPayments.Sum(p => p.Amount);
+                    branchOpenShift.ExpectedCash = branchOpenShift.OpeningBalance + allPayments.Sum(p => p.Amount) - cashRefundAmount;
                     branchOpenShift.ActualCash = branchOpenShift.ExpectedCash;
                     branchOpenShift.Variance = 0;
                     branchOpenShift.Note = "Hệ thống tự động chốt ca do đã mở quá 24h";
@@ -215,10 +221,17 @@ catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException
             .Include(i => i.Payments)
             .ToListAsync();
 
-        shift.TotalRevenue = completedInvoices.Sum(i => i.TotalAmount);
+        var shiftRefunds = await _context.RefundRecords
+            .Where(r => r.UserId == shift.UserId && r.CreatedAt >= shift.StartedAt && r.CreatedAt <= DateTime.UtcNow && r.Status == "REFUNDED")
+            .ToListAsync();
+            
+        var totalRefundAmount = shiftRefunds.Sum(r => r.RefundAmount);
+        var cashRefundAmount = shiftRefunds.Where(r => r.RefundMethod == "CASH").Sum(r => r.RefundAmount);
+
+        shift.TotalRevenue = completedInvoices.Sum(i => i.TotalAmount) - totalRefundAmount;
         shift.TotalOrders = completedInvoices.Count;
         var allPayments = completedInvoices.SelectMany(i => i.Payments).Where(p => p.Method == "Cash" && p.Status == "Confirmed").ToList();
-        shift.ExpectedCash = shift.OpeningBalance + allPayments.Sum(p => p.Amount);
+        shift.ExpectedCash = shift.OpeningBalance + allPayments.Sum(p => p.Amount) - cashRefundAmount;
         shift.ActualCash = request.ActualCash;
         shift.Variance = request.ActualCash - shift.ExpectedCash;
         shift.Note = shift.UserId != userId && !string.IsNullOrWhiteSpace(shift.ForceCloseReason)
@@ -282,23 +295,41 @@ catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException
 
         var payments = completedInvoices.SelectMany(i => i.Payments).ToList();
 
-        var realTimeRevenue = completedInvoices.Sum(i => i.TotalAmount);
-        var realTimeOrders = completedInvoices.Count;
-        var realTimeCash = payments.Where(p => p.Method == "Cash" && p.Status == "Confirmed").Sum(p => p.Amount);
-        var realTimeTransfer = payments.Where(p => p.Method == "Transfer" && p.Status == "Confirmed").Sum(p => p.Amount);
+        var shiftRefunds = await _context.RefundRecords
+            .Include(r => r.User)
+            .Where(r => r.UserId == shift.UserId && r.CreatedAt >= shift.StartedAt && (shift.EndedAt == null || r.CreatedAt <= shift.EndedAt) && r.Status == "REFUNDED")
+            .ToListAsync();
 
-        // Sales by User breakdown
-        var salesByUser = completedInvoices
-            .GroupBy(i => new { i.UserId, UserName = i.User?.FullName ?? "Unknown" })
-            .Select(g => new ShiftSummaryDto.UserSalesSummary
+        var totalRefundAmount = shiftRefunds.Sum(r => r.RefundAmount);
+        var cashRefundAmount = shiftRefunds.Where(r => r.RefundMethod == "CASH").Sum(r => r.RefundAmount);
+        var transferRefundAmount = shiftRefunds.Where(r => r.RefundMethod == "TRANSFER").Sum(r => r.RefundAmount);
+
+        var realTimeRevenue = completedInvoices.Sum(i => i.TotalAmount) - totalRefundAmount;
+        var realTimeOrders = completedInvoices.Count;
+        var realTimeCash = payments.Where(p => p.Method == "Cash" && p.Status == "Confirmed").Sum(p => p.Amount) - cashRefundAmount;
+        var realTimeTransfer = payments.Where(p => p.Method == "Transfer" && p.Status == "Confirmed").Sum(p => p.Amount) - transferRefundAmount;
+
+        // Sales by User breakdown (including refunds)
+        var allUserIds = completedInvoices.Select(i => i.UserId).Concat(shiftRefunds.Select(r => r.UserId)).Distinct().ToList();
+        
+        var salesByUser = allUserIds.Select(uid => {
+            var userInvoices = completedInvoices.Where(i => i.UserId == uid).ToList();
+            var userRefunds = shiftRefunds.Where(r => r.UserId == uid).ToList();
+            
+            string userName = userInvoices.FirstOrDefault()?.User?.FullName 
+                              ?? userRefunds.FirstOrDefault()?.User?.FullName 
+                              ?? "Unknown";
+            
+            return new ShiftSummaryDto.UserSalesSummary
             {
-                UserId = g.Key.UserId,
-                UserName = g.Key.UserName,
-                InvoiceCount = g.Count(),
-                TotalAmount = g.Sum(i => i.TotalAmount)
-            })
-            .OrderByDescending(s => s.TotalAmount)
-            .ToList();
+                UserId = uid,
+                UserName = userName,
+                InvoiceCount = userInvoices.Count, // Only count sales orders as invoice count
+                TotalAmount = userInvoices.Sum(i => i.TotalAmount) - userRefunds.Sum(r => r.RefundAmount)
+            };
+        })
+        .OrderByDescending(s => s.TotalAmount)
+        .ToList();
 
         var summary = new ShiftSummaryDto
         {
@@ -316,11 +347,13 @@ catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException
             ActualCash = shift.ActualCash,
             Variance = shift.Variance,
             TotalOrders = isOpen ? realTimeOrders : shift.TotalOrders,
+            ReturnCount = shiftRefunds.Count,
             OpenedByUserId = shift.UserId,
             OpenedByUserName = shift.User?.FullName,
             ClosedByUserId = shift.ClosedByUserId,
             ClosedByUserName = shift.ClosedBy?.FullName,
             ForceCloseReason = shift.ForceCloseReason,
+            Note = shift.Note,
             PaymentBreakdown = payments.GroupBy(p => p.Method).Select(g => new ShiftSummaryDto.PaymentMethodSummary
             {
                 Method = g.Key,
