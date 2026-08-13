@@ -148,7 +148,7 @@ public class InvoicesController : ControllerBase
             if (invoice.Payments != null && invoice.Payments.Any())
             {
                 dto.PaymentMethod = invoice.Payments.Count > 1
-                    ? "Combined"
+                    ? "[" + string.Join(",", invoice.Payments.Select(p => $"{{\"method\":\"{p.Method}\",\"amount\":{p.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)}}}")) + "]" 
                     : invoice.Payments.First().Method.ToString();
             }
             return dto;
@@ -613,7 +613,7 @@ public class InvoicesController : ControllerBase
         if (invoice.Payments != null && invoice.Payments.Any())
         {
             dto.PaymentMethod = invoice.Payments.Count > 1
-                ? "Combined"
+                ? "[" + string.Join(",", invoice.Payments.Select(p => $"{{\"method\":\"{p.Method}\",\"amount\":{p.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)}}}")) + "]" 
                 : invoice.Payments.First().Method.ToString();
         }
 
