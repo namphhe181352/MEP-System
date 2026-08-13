@@ -105,7 +105,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                         unitName = bp.Product.BaseUnit,
                         costPrice = bp.CostPrice,
                         actualStock = bp.ActualStock,
-                        availableStock = bp.AvailableStock
+                        availableStock = bp.AvailableStock,
+                        warrantyQuantity = bp.WarrantyQuantity
                     })
                     .ToListAsync();
 
@@ -361,6 +362,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                             .Select(m => m.MediaUrl)
                             .FirstOrDefault() ?? bp.Product.MediaResources.Select(m => m.MediaUrl).FirstOrDefault(),
                         CurrentStock = bp.AvailableStock,
+                        WarrantyQuantity = bp.WarrantyQuantity,
                         CostPrice = bp.CostPrice,
                         SalePrice = bp.SellPrice
                     })
@@ -1516,6 +1518,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 // Stock
                 ActualStock = bp.ActualStock,
                 AvailableStock = bp.AvailableStock,
+                WarrantyQuantity = bp.WarrantyQuantity,
                 ReservedStock = bp.ReservedStock,
 
                 // Lấy MinimumStock / MaximumStock từ BranchProduct (không phải Weight)

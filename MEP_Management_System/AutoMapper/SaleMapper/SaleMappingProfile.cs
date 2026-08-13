@@ -102,6 +102,11 @@ public class SaleMappingProfile : Profile
                 s.BranchProduct != null && s.BranchProduct.Product != null && s.BranchProduct.Product.CategoryTaxonomy != null
                     ? s.BranchProduct.Product.CategoryTaxonomy.Name : (s.BranchProduct != null && s.BranchProduct.Product != null
                         ? s.BranchProduct.Product.CategoryName : null)));
+
+        // WarrantyTicket
+        CreateMap<WarrantyTicket, DTOs.SaleDTOs.WarrantyTicketDto>()
+            .ForMember(d => d.SupplierName, o => o.MapFrom(s =>
+                s.Supplier != null ? s.Supplier.SupplierName : null));
     }
 
     private static string? CalculateTier(decimal? totalSpent)

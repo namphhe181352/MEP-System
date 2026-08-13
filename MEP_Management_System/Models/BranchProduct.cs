@@ -21,6 +21,9 @@ public partial class BranchProduct
 
     public decimal AvailableStock { get; set; }
 
+    /// <summary>Số lượng đang giữ cho bảo hành (không được bán).</summary>
+    public decimal WarrantyQuantity { get; set; }
+
     public decimal? MinimumStock { get; set; }
 
     public decimal? MaximumStock { get; set; }

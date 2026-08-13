@@ -62,6 +62,8 @@ public virtual DbSet<Customer> Customers { get; set; }
 
     public virtual DbSet<ReturnOrder> ReturnOrders { get; set; }
 
+    public virtual DbSet<WarrantyTicket> WarrantyTickets { get; set; }
+
     public virtual DbSet<Role> Roles { get; set; }
 
     public virtual DbSet<StaffAssignment> StaffAssignments { get; set; }
@@ -198,6 +200,10 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasPrecision(10, 2)
                 .HasDefaultValue(0m)
                 .HasColumnName("available_stock");
+            entity.Property(e => e.WarrantyQuantity)
+                .HasPrecision(10, 2)
+                .HasDefaultValue(0m)
+                .HasColumnName("warranty_quantity");
             entity.Property(e => e.BranchId).HasColumnName("branch_id");
             entity.Property(e => e.CostPrice)
                 .HasPrecision(15, 2)
@@ -1066,6 +1072,46 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
             entity.HasOne(d => d.ReturnOrder).WithMany(p => p.ReturnItems)
                 .HasForeignKey(d => d.ReturnOrderId)
                 .HasConstraintName("return_items_return_order_id_fkey");
+        });
+
+        modelBuilder.Entity<WarrantyTicket>(entity =>
+        {
+            entity.HasKey(e => e.WarrantyTicketId).HasName("warranty_tickets_pkey");
+
+            entity.ToTable("warranty_tickets");
+
+            entity.Property(e => e.WarrantyTicketId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("warranty_ticket_id");
+            entity.Property(e => e.ReturnItemId).HasColumnName("return_item_id");
+            entity.Property(e => e.BranchProductId).HasColumnName("branch_product_id");
+            entity.Property(e => e.ProductId).HasColumnName("product_id");
+            entity.Property(e => e.Quantity)
+                .HasPrecision(10, 2)
+                .HasColumnName("quantity");
+            entity.Property(e => e.SupplierId).HasColumnName("supplier_id");
+            entity.Property(e => e.Status)
+                .HasMaxLength(50)
+                .HasColumnName("status");
+            entity.Property(e => e.Notes)
+                .HasMaxLength(500)
+                .HasColumnName("notes");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+            entity.Property(e => e.AssignedAt).HasColumnName("assigned_at");
+            entity.Property(e => e.AssignedBy).HasColumnName("assigned_by");
+            entity.Property(e => e.CompletedAt).HasColumnName("completed_at");
+            entity.Property(e => e.CompletedBy).HasColumnName("completed_by");
+
+            entity.HasOne(d => d.ReturnItem).WithOne(p => p.WarrantyTicket)
+                .HasForeignKey<WarrantyTicket>(d => d.ReturnItemId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("warranty_tickets_return_item_id_fkey");
+
+            entity.HasOne(d => d.Supplier).WithMany()
+                .HasForeignKey(d => d.SupplierId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("warranty_tickets_supplier_id_fkey");
         });
 
         modelBuilder.Entity<ReturnOrder>(entity =>
