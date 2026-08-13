@@ -7,8 +7,10 @@ using MEP_Management_System.Authorization;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.DTOs.SaleDTOs;
 using MEP_Management_System.Models;
+using MEP_Management_System.Hubs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace MEP_Management_System.Controllers.SaleController;
@@ -21,11 +23,13 @@ public class ReturnsController : ControllerBase
 {
     private readonly Models.MEPDatabaseContext _context;
     private readonly IMapper _mapper;
+    private readonly IHubContext<PosHub> _posHub;
 
-    public ReturnsController(Models.MEPDatabaseContext context, IMapper mapper)
+    public ReturnsController(Models.MEPDatabaseContext context, IMapper mapper, IHubContext<PosHub> posHub)
     {
         _context = context;
         _mapper = mapper;
+        _posHub = posHub;
     }
 
     private Guid GetBranchId() =>
@@ -497,6 +501,31 @@ public class ReturnsController : ControllerBase
                 }
             }
         }
+        else if (ret.ReturnType == "EXCHANGE")
+        {
+            // EXCHANGE: Tạo WarrantyTicket PENDING_ASSIGN + tăng WarrantyQuantity
+            foreach (var ri in ret.ReturnItems)
+            {
+                var bp = await _context.BranchProducts.FindAsync(ri.BranchProductId);
+                if (bp != null)
+                {
+                    bp.WarrantyQuantity += ri.Quantity;
+
+                    var warrantyTicket = new WarrantyTicket
+                    {
+                        WarrantyTicketId = Guid.NewGuid(),
+                        ReturnItemId = ri.ReturnItemId,
+                        BranchProductId = ri.BranchProductId,
+                        ProductId = bp.ProductId,
+                        Quantity = ri.Quantity,
+                        Status = "PENDING_ASSIGN",
+                        CreatedAt = DateTime.UtcNow,
+                        CreatedBy = GetUserId()
+                    };
+                    _context.WarrantyTickets.Add(warrantyTicket);
+                }
+            }
+        }
 
         // Nếu hoàn tiền mặt: tạo RefundRecord
         if (ret.RefundMethod == "CASH")
@@ -524,6 +553,30 @@ public class ReturnsController : ControllerBase
         }
 
         await _context.SaveChangesAsync();
+
+        // SignalR: thông báo POS cập nhật tồn khả dụng khi đổi hàng (EXCHANGE)
+        if (ret.ReturnType == "EXCHANGE")
+        {
+            try
+            {
+                foreach (var ri in ret.ReturnItems)
+                {
+                    var bp = await _context.BranchProducts.FindAsync(ri.BranchProductId);
+                    if (bp != null)
+                    {
+                        await _posHub.Clients.Group($"branch_{bp.BranchId}")
+                            .SendAsync("StockUpdated", new
+                            {
+                                ProductId = bp.ProductId,
+                                BranchId = bp.BranchId,
+                                NewSellableQuantity = bp.AvailableStock - bp.WarrantyQuantity,
+                                WarrantyQuantity = bp.WarrantyQuantity
+                            });
+                    }
+                }
+            }
+            catch { /* SignalR fail silently */ }
+        }
 
         await TryWriteSystemLog(
             GetUserId(),
@@ -758,6 +811,7 @@ public class ReturnsController : ControllerBase
             .Include(ri => ri.ReturnOrder).ThenInclude(ro => ro.Order).ThenInclude(o => o.Customer)
             .Include(ri => ri.ReturnOrder).ThenInclude(ro => ro.Order).ThenInclude(o => o.Invoice)
             .Include(ri => ri.BranchProduct).ThenInclude(bp => bp.Product)
+            .Include(ri => ri.WarrantyTicket).ThenInclude(wt => wt!.Supplier)
             .Where(ri => ri.ReturnOrder.OrderId != Guid.Empty && ri.ReturnOrder.Order.BranchId == branchId)
             .Where(ri => ri.ReturnOrder.ReturnType == "EXCHANGE" && ri.ReturnOrder.Status == "Completed");
 
@@ -787,12 +841,18 @@ public class ReturnsController : ControllerBase
                 ReturnCode = ri.ReturnOrder.ReturnCode ?? "",
                 ExchangeDate = ri.ReturnOrder.CreatedAt,
                 BranchProductId = ri.BranchProductId,
+                ProductId = ri.BranchProduct.ProductId,
                 ProductName = ri.BranchProduct.Product.ProductName ?? "",
                 SkuCode = ri.BranchProduct.Product.ProductCode ?? "",
                 Quantity = ri.Quantity,
                 Reason = ri.Reason,
                 CustomerName = ri.ReturnOrder.Order.Customer != null ? ri.ReturnOrder.Order.Customer.CustomerName : "",
-                InvoiceCode = ri.ReturnOrder.Order.Invoice != null ? ri.ReturnOrder.Order.Invoice.InvoiceCode : ""
+                InvoiceCode = ri.ReturnOrder.Order.Invoice != null ? ri.ReturnOrder.Order.Invoice.InvoiceCode : "",
+                WarrantyTicketId = ri.WarrantyTicket != null ? ri.WarrantyTicket.WarrantyTicketId : (Guid?)null,
+                WarrantyStatus = ri.WarrantyTicket != null ? ri.WarrantyTicket.Status : null,
+                AssignedSupplierId = ri.WarrantyTicket != null ? ri.WarrantyTicket.SupplierId : (Guid?)null,
+                AssignedSupplierName = ri.WarrantyTicket != null && ri.WarrantyTicket.Supplier != null
+                    ? ri.WarrantyTicket.Supplier.SupplierName : null
             })
             .ToListAsync();
 

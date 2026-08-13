@@ -12,6 +12,10 @@ public class ProductPriceDto
     public decimal? FloorPrice { get; set; }
     public string? Unit { get; set; }
     public decimal? AvailableStock { get; set; }
+    /// <summary>Số lượng đang giữ cho bảo hành.</summary>
+    public decimal WarrantyQuantity { get; set; }
+    /// <summary>Tồn khả dụng bán = AvailableStock - WarrantyQuantity.</summary>
+    public decimal SellableQuantity => Math.Max(0, (AvailableStock ?? 0) - WarrantyQuantity);
     public string? ImageUrl { get; set; }
     public string? ProductStatus { get; set; }
     /// <summary>Đơn vị cơ bản có được phép bán trực tiếp không.</summary>

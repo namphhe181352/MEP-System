@@ -21,5 +21,7 @@ public partial class ReturnItem
 
     public virtual BranchProduct BranchProduct { get; set; } = null!;
 
+    public virtual WarrantyTicket? WarrantyTicket { get; set; }
+
     public virtual ReturnOrder ReturnOrder { get; set; } = null!;
 }

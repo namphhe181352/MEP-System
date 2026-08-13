@@ -176,6 +176,13 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("shelf_location");
 
+                    b.Property<decimal>("WarrantyQuantity")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("warranty_quantity");
+
                     b.HasKey("BranchProductId")
                         .HasName("branch_products_pkey");
 
@@ -3283,6 +3290,80 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("user_permissions", (string)null);
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.WarrantyTicket", b =>
+                {
+                    b.Property<Guid>("WarrantyTicketId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("warranty_ticket_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<DateTime?>("AssignedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("assigned_at");
+
+                    b.Property<Guid?>("AssignedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assigned_by");
+
+                    b.Property<Guid>("BranchProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_product_id");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<Guid?>("CompletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("completed_by");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("notes");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("quantity");
+
+                    b.Property<Guid>("ReturnItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("return_item_id");
+
+                    b.Property<string>("Status")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid?>("SupplierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("supplier_id");
+
+                    b.HasKey("WarrantyTicketId")
+                        .HasName("warranty_tickets_pkey");
+
+                    b.HasIndex("ReturnItemId")
+                        .IsUnique();
+
+                    b.HasIndex("SupplierId");
+
+                    b.ToTable("warranty_tickets", (string)null);
+                });
+
             modelBuilder.Entity("RolePermission", b =>
                 {
                     b.Property<Guid>("RoleId")
@@ -4206,6 +4287,25 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.WarrantyTicket", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.ReturnItem", "ReturnItem")
+                        .WithOne("WarrantyTicket")
+                        .HasForeignKey("MEP_Management_System.Models.WarrantyTicket", "ReturnItemId")
+                        .IsRequired()
+                        .HasConstraintName("warranty_tickets_return_item_id_fkey");
+
+                    b.HasOne("MEP_Management_System.Models.Supplier", "Supplier")
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("warranty_tickets_supplier_id_fkey");
+
+                    b.Navigation("ReturnItem");
+
+                    b.Navigation("Supplier");
+                });
+
             modelBuilder.Entity("RolePermission", b =>
                 {
                     b.HasOne("MEP_Management_System.Models.Permission", null)
@@ -4329,6 +4429,11 @@ namespace MEP_Management_System.Migrations
             modelBuilder.Entity("MEP_Management_System.Models.PurchaseOrder", b =>
                 {
                     b.Navigation("PurchaseOrderItems");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.ReturnItem", b =>
+                {
+                    b.Navigation("WarrantyTicket");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.ReturnOrder", b =>

@@ -41,6 +41,7 @@ public class ProductsController : ControllerBase
             FloorPrice = b.CostPrice,
             Unit = b.Product?.BaseUnit,
             AvailableStock = b.AvailableStock,
+            WarrantyQuantity = b.WarrantyQuantity,
             ImageUrl = b.Product?.MediaResources?.Where(m => m.IsPrimary == 1).Select(m => m.MediaUrl).FirstOrDefault(),
             ProductStatus = b.Product?.Status == 1 ? "active" : "inactive",
             DirectSale = b.DirectSale == 1,

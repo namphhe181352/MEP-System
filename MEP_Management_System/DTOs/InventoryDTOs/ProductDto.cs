@@ -30,6 +30,8 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public decimal ActualStock { get; set; }
         public decimal ReservedStock { get; set; }
         public decimal AvailableStock { get; set; }
+        public decimal WarrantyQuantity { get; set; }
+        public decimal SellableQuantity => Math.Max(0, AvailableStock - WarrantyQuantity);
         public decimal? MinimumStock { get; set; }
         public decimal? MaximumStock { get; set; }
         public string? ShelfLocation { get; set; }
@@ -122,6 +124,8 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public decimal ActualStock { get; set; }
         public decimal ReservedStock { get; set; }
         public decimal AvailableStock { get; set; }
+        public decimal WarrantyQuantity { get; set; }
+        public decimal SellableQuantity => Math.Max(0, AvailableStock - WarrantyQuantity);
         public decimal? MinimumStock { get; set; }
         public decimal? MaximumStock { get; set; }
         public string? ShelfLocation { get; set; }
@@ -168,6 +172,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? Unit { get; set; }
         public string? ImageUrl { get; set; }
         public decimal CurrentStock { get; set; }
+        public decimal WarrantyQuantity { get; set; }
         public decimal CostPrice { get; set; }
         public decimal SalePrice { get; set; }
     }
