@@ -91,6 +91,7 @@ public class DashboardOverviewDto
     public List<DashboardLowStockProductDto> LowStockProducts { get; set; } = new();
     public List<DashboardExpenseCategoryDto> ExpenseByCategory { get; set; } = new();
     public List<DashboardBranchRevenueDto> TopBranchesByRevenue { get; set; } = new();
+    public List<DashboardAbnormalShiftDto> AbnormalShifts { get; set; } = new();
 
     public List<SystemEventDto> RecentSystemEvents { get; set; } = new();
 
@@ -184,4 +185,14 @@ public class DashboardDebtSummaryDto
     public decimal TotalDebt { get; set; }
     public int OverdueCustomerCount { get; set; }
     public decimal OverdueDebt { get; set; }
+}
+
+public class DashboardAbnormalShiftDto
+{
+    public Guid ShiftId { get; set; }
+    public string ShiftCode { get; set; } = null!;
+    public string? UserName { get; set; }
+    public DateTime? EndedAt { get; set; }
+    public decimal Variance { get; set; }
+    public string? Note { get; set; }
 }

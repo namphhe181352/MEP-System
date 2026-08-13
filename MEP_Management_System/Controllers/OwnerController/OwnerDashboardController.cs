@@ -65,12 +65,15 @@ public class OwnerDashboardController : ControllerBase
             });
         }
 
-        var now = VietnamTime.Now;
+        var now = DateTime.UtcNow;
         var last30Days = now.AddDays(-30);
         var last7Days = now.AddDays(-7);
         var last24Hours = now.AddDays(-1);
-        var yearStart = new DateTime(VietnamTime.Now.Year, 1, 1);
-        var twelveMonthsAgo = new DateTime(now.Year, now.Month, 1).AddMonths(-11);
+        var yearStart = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(new DateTime(VietnamTime.Now.Year, 1, 1), DateTimeKind.Unspecified), VietnamTime.Tz);
+        var twelveMonthsAgo = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(new DateTime(VietnamTime.Now.Year, VietnamTime.Now.Month, 1).AddMonths(-11), DateTimeKind.Unspecified), VietnamTime.Tz);
+        
+        var todayStartUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(VietnamTime.TodayStart, DateTimeKind.Unspecified), VietnamTime.Tz);
+        var todayEndUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(VietnamTime.TodayEnd, DateTimeKind.Unspecified), VietnamTime.Tz);
 
         var branchCount = await _context.Branches
             .AsNoTracking()
@@ -258,9 +261,11 @@ public class OwnerDashboardController : ControllerBase
                          && ev.CreatedAt.HasValue && ev.CreatedAt >= twelveMonthsAgo && ev.CreatedAt < now),
             "CreatedAt", "Amount", twelveMonthsAgo, now, 12);
 
-        var revenueToday = await GetBranchMetricsAsync(branchId.Value, VietnamTime.TodayStart, VietnamTime.TodayEnd);
+        var revenueToday = await GetBranchMetricsAsync(branchId.Value, todayStartUtc, todayEndUtc);
+        Console.WriteLine($"[DEBUG DASHBOARD] todayStartUtc: {todayStartUtc:yyyy-MM-dd HH:mm:ss}, todayEndUtc: {todayEndUtc:yyyy-MM-dd HH:mm:ss}");
+        Console.WriteLine($"[DEBUG DASHBOARD] orderCount: {revenueToday.orderCount}, revenue: {revenueToday.revenue}");
         var newCustomerCountToday = await _context.Customers.AsNoTracking()
-            .Where(c => c.BranchId == branchId.Value && c.Status == 1 && c.CreatedAt.HasValue && c.CreatedAt >= now.Date && c.CreatedAt < now)
+            .Where(c => c.BranchId == branchId.Value && c.Status == 1 && c.CreatedAt.HasValue && c.CreatedAt >= todayStartUtc && c.CreatedAt < todayEndUtc)
             .CountAsync();
 
         var newCustomerCountLast7Days = await _context.Customers.AsNoTracking()
@@ -362,6 +367,22 @@ public class OwnerDashboardController : ControllerBase
 
         var revenueTrendLast30Days = await BuildDailyRevenueTrendAsync(branchId.Value, last30Days, now);
 
+        var abnormalShifts = await _context.Shifts.AsNoTracking()
+            .Include(s => s.User)
+            .Where(s => s.BranchId == branchId.Value && s.Status == "CLOSED" && s.Variance.HasValue && s.Variance.Value != 0)
+            .OrderByDescending(s => s.EndedAt)
+            .Take(10)
+            .Select(s => new DashboardAbnormalShiftDto
+            {
+                ShiftId = s.ShiftId,
+                ShiftCode = s.ShiftCode,
+                UserName = s.User != null ? s.User.FullName : null,
+                EndedAt = s.EndedAt,
+                Variance = s.Variance ?? 0m,
+                Note = s.Note
+            })
+            .ToListAsync();
+
         return Ok(new DashboardOverviewDto
         {
             GeneratedAt = now,
@@ -443,6 +464,7 @@ public class OwnerDashboardController : ControllerBase
             {
                 new() { BranchId = branch.BranchId, BranchName = branch.BranchName ?? string.Empty, Revenue = revenueLast30Days.revenue, OrderCount = revenueLast30Days.orderCount }
             },
+            AbnormalShifts = abnormalShifts,
             RecentSystemEvents = recentEvents
         });
 
