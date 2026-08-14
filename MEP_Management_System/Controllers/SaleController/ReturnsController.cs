@@ -88,7 +88,7 @@ public class ReturnsController : ControllerBase
             .Include(r => r.Order).ThenInclude(o => o!.Invoice) // để map InvoiceCode
             .Include(r => r.Order).ThenInclude(o => o!.Customer) // để map CustomerName
             .Include(r => r.User)
-            .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product)
+            .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product).ThenInclude(p => p!.ProductConversionUnits)
             .Where(r => r.Order!.BranchId == branchId)
             .AsQueryable();
 
@@ -133,7 +133,7 @@ public class ReturnsController : ControllerBase
             .Include(r => r.Order).ThenInclude(o => o!.Invoice)
             .Include(r => r.Order).ThenInclude(o => o!.Customer)
             .Include(r => r.User)
-            .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product)
+            .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product).ThenInclude(p => p!.ProductConversionUnits)
             .FirstOrDefaultAsync(r => r.ReturnOrderId == id && r.Order!.BranchId == branchId);
 
         if (r == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Không tìm thấy phiếu đổi trả."));
@@ -428,14 +428,36 @@ public class ReturnsController : ControllerBase
         var discountPortion = grossRefundLine * discountRatio;
         var refundLine = Math.Max(0, grossRefundLine - discountPortion);
 
+        // === FIX: Tự tra hệ số quy đổi (ConvertValue) từ dòng hóa đơn gốc ===
+        // Trước đây tin tưởng req.ConversionRate (FE hay gửi thiếu -> mặc định 1 ->
+        // BaseQuantity = Quantity, không quy về ĐVT cơ bản -> SL bảo hành lệch).
+        // Giây tính từ InvoiceItem gốc:
+        //  1) Pin đúng dòng nếu FE gửi InvoiceItemId (cùng SP có nhiều đơn vị trong 1 HĐ).
+        //  2) Fallback req.ConversionRate.
+        //  3) Fallback ConvertValue lớn nhất trong các dòng gốc của SP.
+        var pinnedItem = req.InvoiceItemId.HasValue
+            ? originalItems.FirstOrDefault(ii => ii.InvoiceItemId == req.InvoiceItemId.Value)
+            : null;
+
+        decimal convertValue = 1m;
+        if (pinnedItem != null && pinnedItem.ConvertValue.HasValue && pinnedItem.ConvertValue.Value > 0)
+            convertValue = pinnedItem.ConvertValue.Value;
+        else if (req.ConversionRate > 0)
+            convertValue = req.ConversionRate;
+        else
+        {
+            var maxCv = originalItems.Select(ii => ii.ConvertValue ?? 0m).DefaultIfEmpty(0m).Max();
+            convertValue = maxCv > 0 ? maxCv : 1m;
+        }
+
         var returnItem = new ReturnItem
         {
             ReturnItemId = Guid.NewGuid(),
             ReturnOrderId = id,
             BranchProductId = branchProductId,
             Quantity = req.Quantity,
-            ConversionRate = req.ConversionRate > 0 ? req.ConversionRate : 1,
-            BaseQuantity = req.Quantity * (req.ConversionRate > 0 ? req.ConversionRate : 1),
+            ConversionRate = convertValue,
+            BaseQuantity = req.Quantity * convertValue,
             RefundAmount = refundLine,
             Reason = req.Reason?.ToUpper() ?? "OTHER"
         };
@@ -457,7 +479,7 @@ public class ReturnsController : ControllerBase
             .Include(r => r.Order).ThenInclude(o => o!.Customer)
             .Include(r => r.Order).ThenInclude(o => o!.Invoice)
             .Include(r => r.User)
-            .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product)
+            .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product).ThenInclude(p => p!.ProductConversionUnits)
             .FirstOrDefaultAsync(r => r.ReturnOrderId == id && r.Order!.BranchId == branchId);
 
         if (ret == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Không tìm thấy phiếu đổi trả."));
