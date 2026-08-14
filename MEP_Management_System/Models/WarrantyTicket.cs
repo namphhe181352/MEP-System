@@ -15,8 +15,14 @@ public partial class WarrantyTicket
     /// <summary>FK tới Product (để tiện query).</summary>
     public Guid ProductId { get; set; }
 
-    /// <summary>Số lượng sản phẩm bảo hành.</summary>
+    /// <summary>Số lượng sản phẩm bảo hành (theo ĐVT bán).</summary>
     public decimal Quantity { get; set; }
+
+    /// <summary>Hệ số quy đổi từ ĐVT bán về ĐVT cơ bản.</summary>
+    public decimal ConversionRate { get; set; } = 1;
+
+    /// <summary>SL quy về ĐVT cơ bản = Quantity * ConversionRate.</summary>
+    public decimal BaseQuantity { get; set; }
 
     /// <summary>FK tới Supplier được chọn gửi bảo hành.</summary>
     public Guid? SupplierId { get; set; }

@@ -1730,6 +1730,20 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("updated_by");
 
+                    b.Property<int>("WarrantyPeriod")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(12)
+                        .HasColumnName("warranty_period");
+
+                    b.Property<string>("WarrantyUnit")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasDefaultValue("MONTH")
+                        .HasColumnName("warranty_unit");
+
                     b.Property<decimal?>("Weight")
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)")
@@ -2224,9 +2238,23 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("return_item_id")
                         .HasDefaultValueSql("uuid_generate_v4()");
 
+                    b.Property<decimal>("BaseQuantity")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("base_quantity");
+
                     b.Property<Guid>("BranchProductId")
                         .HasColumnType("uuid")
                         .HasColumnName("branch_product_id");
+
+                    b.Property<decimal>("ConversionRate")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)")
+                        .HasDefaultValue(1m)
+                        .HasColumnName("conversion_rate");
 
                     b.Property<decimal>("Quantity")
                         .HasPrecision(10, 2)
@@ -2760,6 +2788,24 @@ namespace MEP_Management_System.Migrations
                         .HasPrecision(15, 2)
                         .HasColumnType("numeric(15,2)")
                         .HasColumnName("unit_price");
+
+                    b.Property<DateTime?>("WarrantyExpiryDate")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("warranty_expiry_date");
+
+                    b.Property<int>("WarrantyPeriod")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("warranty_period");
+
+                    b.Property<string>("WarrantyUnit")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasDefaultValue("MONTH")
+                        .HasColumnName("warranty_unit");
 
                     b.HasKey("TicketItemId")
                         .HasName("stock_ticket_items_pkey");
@@ -3306,6 +3352,13 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("assigned_by");
 
+                    b.Property<decimal>("BaseQuantity")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("base_quantity");
+
                     b.Property<Guid>("BranchProductId")
                         .HasColumnType("uuid")
                         .HasColumnName("branch_product_id");
@@ -3317,6 +3370,13 @@ namespace MEP_Management_System.Migrations
                     b.Property<Guid?>("CompletedBy")
                         .HasColumnType("uuid")
                         .HasColumnName("completed_by");
+
+                    b.Property<decimal>("ConversionRate")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)")
+                        .HasDefaultValue(1m)
+                        .HasColumnName("conversion_rate");
 
                     b.Property<DateTime?>("CreatedAt")
                         .HasColumnType("timestamp without time zone")

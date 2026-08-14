@@ -175,6 +175,8 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public decimal WarrantyQuantity { get; set; }
         public decimal CostPrice { get; set; }
         public decimal SalePrice { get; set; }
+        public int WarrantyPeriod { get; set; }
+        public string WarrantyUnit { get; set; } = "MONTH";
     }
 
     /// <summary>
@@ -239,6 +241,12 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? SupplierName { get; set; }
         public string? Reason { get; set; }
         public string? Note { get; set; }
+
+        /// <summary>Thời hạn bảo hành của lô nhập này (số lượng). 0 = không BH.</summary>
+        public int WarrantyPeriod { get; set; }
+
+        /// <summary>Đơn vị bảo hành: DAY, MONTH, YEAR.</summary>
+        public string WarrantyUnit { get; set; } = "MONTH";
 
         /// <summary>Nếu null hoặc rỗng → hệ thống tự generate mã.</summary>
         public string? TicketCode { get; set; }
@@ -455,6 +463,12 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public decimal CostPrice { get; set; }
 
         public string? Note { get; set; }
+
+        /// <summary>Thời hạn bảo hành của lô nhập này (số lượng). 0 = không BH.</summary>
+        public int WarrantyPeriod { get; set; }
+
+        /// <summary>Đơn vị bảo hành: DAY, MONTH, YEAR.</summary>
+        public string WarrantyUnit { get; set; } = "MONTH";
 
         /// <summary>
         /// SupplierId cho sản phẩm đã tồn tại — gán tại phiếu nhập kho.

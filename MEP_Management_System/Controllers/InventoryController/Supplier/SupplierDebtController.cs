@@ -17,11 +17,13 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
     {
         private readonly MEPDatabaseContext _context;
         private readonly ISupplierDebtService _supplierDebtService;
+        private readonly ICurrentBranchAccessor _currentBranch;
 
-        public SupplierDebtController(MEPDatabaseContext context, ISupplierDebtService supplierDebtService)
+        public SupplierDebtController(MEPDatabaseContext context, ISupplierDebtService supplierDebtService, ICurrentBranchAccessor currentBranch)
         {
             _context = context;
             _supplierDebtService = supplierDebtService;
+            _currentBranch = currentBranch;
         }
 
         // 🌟 TỐI ƯU 3: Helper escape dấu phẩy và nháy kép trong CSV, tránh lỗi lệch cột dữ liệu
@@ -29,6 +31,11 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
         {
             if (string.IsNullOrEmpty(value)) return "";
             return $"\"{value.Replace("\"", "\"\"")}\"";
+        }
+
+        private Guid GetBranchId()
+        {
+            return _currentBranch.GetBranchId() ?? Guid.Empty;
         }
 
         // ============================================================
@@ -52,6 +59,12 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     // Tích hợp thêm dữ liệu phiếu chi thực tế để tính toán công nợ chính xác
                     .Include(s => s.SupplierPayments.Where(p => p.IsDeleted == 0))
                     .Where(s => s.Status == 1);
+
+                var branchId = GetBranchId();
+                if (branchId != Guid.Empty)
+                {
+                    supplierQuery = supplierQuery.Where(s => s.BranchId == branchId);
+                }
 
                 // 🌟 TỐI ƯU 2: Search theo 8 ký tự đầu của GUID (khớp hoàn toàn với mã Code hiển thị ở Front-end)
                 if (!string.IsNullOrWhiteSpace(@params.SearchTerm))

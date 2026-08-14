@@ -364,7 +364,9 @@ namespace MEP_Management_System.Controllers.InventoryController
                         CurrentStock = bp.AvailableStock,
                         WarrantyQuantity = bp.WarrantyQuantity,
                         CostPrice = bp.CostPrice,
-                        SalePrice = bp.SellPrice
+                        SalePrice = bp.SellPrice,
+                        WarrantyPeriod = bp.Product.WarrantyPeriod,
+                        WarrantyUnit = bp.Product.WarrantyUnit ?? "MONTH"
                     })
                     .ToListAsync();
 

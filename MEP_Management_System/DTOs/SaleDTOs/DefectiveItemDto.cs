@@ -14,6 +14,8 @@ public class DefectiveItemDto
     public string SkuCode { get; set; } = "";
 
     public decimal Quantity { get; set; }
+    public decimal ConversionRate { get; set; } = 1;
+    public decimal BaseQuantity { get; set; }
     public string? Reason { get; set; }
 
     public string CustomerName { get; set; } = "";
