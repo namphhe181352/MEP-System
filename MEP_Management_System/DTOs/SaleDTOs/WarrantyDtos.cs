@@ -25,6 +25,24 @@ public class WarrantyTicketDto
 public class AssignSupplierRequest
 {
     public Guid SupplierId { get; set; }
+
+    /// <summary>
+    /// Tổng số lượng gửi bảo hành (theo ĐVT cơ bản). Nếu null → dùng WarrantyTicket.BaseQuantity.
+    /// </summary>
+    public decimal? TotalClaimQty { get; set; }
+
+    /// <summary>
+    /// Danh sách lô người dùng TỰ CHỌN CHỈ ĐỊNH (manual).
+    /// Nếu null/rỗng → hệ thống tự động phân bổ FEFO (First Expired, First Out).
+    /// </summary>
+    public List<ManualLotAllocationInput>? ManualLots { get; set; }
+}
+
+/// <summary>Input cho việc tự chọn lô khi gửi bảo hành.</summary>
+public class ManualLotAllocationInput
+{
+    public Guid TicketItemId { get; set; }
+    public decimal AllocateQty { get; set; }
 }
 
 public class SuggestedSupplierDto
@@ -60,4 +78,50 @@ public class SupplierWarrantyBatchDto
     public string BatchStatus { get; set; } = "ACTIVE";
     public Guid SupplierId { get; set; }
     public string SupplierName { get; set; } = "";
+}
+
+// ============================================================
+// FEFO WARRANTY LOT ALLOCATION (Quy tắc 1 + 2)
+// ============================================================
+
+/// <summary>
+/// Một lô nhập còn đủ điều kiện bảo hành NCC (Quy tắc 1):
+///  - Còn hạn bảo hành (WarrantyExpiryDate >= now)
+///  - Còn suất bảo hành (SL_Con_BH_NCC &gt; 0)
+/// </summary>
+public class AvailableWarrantyLotDto
+{
+    public Guid TicketItemId { get; set; }
+    public string TicketCode { get; set; } = "";
+    public Guid ProductId { get; set; }
+    public string ProductName { get; set; } = "";
+    public string ProductCode { get; set; } = "";
+    public DateTime? ImportDate { get; set; }
+    public int WarrantyPeriod { get; set; }
+    public string WarrantyUnit { get; set; } = "MONTH";
+    public DateTime? WarrantyExpiryDate { get; set; }
+    /// <summary>SL đã nhập của lô (ActualQuantity).</summary>
+    public decimal SuppliedQuantity { get; set; }
+    /// <summary>SL đã được claim cho bảo hành (từ WarrantyLotAllocation).</summary>
+    public decimal ClaimedWarrantyQty { get; set; }
+    /// <summary>SL_Con_BH_NCC = SuppliedQuantity - ClaimedWarrantyQty.</summary>
+    public decimal RemainingWarranty { get; set; }
+    public int? DaysUntilExpiry { get; set; }
+    public Guid SupplierId { get; set; }
+    public string SupplierName { get; set; } = "";
+}
+
+/// <summary>Kết quả phân bổ 1 lô cho phiếu bảo hành (sau FEFO hoặc manual).</summary>
+public class LotAllocationItemDto
+{
+    public Guid? AllocationId { get; set; }
+    public Guid TicketItemId { get; set; }
+    public string TicketCode { get; set; } = "";
+    public DateTime? WarrantyExpiryDate { get; set; }
+    /// <summary>SL_Con_BH_NCC của lô trước khi phân bổ.</summary>
+    public decimal AvailableBefore { get; set; }
+    /// <summary>SL thực lấy từ lô này.</summary>
+    public decimal AllocateQty { get; set; }
+    /// <summary>SL_Con_BH_NCC còn lại sau khi phân bổ.</summary>
+    public decimal RemainingAfter { get; set; }
 }

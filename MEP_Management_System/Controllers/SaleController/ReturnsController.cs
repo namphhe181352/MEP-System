@@ -481,65 +481,119 @@ public class ReturnsController : ControllerBase
                 if (bp != null)
                 {
                     var baseQty = ri.BaseQuantity > 0 ? ri.BaseQuantity : ri.Quantity;
-                    bp.AvailableStock += baseQty;
-                    bp.ActualStock += baseQty;
+                    var isDefective = string.Equals(ri.Reason, "DEFECTIVE", StringComparison.OrdinalIgnoreCase);
 
-                    // Ghi inventory_ledger cho tra hang khach (CUSTOMER_RETURN)
-                    _context.InventoryLedgers.Add(new InventoryLedger
+                    if (isDefective)
                     {
-                        LedgerId = Guid.NewGuid(),
-                        BranchId = bp.BranchId,
-                        BranchProductId = bp.BranchProductId,
-                        DocType = "CUSTOMER_RETURN",
-                        DocId = ret.ReturnOrderId,
-                        DocCode = ret.ReturnCode,
-                        TransactionTime = DateTime.UtcNow,
-                        QtyChange = baseQty,
-                        UnitCostPrice = Math.Round(bp.CostPrice, 4),
-                        TotalCostValue = Math.Round(baseQty * bp.CostPrice, 4),
-                        StockAfter = bp.ActualStock,
-                        AvgCostAfter = Math.Round(bp.CostPrice, 4),
-                        CreatedAt = DateTime.UtcNow
-                    });
+                        // FIX L1: hàng LỖI không về sellable — giữ làm defective hold (WarrantyQuantity)
+                        // + tạo WarrantyTicket (PENDING_ASSIGN) để gửi BH NCC claim lại.
+                        bp.WarrantyQuantity += baseQty;
+
+                        _context.WarrantyTickets.Add(new WarrantyTicket
+                        {
+                            WarrantyTicketId = Guid.NewGuid(),
+                            ReturnItemId = ri.ReturnItemId,
+                            BranchProductId = ri.BranchProductId,
+                            ProductId = bp.ProductId,
+                            Quantity = ri.Quantity,
+                            ConversionRate = ri.ConversionRate > 0 ? ri.ConversionRate : 1,
+                            BaseQuantity = baseQty,
+                            Status = "PENDING_ASSIGN",
+                            CreatedAt = DateTime.UtcNow,
+                            CreatedBy = GetUserId()
+                        });
+
+                        _context.InventoryLedgers.Add(new InventoryLedger
+                        {
+                            LedgerId = Guid.NewGuid(),
+                            BranchId = bp.BranchId,
+                            BranchProductId = bp.BranchProductId,
+                            DocType = "DEFECTIVE_HOLD",
+                            DocId = ret.ReturnOrderId,
+                            DocCode = ret.ReturnCode,
+                            TransactionTime = DateTime.UtcNow,
+                            QtyChange = 0, // tồn vật lý giữ nguyên (hàng lỗi nằm trong ActualStock, chỉ đánh dấu hold)
+                            UnitCostPrice = Math.Round(bp.CostPrice, 4),
+                            TotalCostValue = 0,
+                            StockAfter = bp.ActualStock,
+                            AvgCostAfter = Math.Round(bp.CostPrice, 4),
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                    else
+                    {
+                        // REFUND bình thường (không lỗi) → hàng về sellable
+                        bp.AvailableStock += baseQty;
+                        bp.ActualStock += baseQty;
+
+                        _context.InventoryLedgers.Add(new InventoryLedger
+                        {
+                            LedgerId = Guid.NewGuid(),
+                            BranchId = bp.BranchId,
+                            BranchProductId = bp.BranchProductId,
+                            DocType = "CUSTOMER_RETURN",
+                            DocId = ret.ReturnOrderId,
+                            DocCode = ret.ReturnCode,
+                            TransactionTime = DateTime.UtcNow,
+                            QtyChange = baseQty,
+                            UnitCostPrice = Math.Round(bp.CostPrice, 4),
+                            TotalCostValue = Math.Round(baseQty * bp.CostPrice, 4),
+                            StockAfter = bp.ActualStock,
+                            AvgCostAfter = Math.Round(bp.CostPrice, 4),
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
                 }
             }
         }
         else if (ret.ReturnType == "EXCHANGE")
         {
-            // EXCHANGE: Gom nhóm ReturnItem theo ProductId -> 1 WarrantyTicket / ProductId
-            var groupedByProduct = ret.ReturnItems
+            // FIX L3: trước đây gom nhóm theo ProductId -> 1 WarrantyTicket link firstItem,
+            // các ReturnItem còn lại bị mồ côi (unique 1-1 trên ReturnItemId) -> đứt liên kết,
+            // DefectiveItems không hiện trạng thái BH. Đổi sang 1 WarrantyTicket / ReturnItem.
+
+            // Bước 1: pre-check đủ sellable theo từng Product (trước khi giữ bất kỳ hold nào)
+            var needByProduct = ret.ReturnItems
                 .GroupBy(ri => ri.BranchProduct!.ProductId)
+                .Select(g => new
+                {
+                    BranchProductId = g.First().BranchProductId,
+                    TotalBase = g.Sum(ri => ri.BaseQuantity > 0 ? ri.BaseQuantity : ri.Quantity)
+                })
                 .ToList();
 
-            foreach (var group in groupedByProduct)
+            foreach (var pg in needByProduct)
             {
-                var firstItem = group.First();
-                var bp = await _context.BranchProducts.FindAsync(firstItem.BranchProductId);
+                var bp = await _context.BranchProducts.FindAsync(pg.BranchProductId);
+                if (bp == null) continue;
+                var sellable = bp.AvailableStock - bp.WarrantyQuantity;
+                if (sellable < pg.TotalBase)
+                    return BadRequest(ApiErrorResponse.Create("MSG-81",
+                        $"Sản phẩm xuất đổi hiện không đủ tồn kho khả dụng để thực hiện giao dịch (Tồn khả dụng bán: {sellable}, cần: {pg.TotalBase})"));
+            }
+
+            // Bước 2: 1 ticket / ReturnItem + hold theo từng dòng
+            foreach (var ri in ret.ReturnItems)
+            {
+                var bp = await _context.BranchProducts.FindAsync(ri.BranchProductId);
                 if (bp == null) continue;
 
-                var totalBaseQty = group.Sum(ri => ri.BaseQuantity > 0 ? ri.BaseQuantity : ri.Quantity);
+                var baseQty = ri.BaseQuantity > 0 ? ri.BaseQuantity : ri.Quantity;
+                bp.WarrantyQuantity += baseQty;
 
-                var sellable = bp.AvailableStock - bp.WarrantyQuantity;
-                if (sellable < totalBaseQty)
-                    return BadRequest(ApiErrorResponse.Create("MSG-81",
-                        $"Sản phẩm xuất đổi hiện không đủ tồn kho khả dụng để thực hiện giao dịch (Tồn khả dụng bán: {sellable}, cần: {totalBaseQty})"));
-
-                bp.WarrantyQuantity += totalBaseQty;
-
-                var warrantyTicket = new WarrantyTicket
+                _context.WarrantyTickets.Add(new WarrantyTicket
                 {
                     WarrantyTicketId = Guid.NewGuid(),
-                    ReturnItemId = firstItem.ReturnItemId,
-                    BranchProductId = firstItem.BranchProductId,
+                    ReturnItemId = ri.ReturnItemId,              // FIX L3: mỗi ReturnItem có ticket riêng
+                    BranchProductId = ri.BranchProductId,
                     ProductId = bp.ProductId,
-                    Quantity = totalBaseQty,
-                    ConversionRate = 1,
-                    BaseQuantity = totalBaseQty,
+                    Quantity = ri.Quantity,
+                    ConversionRate = ri.ConversionRate > 0 ? ri.ConversionRate : 1,  // FIX L11
+                    BaseQuantity = baseQty,
                     Status = "PENDING_ASSIGN",
                     CreatedAt = DateTime.UtcNow,
                     CreatedBy = GetUserId()
-                };
-                _context.WarrantyTickets.Add(warrantyTicket);
+                });
             }
         }
 
