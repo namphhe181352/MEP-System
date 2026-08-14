@@ -150,6 +150,13 @@ public class InvoicesController : ControllerBase
                 dto.PaymentMethod = invoice.Payments.Count > 1
                     ? "[" + string.Join(",", invoice.Payments.Select(p => $"{{\"method\":\"{p.Method}\",\"amount\":{p.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)}}}")) + "]" 
                     : invoice.Payments.First().Method.ToString();
+                    
+                var cashPayment = invoice.Payments.FirstOrDefault(p => p.Method == "Cash" || p.Method == "Tiền mặt");
+                if (cashPayment != null)
+                {
+                    dto.CashReceived = cashPayment.CashReceived;
+                    dto.ChangeAmount = cashPayment.ChangeAmount;
+                }
             }
             return dto;
         }).ToList();
