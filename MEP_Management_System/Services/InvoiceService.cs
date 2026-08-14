@@ -62,6 +62,13 @@ namespace MEP_Management_System.Services
             if (invoice.Payments != null && invoice.Payments.Any())
             {
                 dto.PaymentMethod = invoice.Payments.Count > 1 ? "Combined" : invoice.Payments.First().Method.ToString();
+                
+                var cashPayment = invoice.Payments.FirstOrDefault(p => p.Method == "Cash" || p.Method == "Tiền mặt");
+                if (cashPayment != null)
+                {
+                    dto.CashReceived = cashPayment.CashReceived;
+                    dto.ChangeAmount = cashPayment.ChangeAmount;
+                }
             }
 
             return dto;
