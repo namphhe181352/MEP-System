@@ -1068,6 +1068,7 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasDefaultValueSql("uuid_generate_v4()")
                 .HasColumnName("return_item_id");
             entity.Property(e => e.BranchProductId).HasColumnName("branch_product_id");
+            entity.Property(e => e.InvoiceItemId).HasColumnName("invoice_item_id");
             entity.Property(e => e.Quantity)
                 .HasPrecision(10, 2)
                 .HasColumnName("quantity");
@@ -1227,6 +1228,7 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
             entity.Property(e => e.PayAmount).HasPrecision(18, 2).HasColumnName("pay_amount");
             entity.Property(e => e.RefundAmountCustomer).HasPrecision(18, 2).HasColumnName("refund_amount_customer");
             entity.Property(e => e.PaymentMethod).HasMaxLength(50).HasColumnName("payment_method");
+            entity.Property(e => e.PaymentId).HasColumnName("payment_id");
         });
 
         modelBuilder.Entity<ExchangeItem>(entity =>

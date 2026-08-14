@@ -8,6 +8,7 @@ using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.DTOs.SaleDTOs;
 using MEP_Management_System.Models;
 using MEP_Management_System.Hubs;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
@@ -24,12 +25,14 @@ public class ReturnsController : ControllerBase
     private readonly Models.MEPDatabaseContext _context;
     private readonly IMapper _mapper;
     private readonly IHubContext<PosHub> _posHub;
+    private readonly VietQrService _vietQr;
 
-    public ReturnsController(Models.MEPDatabaseContext context, IMapper mapper, IHubContext<PosHub> posHub)
+    public ReturnsController(Models.MEPDatabaseContext context, IMapper mapper, IHubContext<PosHub> posHub, VietQrService vietQr)
     {
         _context = context;
         _mapper = mapper;
         _posHub = posHub;
+        _vietQr = vietQr;
     }
 
     private Guid GetBranchId() =>
@@ -421,12 +424,9 @@ public class ReturnsController : ControllerBase
         var avgPrice = originalItems.Sum(ii => ii.SellPrice * ii.Quantity) / totalBought;
         var grossRefundLine = req.Quantity * avgPrice;
 
-        // Áp dụng chiết khấu theo tỷ lệ của hóa đơn gốc
-        var originalInvoice = originalItems.First().Invoice;
-        var invoiceSubtotal = originalItems.Sum(ii => ii.Quantity * ii.SellPrice);
-        var discountRatio = invoiceSubtotal > 0 && originalInvoice != null
-            ? Math.Min(1m, Math.Max(0m, originalInvoice.DiscountAmount / invoiceSubtotal))
-            : 0m;
+        // Áp dụng chiết khấu trả hàng branch-level (thay cho prorate chiết khấu của hóa đơn gốc)
+        var returnDiscountPercent = await GetReturnDiscountPercent(GetBranchId());
+        var discountRatio = returnDiscountPercent > 0m ? returnDiscountPercent / 100m : 0m;
         var discountPortion = grossRefundLine * discountRatio;
         var refundLine = Math.Max(0, grossRefundLine - discountPortion);
 
@@ -571,6 +571,22 @@ public class ReturnsController : ControllerBase
                 }
             }
         }
+        else if (ret.ReturnType == "EXCHANGE" && ret.ExchangeItems.Any())
+        {
+            // === Đổi chênh lệch ===
+            // delta > 0 (lệch giá, khách trả thêm) → phải thanh toán qua popup (exchange/pay) → Completed.
+            //   Không được xác nhận trực tiếp ở đây (tránh sinh Payment không qua QR/cash-input).
+            // delta == 0 (đổi ngang giá) → chỉ move kho, KHÔNG tiền.
+            // ii.ReturnedQuantity đã reserve lúc CreateExchange — KHÔNG đụng.
+            var exDelta = ret.DeltaAmount ?? 0m;
+            if (exDelta > 0)
+                return BadRequest(ApiErrorResponse.Create("MSG-78",
+                    "Đơn đổi chênh lệch (thu thêm) phải thanh toán qua popup, không xác nhận trực tiếp."));
+
+            var stockErr = await ApplyExchangeDiffStockAsync(ret);
+            if (stockErr != null)
+                return BadRequest(ApiErrorResponse.Create("MSG-81", stockErr));
+        }
         else if (ret.ReturnType == "EXCHANGE")
         {
             // FIX L3: trước đây gom nhóm theo ProductId -> 1 WarrantyTicket link firstItem,
@@ -624,39 +640,48 @@ public class ReturnsController : ControllerBase
 
         // Create RefundRecord for Shift cash balancing
         // Gắn ca bán đang mở để shift summary trừ đúng tiền mặt/doanh thu trong ca đó.
+        // Skip cho exchange-diff — tiền xử lý riêng theo Delta trong nhánh trên.
+        var isExchangeDiff = ret.ReturnType == "EXCHANGE" && ret.ExchangeItems.Any();
         var openShiftId = await _context.Shifts
             .Where(s => s.BranchId == branchId && s.Status == "OPEN")
             .Select(s => (Guid?)s.ShiftId)
             .FirstOrDefaultAsync();
 
-        var refund = new RefundRecord
+        if (!isExchangeDiff)
         {
-            RefundId = Guid.NewGuid(),
-            RefundCode = $"RFD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString()[..4].ToUpper()}",
-            OrderId = ret.OrderId,
-            InvoiceId = (await _context.Invoices.FirstOrDefaultAsync(i => i.OrderId == ret.OrderId))?.InvoiceId,
-            CustomerId = ret.Order?.CustomerId ?? Guid.Empty,
-            UserId = ret.UserId,
-            RefundAmount = ret.RefundAmount,
-            RefundMethod = ret.ReturnType == "REFUND" ? "CASH" : (ret.RefundMethod ?? "CASH"),
-            Status = "REFUNDED",
-            Reason = ret.Note,
-            ProcessedAt = DateTime.UtcNow,
-            CreatedAt = DateTime.UtcNow,
-            ShiftId = openShiftId
-        };
-        _context.RefundRecords.Add(refund);
+            var refund = new RefundRecord
+            {
+                RefundId = Guid.NewGuid(),
+                RefundCode = $"RFD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString()[..4].ToUpper()}",
+                OrderId = ret.OrderId,
+                InvoiceId = (await _context.Invoices.FirstOrDefaultAsync(i => i.OrderId == ret.OrderId))?.InvoiceId,
+                CustomerId = ret.Order?.CustomerId ?? Guid.Empty,
+                UserId = ret.UserId,
+                RefundAmount = ret.RefundAmount,
+                RefundMethod = ret.ReturnType == "REFUND" ? "CASH" : (ret.RefundMethod ?? "CASH"),
+                Status = "REFUNDED",
+                Reason = ret.Note,
+                ProcessedAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow,
+                ShiftId = openShiftId
+            };
+            _context.RefundRecords.Add(refund);
+        }
 
         await _context.SaveChangesAsync();
 
-        // SignalR: thông báo POS cập nhật tồn khả dụng khi đổi hàng (EXCHANGE)
+        // SignalR: thông báo POS cập nhật tồn khả dụng khi đổi hàng (EXCHANGE — cả bảo hành và đổi chênh).
         if (ret.ReturnType == "EXCHANGE")
         {
             try
             {
-                foreach (var ri in ret.ReturnItems)
+                var bpIds = ret.ReturnItems.Select(ri => ri.BranchProductId)
+                    .Concat(ret.ExchangeItems.Select(ei => ei.BranchProductId))
+                    .Distinct()
+                    .ToList();
+                foreach (var bpId in bpIds)
                 {
-                    var bp = await _context.BranchProducts.FindAsync(ri.BranchProductId);
+                    var bp = await _context.BranchProducts.FindAsync(bpId);
                     if (bp != null)
                     {
                         await _posHub.Clients.Group($"branch_{bp.BranchId}")
@@ -693,11 +718,43 @@ public class ReturnsController : ControllerBase
 
         var ret = await _context.ReturnOrders
             .Include(r => r.Order)
+            .Include(r => r.ReturnItems)
+            .Include(r => r.ExchangeItems)
             .FirstOrDefaultAsync(r => r.ReturnOrderId == id && r.Order!.BranchId == branchId);
 
         if (ret == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Không tìm thấy phiếu đổi trả."));
         if (ret.Status != "Pending")
             return BadRequest(ApiErrorResponse.Create("MSG-78", "Chỉ phiếu đang chờ xử lý mới được hủy."));
+
+        // Đổi chênh lệch: hoàn lại ii.ReturnedQuantity đã reserve lúc CreateExchange (theo InvoiceItemId lưu).
+        if (ret.ReturnType == "EXCHANGE" && ret.ExchangeItems.Any())
+        {
+            var riWithIi = ret.ReturnItems.Where(ri => ri.InvoiceItemId.HasValue).ToList();
+            if (riWithIi.Any())
+            {
+                var iiIds = riWithIi.Select(ri => ri.InvoiceItemId!.Value).ToList();
+                var invoiceItems = await _context.InvoiceItems
+                    .Where(ii => iiIds.Contains(ii.InvoiceItemId))
+                    .ToListAsync();
+                var iiMap = invoiceItems.ToDictionary(ii => ii.InvoiceItemId);
+                foreach (var ri in riWithIi)
+                {
+                    if (iiMap.TryGetValue(ri.InvoiceItemId!.Value, out var ii))
+                        ii.ReturnedQuantity = Math.Max(0m, ii.ReturnedQuantity - ri.Quantity);
+                }
+            }
+
+            // Dọn Payment chuyển khoản đang chờ (nếu có) — tránh orphan pending payment.
+            if (ret.PaymentId.HasValue)
+            {
+                var linkedPay = await _context.Payments.FindAsync(ret.PaymentId.Value);
+                if (linkedPay != null && linkedPay.Status == "Pending")
+                {
+                    linkedPay.Status = "Cancelled";
+                }
+                ret.PaymentId = null;
+            }
+        }
 
         ret.Status = "Cancelled";
         await _context.SaveChangesAsync();
@@ -711,6 +768,289 @@ public class ReturnsController : ControllerBase
             $"Hủy phiếu đổi trả {ret.ReturnCode}");
 
         return Ok(new { message = "Đã hủy phiếu đổi trả." });
+    }
+
+    // === Thanh toán đổi chênh lệch (delta > 0) ===
+    // delta > 0 (lệch giá) → popup thanh toán: CASH (Completed ngay + Payment Confirmed + move kho)
+    //   hoặc TRANSFER (sinh QR + Payment Pending, RO vẫn Pending — chờ confirm-transfer).
+    // delta == 0 (ngang giá) → KHÔNG qua endpoint này (tạo Pending, finalize ở detail).
+
+    private static readonly string BankAccountNumber = "0975849675";
+    private static readonly string BankName = "MB Bank";
+
+    private async Task<(ReturnOrder ret, string? err)> LoadPendingExchangeDiff(Guid id)
+    {
+        var branchId = GetBranchId();
+        var ret = await _context.ReturnOrders
+            .Include(r => r.Order).ThenInclude(o => o!.Invoice)
+            .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product)
+            .Include(r => r.ExchangeItems).ThenInclude(ei => ei.BranchProduct)
+            .FirstOrDefaultAsync(r => r.ReturnOrderId == id && r.Order!.BranchId == branchId);
+
+        if (ret == null) return (ret, "Không tìm thấy phiếu đổi trả.");
+        if (ret.Status != "Pending") return (ret, "Phiếu đổi trả không ở trạng thái chờ xử lý.");
+        if (ret.ReturnType != "EXCHANGE" || !ret.ExchangeItems.Any())
+            return (ret, "Phiếu không phải đổi chênh lệch.");
+        if ((ret.DeltaAmount ?? 0m) <= 0)
+            return (ret, "Phiếu đổi ngang giá — không cần thanh toán chênh lệch.");
+        return (ret, null);
+    }
+
+    private async Task<Guid?> GetOpenShiftIdAsync(Guid branchId) =>
+        await _context.Shifts
+            .Where(s => s.BranchId == branchId && s.Status == "OPEN")
+            .Select(s => (Guid?)s.ShiftId)
+            .FirstOrDefaultAsync();
+
+    // POST /api/pos/returns/{id}/exchange/pay
+    /// <summary>
+    /// Thanh toán chênh lệch đổi hàng (delta>0).
+    /// CASH → tạo Payment Confirmed (cashReceived/changeAmount) + move kho + RO Completed.
+    /// TRANSFER → sinh QR (VietQR) + Payment Pending, RO vẫn Pending chờ confirm-transfer.
+    /// </summary>
+    [HttpPost("{id:guid}/exchange/pay")]
+    public async Task<ActionResult> PayExchangeDiff(Guid id, [FromBody] PayExchangeRequest req)
+    {
+        var branchId = GetBranchId();
+        var (ret, err) = await LoadPendingExchangeDiff(id);
+        if (err != null)
+            return BadRequest(ApiErrorResponse.Create("MSG-78", err!));
+
+        var delta = ret!.DeltaAmount ?? 0m;
+        var method = (req?.Method?.ToUpper() ?? ret.PaymentMethod ?? "CASH");
+        if (method != "CASH" && method != "TRANSFER")
+            return BadRequest(ApiErrorResponse.Create("MSG-78", "Phương thức thanh toán không hợp lệ (CASH/TRANSFER)."));
+
+        var openShiftId = await GetOpenShiftIdAsync(branchId);
+        var invoiceId = ret.Order?.Invoice?.InvoiceId;
+
+        if (method == "CASH")
+        {
+            if (req!.CashReceived == null || req.CashReceived < delta)
+                return BadRequest(ApiErrorResponse.Create("MSG-76", "Tiền khách đưa nhỏ hơn số phải trả."));
+
+            using var tx = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                // Nếu đang có Payment chuyển khoản pending → huỷ, chuyển sang cash.
+                if (ret.PaymentId.HasValue)
+                {
+                    var old = await _context.Payments.FindAsync(ret.PaymentId.Value);
+                    if (old != null && old.Status == "Pending")
+                        old.Status = "Cancelled";
+                    ret.PaymentId = null;
+                }
+
+                var payment = new Payment
+                {
+                    PaymentId = Guid.NewGuid(),
+                    InvoiceId = invoiceId,
+                    Method = "Cash",
+                    Amount = delta,
+                    CashReceived = req.CashReceived.Value,
+                    ChangeAmount = Math.Max(0m, req.CashReceived.Value - delta),
+                    Status = "Confirmed",
+                    PaidAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow,
+                    BranchId = branchId,
+                    ShiftId = openShiftId
+                };
+                _context.Payments.Add(payment);
+                ret.PaymentId = payment.PaymentId;
+
+                var stockErr = await ApplyExchangeDiffStockAsync(ret);
+                if (stockErr != null)
+                    throw new Exception(stockErr);
+
+                ret.Status = "Completed";
+                await _context.SaveChangesAsync();
+                await tx.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                await tx.RollbackAsync();
+                return BadRequest(ApiErrorResponse.Create("MSG-81", ex.Message));
+            }
+
+            await TryWriteSystemLog(GetUserId(), "PAY_EXCHANGE_DIFF", "return_orders", "ReturnOrder",
+                ret.ReturnOrderId, $"Thanh toán tiền mặt đổi chênh {ret.ReturnCode} - Completed - {delta:N0}đ");
+            await NotifyExchangeDiffStockAsync(ret);
+
+            var dtoCash = _mapper.Map<ReturnOrderDto>(ret);
+            return Ok(new
+            {
+                returnOrder = dtoCash,
+                method = "CASH",
+                paidAmount = delta,
+                cashReceived = req.CashReceived.Value,
+                changeAmount = Math.Max(0m, req.CashReceived.Value - delta)
+            });
+        }
+
+        // TRANSFER
+        var content = $"MEP {ret.ReturnCode}";
+        var (qrBase64, transactionContent) = await _vietQr.GenerateQrAsync(delta, content);
+
+        Payment? p = null;
+        using (var tx2 = await _context.Database.BeginTransactionAsync())
+        {
+            try
+            {
+                if (ret.PaymentId.HasValue)
+                {
+                    p = await _context.Payments.FindAsync(ret.PaymentId.Value);
+                    if (p != null && p.Method == "Transfer")
+                    {
+                        if (p.Status == "Confirmed")
+                            return BadRequest(ApiErrorResponse.Create("MSG-78", "Đơn đã thanh toán xong."));
+                        if (p.Status == "Pending")
+                        {
+                            // Refresh QR + gia hạn.
+                            p.VietQRString = transactionContent;
+                            p.QRExpiredAt = DateTime.UtcNow.AddMinutes(5);
+                            p.Amount = delta;
+                        }
+                        else
+                        {
+                            // Cancelled / expired cũ → tạo mới.
+                            p.Status = "Cancelled";
+                            p = null;
+                        }
+                    }
+                    else
+                    {
+                        p = null;
+                    }
+                }
+
+                if (p == null)
+                {
+                    p = new Payment
+                    {
+                        PaymentId = Guid.NewGuid(),
+                        InvoiceId = invoiceId,
+                        Method = "Transfer",
+                        Amount = delta,
+                        Status = "Pending",
+                        VietQRString = transactionContent,
+                        QRExpiredAt = DateTime.UtcNow.AddMinutes(5),
+                        CreatedAt = DateTime.UtcNow,
+                        BranchId = branchId,
+                        ShiftId = openShiftId
+                    };
+                    _context.Payments.Add(p);
+                    ret.PaymentId = p.PaymentId;
+                }
+
+                await _context.SaveChangesAsync();
+                await tx2.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                await tx2.RollbackAsync();
+                return StatusCode(500, new { message = "Lỗi tạo QR: " + ex.Message });
+            }
+        }
+
+        await TryWriteSystemLog(GetUserId(), "PAY_EXCHANGE_DIFF_QR", "return_orders", "ReturnOrder",
+            ret.ReturnOrderId, $"Tạo QR chuyển khoản đổi chênh {ret.ReturnCode} - {delta:N0}đ");
+
+        return Ok(new
+        {
+            paymentId = p.PaymentId,
+            qrImageBase64 = qrBase64,
+            transactionContent,
+            amount = delta,
+            bankAccountNumber = BankAccountNumber,
+            bankName = BankName,
+            returnOrderId = ret.ReturnOrderId,
+            method = "TRANSFER"
+        });
+    }
+
+    // POST /api/pos/returns/{id}/exchange/confirm-transfer
+    /// <summary>
+    /// Xác nhận khách đã chuyển khoản → Payment Confirmed + move kho + RO Completed.
+    /// </summary>
+    [HttpPost("{id:guid}/exchange/confirm-transfer")]
+    public async Task<ActionResult<ReturnOrderDto>> ConfirmExchangeTransfer(Guid id, [FromBody] ConfirmTransferRequest? req)
+    {
+        var (ret, err) = await LoadPendingExchangeDiff(id);
+        if (err != null)
+            return BadRequest(ApiErrorResponse.Create("MSG-78", err!));
+
+        if (!ret!.PaymentId.HasValue)
+            return BadRequest(ApiErrorResponse.Create("MSG-78", "Chưa có thanh toán chuyển khoản cho phiếu này."));
+
+        var p = await _context.Payments.FindAsync(ret.PaymentId.Value);
+        if (p == null || p.Method != "Transfer")
+            return BadRequest(ApiErrorResponse.Create("MSG-78", "Không tìm thấy Payment chuyển khoản hợp lệ."));
+        if (p.Status == "Confirmed")
+            return BadRequest(ApiErrorResponse.Create("MSG-76", "Thanh toán đã được xác nhận."));
+        if (req?.PaymentId.HasValue == true && req.PaymentId.Value != p.PaymentId)
+            return BadRequest(ApiErrorResponse.Create("MSG-78", "Payment không khớp với phiếu đổi trả."));
+        if (p.QRExpiredAt.HasValue && p.QRExpiredAt.Value < DateTime.UtcNow)
+            return BadRequest(ApiErrorResponse.Create("MSG-76", "Mã QR đã hết hạn. Vui lòng tạo lại."));
+
+        using var tx = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            p.Status = "Confirmed";
+            p.PaidAt = DateTime.UtcNow;
+
+            var stockErr = await ApplyExchangeDiffStockAsync(ret);
+            if (stockErr != null)
+                throw new Exception(stockErr);
+
+            ret.Status = "Completed";
+            await _context.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            return BadRequest(ApiErrorResponse.Create("MSG-81", ex.Message));
+        }
+
+        await TryWriteSystemLog(GetUserId(), "CONFIRM_EXCHANGE_TRANSFER", "return_orders", "ReturnOrder",
+            ret.ReturnOrderId, $"Xác nhận chuyển khoản đổi chênh {ret.ReturnCode} - Completed");
+        await NotifyExchangeDiffStockAsync(ret);
+
+        return Ok(_mapper.Map<ReturnOrderDto>(ret));
+    }
+
+    // POST /api/pos/returns/{id}/exchange/cancel-payment
+    /// <summary>
+    /// Huỷ Payment chuyển khoản đang chờ (khi bỏ QR / đổi sang method khác). RO vẫn Pending.
+    /// </summary>
+    [HttpPost("{id:guid}/exchange/cancel-payment")]
+    public async Task<ActionResult> CancelExchangePayment(Guid id)
+    {
+        var (ret, err) = await LoadPendingExchangeDiff(id);
+        if (err != null)
+            return BadRequest(ApiErrorResponse.Create("MSG-78", err!));
+
+        if (ret!.PaymentId.HasValue)
+        {
+            var p = await _context.Payments.FindAsync(ret.PaymentId.Value);
+            if (p != null && p.Status == "Pending")
+                p.Status = "Cancelled";
+            ret.PaymentId = null;
+            await _context.SaveChangesAsync();
+        }
+
+        return Ok(new { message = "Đã huỷ thanh toán chênh lệch đang chờ." });
+    }
+
+    public class PayExchangeRequest
+    {
+        public string? Method { get; set; }
+        public decimal? CashReceived { get; set; }
+    }
+
+    public class ConfirmTransferRequest
+    {
+        public Guid? PaymentId { get; set; }
     }
 
     // GET /api/pos/returns/return-policies
@@ -980,6 +1320,21 @@ public class ReturnsController : ControllerBase
         catch { return null; }
     }
 
+    /// <summary>
+    /// Đọc chiết khấu trả hàng branch-level (%) từ system_config (key RETURN_DISCOUNT_PERCENT).
+    /// Áp dụng cho cả trả hàng hoàn tiền và đổi hàng lệch giá. Trả 0 nếu không set.
+    /// </summary>
+    private async Task<decimal> GetReturnDiscountPercent(Guid branchId)
+    {
+        var config = await _context.SystemConfigs
+            .FirstOrDefaultAsync(c => c.BranchId == branchId && c.ConfigKey == "RETURN_DISCOUNT_PERCENT");
+        if (config != null && !string.IsNullOrWhiteSpace(config.ConfigValue)
+            && decimal.TryParse(config.ConfigValue, System.Globalization.CultureInfo.InvariantCulture, out var p)
+            && p > 0m)
+            return p;
+        return 0m;
+    }
+
     private static CategoryPolicyDto? MatchPolicy(List<CategoryPolicyDto> policies, Product? product)
     {
         if (product == null) return null;
@@ -1014,6 +1369,81 @@ public class ReturnsController : ControllerBase
             AvgCostAfter = Math.Round(bp.CostPrice, 4),
             CreatedAt = DateTime.UtcNow
         };
+    }
+
+    /// <summary>
+    /// Move kho cho đổi chênh lệch: SP A trả về kho bán (CUSTOMER_RETURN) + SP B xuất kho (EXCHANGE_OUT).
+    /// Pre-check tồn SP B khả dụng. Trả null nếu OK, trả message lỗi nếu thiếu tồn.
+    /// KHÔNG đụng ii.ReturnedQuantity (đã reserve ở CreateExchange) — KHÔNG xử lý tiền (do pay/confirm lo).
+    /// Dùng chung cho: FinalizeReturn (delta==0 ngang giá) + exchange/pay (cash) + exchange/confirm-transfer.
+    /// </summary>
+    private async Task<string?> ApplyExchangeDiffStockAsync(ReturnOrder ret)
+    {
+        // Pre-check tồn SP B khả dụng (kho có thể đổi từ lúc tạo pending).
+        var bNeed = ret.ExchangeItems
+            .GroupBy(ei => ei.BranchProductId)
+            .Select(g => new { BranchProductId = g.Key, TotalBase = g.Sum(ei => ei.BaseQuantity > 0 ? ei.BaseQuantity : ei.Quantity) })
+            .ToList();
+        foreach (var pg in bNeed)
+        {
+            var bp = await _context.BranchProducts.FindAsync(pg.BranchProductId);
+            if (bp == null) continue;
+            var available = bp.AvailableStock - bp.WarrantyQuantity - bp.ReservedStock;
+            if (available < pg.TotalBase)
+                return $"Sản phẩm đổi mới không đủ tồn kho khả dụng để thực hiện giao dịch (Tồn bán: {available}, cần: {pg.TotalBase})";
+        }
+
+        // SP A: hàng trả về lại kho bán (CUSTOMER_RETURN). Không sinh bảo hành.
+        foreach (var ri in ret.ReturnItems)
+        {
+            var bp = await _context.BranchProducts.FindAsync(ri.BranchProductId);
+            if (bp == null) continue;
+            var baseQty = ri.BaseQuantity > 0 ? ri.BaseQuantity : ri.Quantity;
+            bp.AvailableStock += baseQty;
+            bp.ActualStock += baseQty;
+            _context.InventoryLedgers.Add(MkLedger(bp, "CUSTOMER_RETURN", ret.ReturnOrderId, ret.ReturnCode, baseQty));
+        }
+
+        // SP B: xuất kho (EXCHANGE_OUT)
+        foreach (var ei in ret.ExchangeItems)
+        {
+            var bp = await _context.BranchProducts.FindAsync(ei.BranchProductId);
+            if (bp == null) continue;
+            var baseQty = ei.BaseQuantity > 0 ? ei.BaseQuantity : ei.Quantity;
+            bp.AvailableStock -= baseQty;
+            bp.ActualStock -= baseQty;
+            _context.InventoryLedgers.Add(MkLedger(bp, "EXCHANGE_OUT", ret.ReturnOrderId, ret.ReturnCode, -baseQty));
+        }
+
+        return null;
+    }
+
+    /// <summary>Phát SignalR StockUpdated cho các BranchProduct của exchange-diff (SP A + SP B).</summary>
+    private async Task NotifyExchangeDiffStockAsync(ReturnOrder ret)
+    {
+        try
+        {
+            var bpIds = ret.ReturnItems.Select(ri => ri.BranchProductId)
+                .Concat(ret.ExchangeItems.Select(ei => ei.BranchProductId))
+                .Distinct()
+                .ToList();
+            foreach (var bpId in bpIds)
+            {
+                var bp = await _context.BranchProducts.FindAsync(bpId);
+                if (bp != null)
+                {
+                    await _posHub.Clients.Group($"branch_{bp.BranchId}")
+                        .SendAsync("StockUpdated", new
+                        {
+                            ProductId = bp.ProductId,
+                            BranchId = bp.BranchId,
+                            NewSellableQuantity = bp.AvailableStock - bp.WarrantyQuantity,
+                            WarrantyQuantity = bp.WarrantyQuantity
+                        });
+                }
+            }
+        }
+        catch { /* SignalR fail silently */ }
     }
 
     // --- Prepared data structures ---
@@ -1087,10 +1517,9 @@ public class ReturnsController : ControllerBase
         var branchExchangeDays = branch?.ExchangeDaysAllowed ?? 30;
         var invoiceDate = invoice.CreatedAt ?? DateTime.UtcNow;
 
-        var invoiceSubtotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
-        var discountRatio = invoiceSubtotal > 0 && invoice.DiscountAmount > 0
-            ? Math.Min(1m, Math.Max(0m, invoice.DiscountAmount / invoiceSubtotal))
-            : 0m;
+        // Chiết khấu trả hàng branch-level (thay cho prorate chiết khấu của hóa đơn gốc)
+        var returnDiscountPercent = await GetReturnDiscountPercent(branchId);
+        var discountRatio = returnDiscountPercent > 0m ? returnDiscountPercent / 100m : 0m;
 
         decimal oldValue = 0m;
 
@@ -1268,6 +1697,12 @@ public class ReturnsController : ControllerBase
         var invoice = prep.Invoice;
         var delta = prep.Delta;
 
+        // Chống 2 phiếu pending cùng lúc trên 1 hóa đơn (giống CreateReturn).
+        var hasPending = await _context.ReturnOrders
+            .AnyAsync(r => r.OrderId == invoice.OrderId && r.Status == "Pending");
+        if (hasPending)
+            return BadRequest(ApiErrorResponse.Create("MSG-66", "Hóa đơn này đang có phiếu đổi trả đang xử lý."));
+
         using var tx = await _context.Database.BeginTransactionAsync();
         try
         {
@@ -1279,7 +1714,7 @@ public class ReturnsController : ControllerBase
                 UserId = userId,
                 RefundMethod = "EXCHANGE",
                 ReturnType = "EXCHANGE",
-                Status = "Completed",
+                Status = "Pending",
                 RefundAmount = prep.OldValue,
                 DeltaAmount = delta,
                 PayAmount = Math.Max(0, delta),
@@ -1290,34 +1725,27 @@ public class ReturnsController : ControllerBase
             };
             _context.ReturnOrders.Add(ro);
 
-            // 1) SP A: ReturnItem + trả về kho bán + chống đổi lặp.
-            //    Đổi chênh lệch là giao dịch thương mại — KHÔNG sinh bảo hành (luồng riêng).
+            // 1) SP A: ReturnItem (+ InvoiceItemId để huỷ phục hồi) + reserve ReturnedQuantity (chống đổi lặp).
+            //    KHÔNG move kho / KHÔNG tiền — chờ FinalizeReturn (pending như REFUND).
             foreach (var ri in prep.Returns)
             {
                 var ii = ri.InvoiceItem;
-                var bp = ii.BranchProduct!;
-                var returnItem = new ReturnItem
+                ro.ReturnItems.Add(new ReturnItem
                 {
                     ReturnItemId = Guid.NewGuid(),
                     ReturnOrderId = ro.ReturnOrderId,
                     BranchProductId = ii.BranchProductId,
+                    InvoiceItemId = ii.InvoiceItemId,
                     Quantity = ri.Quantity,
                     ConversionRate = ri.ConversionRate,
                     BaseQuantity = ri.BaseQuantity,
                     RefundAmount = ri.LineRefundAmount,
                     Reason = ri.Reason
-                };
-                ro.ReturnItems.Add(returnItem);
-                ii.ReturnedQuantity += ri.Quantity; // chống đổi lặp
-
-                // SP A về lại kho bán được (CUSTOMER_RETURN). Không giữ WarrantyQuantity,
-                // không tạo WarrantyTicket — bảo hành tách riêng, không liên quan đổi chênh.
-                bp.AvailableStock += ri.BaseQuantity;
-                bp.ActualStock += ri.BaseQuantity;
-                _context.InventoryLedgers.Add(MkLedger(bp, "CUSTOMER_RETURN", ro.ReturnOrderId, ro.ReturnCode, ri.BaseQuantity));
+                });
+                ii.ReturnedQuantity += ri.Quantity; // reserve
             }
 
-            // 2) SP B: ExchangeItem + xuất kho
+            // 2) SP B: ExchangeItem (record only). KHÔNG xuất kho — chờ FinalizeReturn.
             foreach (var ni in prep.NewItems)
             {
                 var bp = ni.BranchProduct;
@@ -1333,78 +1761,33 @@ public class ReturnsController : ControllerBase
                     UnitPrice = ni.UnitPrice,
                     LineTotal = ni.LineTotal
                 });
-                bp.AvailableStock -= ni.BaseQuantity;
-                bp.ActualStock -= ni.BaseQuantity;
-                _context.InventoryLedgers.Add(MkLedger(bp, "EXCHANGE_OUT", ro.ReturnOrderId, ro.ReturnCode, -ni.BaseQuantity));
             }
 
-            // 3) Cân quỹ theo Delta — gắn ca bán đang mở để quản lý ca ghi nhận
-            var openShift = await _context.Shifts
-                .FirstOrDefaultAsync(s => s.BranchId == branchId && s.Status == "OPEN");
-            var openShiftId = openShift?.ShiftId;
-
-            if (delta < 0)
+            // delta == 0 (đổi ngang giá) → Completed ngay sau khi tạo (move kho, KHÔNG tiền).
+            // delta > 0 (lệch giá) → giữ Pending, chờ popup thanh toán (exchange/pay → Completed).
+            if (delta == 0)
             {
-                _context.RefundRecords.Add(new RefundRecord
+                var stockErr = await ApplyExchangeDiffStockAsync(ro);
+                if (stockErr != null)
                 {
-                    RefundId = Guid.NewGuid(),
-                    RefundCode = $"RFD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString()[..4].ToUpper()}",
-                    OrderId = ro.OrderId,
-                    InvoiceId = invoice.InvoiceId,
-                    CustomerId = invoice.Order?.CustomerId ?? Guid.Empty,
-                    UserId = userId,
-                    RefundAmount = -delta,
-                    RefundMethod = payMethod,
-                    Status = "REFUNDED",
-                    Reason = ro.Note,
-                    ProcessedAt = DateTime.UtcNow,
-                    CreatedAt = DateTime.UtcNow,
-                    ShiftId = openShiftId
-                });
-            }
-            else if (delta > 0)
-            {
-                _context.Payments.Add(new Payment
-                {
-                    PaymentId = Guid.NewGuid(),
-                    InvoiceId = invoice.InvoiceId,
-                    Method = payMethod == "TRANSFER" ? "Transfer" : "Cash",
-                    Amount = delta,
-                    Status = "Confirmed",
-                    PaidAt = DateTime.UtcNow,
-                    CreatedAt = DateTime.UtcNow,
-                    BranchId = branchId,
-                    ShiftId = openShiftId
-                });
+                    await tx.RollbackAsync();
+                    return BadRequest(ApiErrorResponse.Create("MSG-81", stockErr));
+                }
+                ro.Status = "Completed";
             }
 
             await _context.SaveChangesAsync();
             await tx.CommitAsync();
 
-            // SignalR: cập nhật tồn khả dụng
-            try
+            // delta == 0 đã move kho ở trên → phát SignalR cập nhật tồn.
+            // delta > 0 (Pending) kho chưa đổi — KHÔNG phát (chờ pay/confirm-transfer).
+            if (delta == 0)
             {
-                var allBps = prep.Returns.Select(r => r.InvoiceItem.BranchProduct)
-                    .Concat(prep.NewItems.Select(n => n.BranchProduct))
-                    .Where(b => b != null)
-                    .GroupBy(b => b!.BranchProductId)
-                    .Select(g => g.First());
-                foreach (var bp in allBps)
-                {
-                    await _posHub.Clients.Group($"branch_{bp!.BranchId}")
-                        .SendAsync("StockUpdated", new
-                        {
-                            ProductId = bp.ProductId,
-                            BranchId = bp.BranchId,
-                            NewSellableQuantity = bp.AvailableStock - bp.WarrantyQuantity,
-                            WarrantyQuantity = bp.WarrantyQuantity
-                        });
-                }
+                await NotifyExchangeDiffStockAsync(ro);
             }
-            catch { /* SignalR fail silently */ }
 
             await TryWriteSystemLog(userId, "CREATE_EXCHANGE", "return_orders", "ReturnOrder",
-                ro.ReturnOrderId, $"Tạo phiếu đổi hàng chênh lệch {ro.ReturnCode} - Delta={delta:N0}đ");
+                ro.ReturnOrderId, $"Tạo phiếu đổi hàng chênh lệch {ro.ReturnCode} - {(delta == 0 ? "Completed" : "Pending")} - Delta={delta:N0}đ");
 
             var full = await _context.ReturnOrders
                 .Include(r => r.Order).ThenInclude(o => o!.Branch)

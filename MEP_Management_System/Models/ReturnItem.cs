@@ -11,6 +11,9 @@ public partial class ReturnItem
 
     public Guid BranchProductId { get; set; }
 
+    /// <summary>Liên kết dòng hóa đơn gốc (nullable — chỉ exchange-diff lưu để phục hồi ReturnedQuantity khi huỷ).</summary>
+    public Guid? InvoiceItemId { get; set; }
+
     public decimal Quantity { get; set; }
 
     /// <summary>Hệ số quy đổi từ ĐVT bán về ĐVT cơ bản (vd: 1 Thùng = 2 Cái -> ConversionRate = 2).</summary>
