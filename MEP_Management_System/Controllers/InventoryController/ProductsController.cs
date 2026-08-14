@@ -978,21 +978,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                // Quyen sua: PRODUCT_UPDATE hoac nguoi tao san pham (trong phien hien tai)
-                var uid = GetCurrentUserId();
-                bool isCreator = bp.Product.CreatedBy.HasValue && bp.Product.CreatedBy.Value == uid;
-                // Chi cho phep nguoi tao sua neu san pham duoc tao trong phien dang nhap nay
-                if (isCreator)
-                {
-                    var iatClaim = User.FindFirst("iat")?.Value;
-                    if (iatClaim != null && long.TryParse(iatClaim, out var iat))
-                    {
-                        var sessionStart = DateTimeOffset.FromUnixTimeSeconds(iat).UtcDateTime;
-                        if (bp.Product.CreatedAt.HasValue && bp.Product.CreatedAt.Value < sessionStart)
-                            isCreator = false; // San pham tao truoc phien nay -> ko cho sua
-                    }
-                }
-                if (!User.IsInRole("Owner") && !User.HasClaim("permission", PermissionConstants.PRODUCT_UPDATE) && !isCreator)
+                // Quyen sua: PRODUCT_UPDATE
+                if (!User.IsInRole("Owner") && !User.HasClaim("permission", PermissionConstants.PRODUCT_UPDATE))
                     return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền chỉnh sửa sản phẩm này." });
 
                 var errors = new List<string>();
@@ -1198,20 +1185,8 @@ namespace MEP_Management_System.Controllers.InventoryController
                     });
                 }
 
-                // Quyen xoa: PRODUCT_DELETE hoac nguoi tao san pham (trong phien hien tai)
-                var uid = GetCurrentUserId();
-                bool isCreator = bp.Product.CreatedBy.HasValue && bp.Product.CreatedBy.Value == uid;
-                if (isCreator)
-                {
-                    var iatClaim = User.FindFirst("iat")?.Value;
-                    if (iatClaim != null && long.TryParse(iatClaim, out var iat))
-                    {
-                        var sessionStart = DateTimeOffset.FromUnixTimeSeconds(iat).UtcDateTime;
-                        if (bp.Product.CreatedAt.HasValue && bp.Product.CreatedAt.Value < sessionStart)
-                            isCreator = false;
-                    }
-                }
-                if (!User.IsInRole("Owner") && !User.HasClaim("permission", PermissionConstants.PRODUCT_DELETE) && !isCreator)
+                // Quyen xoa: PRODUCT_DELETE
+                if (!User.IsInRole("Owner") && !User.HasClaim("permission", PermissionConstants.PRODUCT_DELETE))
                     return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền xóa sản phẩm này." });
 
                 var hasDependencies = await _context.OrderItems.AnyAsync(oi => oi.BranchProductId == bp.BranchProductId) ||
