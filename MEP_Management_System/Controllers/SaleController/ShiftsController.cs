@@ -247,6 +247,27 @@ catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException
             $"Chốt ca {shift.ShiftCode} | Doanh thu: {shift.TotalRevenue:N0} VND | Chênh lệch: {shift.Variance:N0} VND | Người mở: {nguoiMo}" +
             (chotHo ? $" | Người chốt hộ: {nguoiChot}" : ""));
 
+        // Ca bán bất thường (chênh lệch tiền mặt) → tạo notification lên chuông cho chi nhánh
+        // (broadcast RecipientUserId=null + BranchId). Bell lấy từ GET /api/InventoryCheck/notifications.
+        var varianceValue = shift.Variance ?? 0m;
+        if (varianceValue != 0m)
+        {
+            var sign = varianceValue > 0 ? "thừa" : "thiếu";
+            _context.Notifications.Add(new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                Type = NotificationType.Announcement,
+                RecipientUserId = null,
+                BranchId = branchId.Value,
+                ReferenceId = shift.ShiftId,
+                ReferenceType = "Shift",
+                TriggeredByUserId = userId,
+                Message = $"Ca {shift.ShiftCode} chênh lệch tiền: {sign} {Math.Abs(varianceValue):N0}₫",
+                IsRead = false,
+                CreatedAt = DateTime.UtcNow,
+            });
+        }
+
         await _context.SaveChangesAsync();
 
         var dto = _mapper.Map<ShiftDto>(shift);

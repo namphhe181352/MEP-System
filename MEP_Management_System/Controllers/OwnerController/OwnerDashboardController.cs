@@ -369,6 +369,7 @@ public class OwnerDashboardController : ControllerBase
 
         var abnormalShifts = await _context.Shifts.AsNoTracking()
             .Include(s => s.User)
+            .Include(s => s.ClosedBy)
             .Where(s => s.BranchId == branchId.Value && s.Status == "CLOSED" && s.Variance.HasValue && s.Variance.Value != 0)
             .OrderByDescending(s => s.EndedAt)
             .Take(10)
@@ -377,6 +378,7 @@ public class OwnerDashboardController : ControllerBase
                 ShiftId = s.ShiftId,
                 ShiftCode = s.ShiftCode,
                 UserName = s.User != null ? s.User.FullName : null,
+                ClosedByUserName = s.ClosedBy != null ? s.ClosedBy.FullName : null,
                 EndedAt = s.EndedAt,
                 Variance = s.Variance ?? 0m,
                 Note = s.Note

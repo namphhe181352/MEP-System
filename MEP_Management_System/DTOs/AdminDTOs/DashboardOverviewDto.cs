@@ -191,7 +191,10 @@ public class DashboardAbnormalShiftDto
 {
     public Guid ShiftId { get; set; }
     public string ShiftCode { get; set; } = null!;
+    /// <summary>Người mở/bán ca.</summary>
     public string? UserName { get; set; }
+    /// <summary>Người chốt ca (có thể khác người mở nếu chốt hộ).</summary>
+    public string? ClosedByUserName { get; set; }
     public DateTime? EndedAt { get; set; }
     public decimal Variance { get; set; }
     public string? Note { get; set; }
