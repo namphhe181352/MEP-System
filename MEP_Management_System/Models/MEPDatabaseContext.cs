@@ -64,6 +64,8 @@ public virtual DbSet<Customer> Customers { get; set; }
 
     public virtual DbSet<WarrantyTicket> WarrantyTickets { get; set; }
 
+    public virtual DbSet<WarrantyLotAllocation> WarrantyLotAllocations { get; set; }
+
     public virtual DbSet<Role> Roles { get; set; }
 
     public virtual DbSet<StaffAssignment> StaffAssignments { get; set; }
@@ -1137,6 +1139,37 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasConstraintName("warranty_tickets_supplier_id_fkey");
         });
 
+        modelBuilder.Entity<WarrantyLotAllocation>(entity =>
+        {
+            entity.HasKey(e => e.AllocationId).HasName("warranty_lot_allocations_pkey");
+
+            entity.ToTable("warranty_lot_allocations");
+
+            entity.Property(e => e.AllocationId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("allocation_id");
+            entity.Property(e => e.WarrantyTicketId).HasColumnName("warranty_ticket_id");
+            entity.Property(e => e.TicketItemId).HasColumnName("ticket_item_id");
+            entity.Property(e => e.AllocateQty)
+                .HasPrecision(15, 2)
+                .HasColumnName("allocate_qty");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+
+            entity.HasOne(d => d.WarrantyTicket).WithMany()
+                .HasForeignKey(d => d.WarrantyTicketId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("warranty_lot_allocations_warranty_ticket_id_fkey");
+
+            entity.HasOne(d => d.StockTicketItem).WithMany()
+                .HasForeignKey(d => d.TicketItemId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("warranty_lot_allocations_ticket_item_id_fkey");
+
+            entity.HasIndex(d => d.WarrantyTicketId);
+            entity.HasIndex(d => d.TicketItemId);
+        });
+
         modelBuilder.Entity<ReturnOrder>(entity =>
         {
             entity.HasKey(e => e.ReturnOrderId).HasName("return_orders_pkey");
@@ -1355,6 +1388,10 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasColumnName("warranty_unit");
             entity.Property(e => e.WarrantyExpiryDate)
                 .HasColumnName("warranty_expiry_date");
+            entity.Property(e => e.ClaimedWarrantyQty)
+                .HasPrecision(15, 2)
+                .HasDefaultValue(0m)
+                .HasColumnName("claimed_warranty_qty");
 
             entity.HasOne(d => d.BranchProduct).WithMany(p => p.StockTicketItems)
                 .HasForeignKey(d => d.BranchProductId)

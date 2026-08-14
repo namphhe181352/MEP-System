@@ -2763,6 +2763,13 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("branch_product_id");
 
+                    b.Property<decimal>("ClaimedWarrantyQty")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("claimed_warranty_qty");
+
                     b.Property<decimal>("Discrepancy")
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)")
@@ -3334,6 +3341,45 @@ namespace MEP_Management_System.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("user_permissions", (string)null);
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.WarrantyLotAllocation", b =>
+                {
+                    b.Property<Guid>("AllocationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("allocation_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<decimal>("AllocateQty")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)")
+                        .HasColumnName("allocate_qty");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("TicketItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_item_id");
+
+                    b.Property<Guid>("WarrantyTicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("warranty_ticket_id");
+
+                    b.HasKey("AllocationId")
+                        .HasName("warranty_lot_allocations_pkey");
+
+                    b.HasIndex("TicketItemId");
+
+                    b.HasIndex("WarrantyTicketId");
+
+                    b.ToTable("warranty_lot_allocations", (string)null);
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.WarrantyTicket", b =>
@@ -4345,6 +4391,27 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("Permission");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.WarrantyLotAllocation", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.StockTicketItem", "StockTicketItem")
+                        .WithMany()
+                        .HasForeignKey("TicketItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("warranty_lot_allocations_ticket_item_id_fkey");
+
+                    b.HasOne("MEP_Management_System.Models.WarrantyTicket", "WarrantyTicket")
+                        .WithMany()
+                        .HasForeignKey("WarrantyTicketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("warranty_lot_allocations_warranty_ticket_id_fkey");
+
+                    b.Navigation("StockTicketItem");
+
+                    b.Navigation("WarrantyTicket");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.WarrantyTicket", b =>

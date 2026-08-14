@@ -34,6 +34,13 @@ public partial class StockTicketItem
     /// <summary>Ngày hết hạn bảo hành = ImportDate + WarrantyPeriod theo WarrantyUnit.</summary>
     public DateTime? WarrantyExpiryDate { get; set; }
 
+    /// <summary>
+    /// Tích lũy SL đã gửi bảo hành NCC từ lô này (default 0).
+    /// Cập nhật bằng atomic conditional UPDATE để tránh race condition.
+    /// SL_Con_BH_NCC = Discrepancy - ClaimedWarrantyQty.
+    /// </summary>
+    public decimal ClaimedWarrantyQty { get; set; }
+
     public virtual BranchProduct BranchProduct { get; set; } = null!;
 
     public virtual StockTicket StockTicket { get; set; } = null!;
