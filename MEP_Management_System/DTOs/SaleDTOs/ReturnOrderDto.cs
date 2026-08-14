@@ -25,6 +25,7 @@ public class ReturnOrderDto
     public decimal? PayAmount { get; set; }
     public decimal? RefundAmountCustomer { get; set; }
     public string? PaymentMethod { get; set; }
+    public Guid? PaymentId { get; set; }
     public string? DeltaLabel { get; set; }
     public List<ExchangeItemDto> ExchangeItems { get; set; } = new();
 

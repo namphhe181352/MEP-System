@@ -38,7 +38,13 @@ public class OrderDiscountTiersController : ControllerBase
 
             if (resolvedBranchId != null && resolvedBranchId != Guid.Empty)
             {
+                // Tier của chi nhánh đó + tier toàn cục (BranchId == null).
                 query = query.Where(t => t.BranchId == resolvedBranchId || t.BranchId == null);
+            }
+            else
+            {
+                // Không xác định được chi nhánh → CHỈ trả tier toàn cục, KHÔNG rò rấu tier của chi nhánh khác.
+                query = query.Where(t => t.BranchId == null);
             }
 
             var tiers = await query

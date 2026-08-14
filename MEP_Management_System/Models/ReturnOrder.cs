@@ -42,6 +42,10 @@ public partial class ReturnOrder
     /// <summary>Phương thức thanh toán chênh lệch: CASH / TRANSFER. Áp dụng cả 2 chiều khi Delta≠0.</summary>
     public string? PaymentMethod { get; set; }
 
+    /// <summary>FK (soft) tới payments — link Payment chênh lệch của exchange-diff delta>0
+    /// (Cash đã Confirm / Transfer chờ Confirm). NULL cho ngang giá/refund/warranty.</summary>
+    public Guid? PaymentId { get; set; }
+
     public virtual Order Order { get; set; } = null!;
 
     public virtual ICollection<ReturnItem> ReturnItems { get; set; } = new List<ReturnItem>();

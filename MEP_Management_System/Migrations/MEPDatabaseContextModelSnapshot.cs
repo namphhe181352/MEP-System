@@ -2332,6 +2332,10 @@ namespace MEP_Management_System.Migrations
                         .HasDefaultValue(1m)
                         .HasColumnName("conversion_rate");
 
+                    b.Property<Guid?>("InvoiceItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("invoice_item_id");
+
                     b.Property<decimal>("Quantity")
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)")
@@ -2392,6 +2396,10 @@ namespace MEP_Management_System.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("pay_amount");
+
+                    b.Property<Guid?>("PaymentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payment_id");
 
                     b.Property<string>("PaymentMethod")
                         .HasMaxLength(50)

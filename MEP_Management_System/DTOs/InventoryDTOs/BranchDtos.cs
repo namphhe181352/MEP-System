@@ -92,4 +92,10 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
     {
         public List<CategoryPolicyDto> Policies { get; set; } = new();
     }
+
+    /// <summary>Chiết khấu trả hàng branch-level (%) — trừ vào tiền hoàn lại, áp dụng cho mọi nhóm hàng.</summary>
+    public class UpdateReturnDiscountRequest
+    {
+        public decimal? ReturnDiscountPercent { get; set; }
+    }
 }

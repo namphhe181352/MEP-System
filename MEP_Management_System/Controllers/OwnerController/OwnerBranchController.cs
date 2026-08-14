@@ -523,6 +523,103 @@ namespace MEP_Management_System.Controllers.OwnerController
             }
         }
 
+        /// <summary>
+        /// GET /api/owner/branches/{id}/return-policies/discount
+        /// Lấy chiết khấu trả hàng branch-level (áp dụng cho mọi nhóm hàng).
+        /// </summary>
+        [HttpGet("{id:guid}/return-policies/discount")]
+        public async Task<IActionResult> GetReturnDiscount(Guid id)
+        {
+            try
+            {
+                var ownerUserId = GetOwnerUserIdFromClaim();
+                if (!await IsOwnerOfBranch(ownerUserId, id)) return Forbid();
+
+                var branchExists = await _context.Branches.AnyAsync(b => b.BranchId == id);
+                if (!branchExists) return NotFound(new ApiResponse<object> { Success = false, Message = "Chi nhánh không tồn tại." });
+
+                var config = await _context.SystemConfigs
+                    .FirstOrDefaultAsync(c => c.BranchId == id && c.ConfigKey == "RETURN_DISCOUNT_PERCENT");
+
+                decimal? percent = null;
+                if (config != null && !string.IsNullOrWhiteSpace(config.ConfigValue))
+                {
+                    if (decimal.TryParse(config.ConfigValue, System.Globalization.CultureInfo.InvariantCulture, out var p))
+                        percent = p;
+                }
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Data = new { returnDiscountPercent = percent }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "Lỗi hệ thống.", Errors = new() { ex.Message } });
+            }
+        }
+
+        /// <summary>
+        /// PUT /api/owner/branches/{id}/return-policies/discount
+        /// Cập nhật chiết khấu trả hàng branch-level. Null/0 = không chiết khấu.
+        /// </summary>
+        [HttpPut("{id:guid}/return-policies/discount")]
+        public async Task<IActionResult> UpdateReturnDiscount(Guid id, [FromBody] UpdateReturnDiscountRequest request)
+        {
+            try
+            {
+                var ownerUserId = GetOwnerUserIdFromClaim();
+                if (!await IsOwnerOfBranch(ownerUserId, id)) return Forbid();
+
+                var branchExists = await _context.Branches.AnyAsync(b => b.BranchId == id);
+                if (!branchExists) return NotFound(new ApiResponse<object> { Success = false, Message = "Chi nhánh không tồn tại." });
+
+                if (request.ReturnDiscountPercent.HasValue &&
+                    (request.ReturnDiscountPercent.Value < 0 || request.ReturnDiscountPercent.Value > 100))
+                {
+                    return BadRequest(new ApiResponse<object> { Success = false, Message = "Chiết khấu trả hàng phải từ 0 đến 100 (%)." });
+                }
+
+                var config = await _context.SystemConfigs
+                    .FirstOrDefaultAsync(c => c.BranchId == id && c.ConfigKey == "RETURN_DISCOUNT_PERCENT");
+
+                var value = request.ReturnDiscountPercent.HasValue
+                    ? request.ReturnDiscountPercent.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    : "";
+
+                if (config == null)
+                {
+                    config = new SystemConfig
+                    {
+                        ConfigId = Guid.NewGuid(),
+                        BranchId = id,
+                        ConfigKey = "RETURN_DISCOUNT_PERCENT",
+                        ConfigValue = value
+                    };
+                    _context.SystemConfigs.Add(config);
+                }
+                else
+                {
+                    config.ConfigValue = value;
+                    _context.SystemConfigs.Update(config);
+                }
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Success = true,
+                    Message = "Cập nhật chiết khấu trả hàng thành công.",
+                    Data = new { returnDiscountPercent = request.ReturnDiscountPercent }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "Lỗi hệ thống.", Errors = new() { ex.Message } });
+            }
+        }
+
         private static OwnerBranchDto MapToDto(Branch branch)
         {
             return new OwnerBranchDto
