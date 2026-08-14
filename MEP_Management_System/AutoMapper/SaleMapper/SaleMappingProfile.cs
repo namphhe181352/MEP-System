@@ -101,7 +101,14 @@ public class SaleMappingProfile : Profile
             .ForMember(d => d.CategoryName, o => o.MapFrom(s =>
                 s.BranchProduct != null && s.BranchProduct.Product != null && s.BranchProduct.Product.CategoryTaxonomy != null
                     ? s.BranchProduct.Product.CategoryTaxonomy.Name : (s.BranchProduct != null && s.BranchProduct.Product != null
-                        ? s.BranchProduct.Product.CategoryName : null)));
+                        ? s.BranchProduct.Product.CategoryName : null)))
+            // Đơn vị cơ bản (Product.BaseUnit, vd "Cái")
+            .ForMember(d => d.BaseUnit, o => o.MapFrom(s =>
+                s.BranchProduct != null && s.BranchProduct.Product != null
+                    ? s.BranchProduct.Product.BaseUnit : null))
+            // Đơn vị bán: khớp ProductConversionUnit có ConvertValue == ConversionRate.
+            // Nếu không có (hoặc ConversionRate = 1) -> fallback BaseUnit.
+            .ForMember(d => d.Unit, o => o.MapFrom(s => ResolveReturnItemUnit(s)));
 
         // WarrantyTicket
         CreateMap<WarrantyTicket, DTOs.SaleDTOs.WarrantyTicketDto>()
@@ -116,5 +123,15 @@ public class SaleMappingProfile : Profile
         if (totalSpent >= 20000000) return "Gold";
         if (totalSpent >= 5000000) return "Silver";
         return "Bronze";
+    }
+
+    /// <summary>Tên ĐVT bán của ReturnItem: khớp ProductConversionUnit có ConvertValue == ConversionRate;
+    /// không khớp thì fallback về Product.BaseUnit.</summary>
+    private static string? ResolveReturnItemUnit(ReturnItem s)
+    {
+        if (s.BranchProduct?.Product is null) return null;
+        var product = s.BranchProduct.Product;
+        var match = product.ProductConversionUnits?.FirstOrDefault(c => c.ConvertValue == s.ConversionRate);
+        return !string.IsNullOrEmpty(match?.UnitName) ? match.UnitName : product.BaseUnit;
     }
 }

@@ -7,6 +7,10 @@ public class AddReturnItemRequest
     [Required(ErrorMessage = "ProductId là bắt buộc.")]
     public Guid ProductId { get; set; }
 
+    /// <summary>ID dòng hóa đơn gốc (InvoiceItem) đang trả — để pin đúng đơn vị/quy đổi
+    /// khi cùng 1 SP có nhiều dòng khác đơn vị trong 1 hóa đơn. Có thể bỏ qua.</summary>
+    public Guid? InvoiceItemId { get; set; }
+
     [Required(ErrorMessage = "Số lượng là bắt buộc.")]
     [Range(0.0001, double.MaxValue, ErrorMessage = "Số lượng phải lớn hơn 0.")]
     public decimal Quantity { get; set; }

@@ -30,6 +30,19 @@ public class ReturnItemDto
     public string? ProductName { get; set; }
     public string? ProductCode { get; set; }
     public decimal Quantity { get; set; }
+
+    /// <summary>Hệ số quy đổi từ ĐVT bán về ĐVT cơ bản (vd 1 Thùng = 20 Cái -> 20).</summary>
+    public decimal ConversionRate { get; set; } = 1;
+
+    /// <summary>SL quy về ĐVT cơ bản = Quantity * ConversionRate.</summary>
+    public decimal BaseQuantity { get; set; }
+
+    /// <summary>Đơn vị bán (khớp với ConversionRate). Ví dụ "Thùng". Fallback = BaseUnit.</summary>
+    public string? Unit { get; set; }
+
+    /// <summary>Đơn vị cơ bản của sản phẩm (Product.BaseUnit). Ví dụ "Cái".</summary>
+    public string? BaseUnit { get; set; }
+
     public decimal? RefundAmount { get; set; }
     public string? Reason { get; set; }
 
