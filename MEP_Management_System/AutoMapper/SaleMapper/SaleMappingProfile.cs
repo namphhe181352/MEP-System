@@ -85,7 +85,13 @@ public class SaleMappingProfile : Profile
             .ForMember(d => d.CustomerName, o => o.MapFrom(s =>
                 s.Order != null && s.Order.Customer != null ? s.Order.Customer.CustomerName : null))
             .ForMember(d => d.StaffName, o => o.MapFrom(s => s.User != null ? s.User.FullName : null))
-            .ForMember(d => d.Items, o => o.MapFrom(s => s.ReturnItems));
+            .ForMember(d => d.Items, o => o.MapFrom(s => s.ReturnItems))
+            .ForMember(d => d.ExchangeItems, o => o.MapFrom(s => s.ExchangeItems))
+            .ForMember(d => d.DeltaLabel, o => o.MapFrom(s =>
+                s.DeltaAmount.HasValue
+                    ? (s.DeltaAmount.Value > 0 ? "Thu thêm"
+                       : s.DeltaAmount.Value < 0 ? "Hoàn lại" : "Đổi ngang giá")
+                    : null));
 
         CreateMap<ReturnItem, DTOs.SaleDTOs.ReturnItemDto>()
             .ForMember(d => d.ProductId, o => o.MapFrom(s => s.BranchProduct != null ? s.BranchProduct.ProductId : Guid.Empty))
@@ -114,6 +120,14 @@ public class SaleMappingProfile : Profile
         CreateMap<WarrantyTicket, DTOs.SaleDTOs.WarrantyTicketDto>()
             .ForMember(d => d.SupplierName, o => o.MapFrom(s =>
                 s.Supplier != null ? s.Supplier.SupplierName : null));
+
+        // ExchangeItem (SP B - hàng mới xuất cho khách)
+        CreateMap<ExchangeItem, DTOs.SaleDTOs.ExchangeItemDto>()
+            .ForMember(d => d.ProductId, o => o.MapFrom(s => s.ProductId ?? (s.BranchProduct != null ? s.BranchProduct.ProductId : Guid.Empty)))
+            .ForMember(d => d.ProductName, o => o.MapFrom(s =>
+                s.BranchProduct != null && s.BranchProduct.Product != null ? s.BranchProduct.Product.ProductName : null))
+            .ForMember(d => d.ProductCode, o => o.MapFrom(s =>
+                s.BranchProduct != null && s.BranchProduct.Product != null ? s.BranchProduct.Product.ProductCode : null));
     }
 
     private static string? CalculateTier(decimal? totalSpent)

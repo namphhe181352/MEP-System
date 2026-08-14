@@ -89,7 +89,8 @@ public class ShiftsController : ControllerBase
                         .ToListAsync();
 
                     var shiftRefunds = await _context.RefundRecords
-                        .Where(r => r.UserId == branchOpenShift.UserId && r.CreatedAt >= branchOpenShift.StartedAt && r.CreatedAt <= DateTime.UtcNow && r.Status == "REFUNDED")
+                        .Where(r => r.Status == "REFUNDED" && r.CreatedAt >= branchOpenShift.StartedAt && r.CreatedAt <= DateTime.UtcNow &&
+                            (r.ShiftId == branchOpenShift.ShiftId || (r.ShiftId == null && r.UserId == branchOpenShift.UserId)))
                         .ToListAsync();
                     var totalRefundAmount = shiftRefunds.Sum(r => r.RefundAmount);
                     var cashRefundAmount = shiftRefunds.Where(r => r.RefundMethod == "CASH").Sum(r => r.RefundAmount);
@@ -97,6 +98,10 @@ public class ShiftsController : ControllerBase
                     branchOpenShift.TotalRevenue = completedInvoices.Sum(i => i.TotalAmount) - totalRefundAmount;
                     branchOpenShift.TotalOrders = completedInvoices.Count;
                     var allPayments = completedInvoices.SelectMany(i => i.Payments).Where(p => p.Method == "Cash" && p.Status == "Confirmed").ToList();
+                    var staleExchangeCashPayments = await _context.Payments
+                        .Where(p => p.ShiftId == branchOpenShift.ShiftId && p.Method == "Cash" && p.Status == "Confirmed")
+                        .ToListAsync();
+                    allPayments = allPayments.Concat(staleExchangeCashPayments).ToList();
                     branchOpenShift.ExpectedCash = branchOpenShift.OpeningBalance + allPayments.Sum(p => p.Amount) - cashRefundAmount;
                     branchOpenShift.ActualCash = branchOpenShift.ExpectedCash;
                     branchOpenShift.Variance = 0;
@@ -222,15 +227,21 @@ catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException
             .ToListAsync();
 
         var shiftRefunds = await _context.RefundRecords
-            .Where(r => r.UserId == shift.UserId && r.CreatedAt >= shift.StartedAt && r.CreatedAt <= DateTime.UtcNow && r.Status == "REFUNDED")
+            .Where(r => r.Status == "REFUNDED" && r.CreatedAt >= shift.StartedAt && r.CreatedAt <= DateTime.UtcNow &&
+                (r.ShiftId == shiftId || (r.ShiftId == null && r.UserId == shift.UserId)))
             .ToListAsync();
-            
+
         var totalRefundAmount = shiftRefunds.Sum(r => r.RefundAmount);
         var cashRefundAmount = shiftRefunds.Where(r => r.RefundMethod == "CASH").Sum(r => r.RefundAmount);
 
         shift.TotalRevenue = completedInvoices.Sum(i => i.TotalAmount) - totalRefundAmount;
         shift.TotalOrders = completedInvoices.Count;
         var allPayments = completedInvoices.SelectMany(i => i.Payments).Where(p => p.Method == "Cash" && p.Status == "Confirmed").ToList();
+        // Thanh toán tiền mặt chênh lệch đổi hàng trong ca này
+        var exchangeCashPayments = await _context.Payments
+            .Where(p => p.ShiftId == shiftId && p.Method == "Cash" && p.Status == "Confirmed")
+            .ToListAsync();
+        allPayments = allPayments.Concat(exchangeCashPayments).ToList();
         shift.ExpectedCash = shift.OpeningBalance + allPayments.Sum(p => p.Amount) - cashRefundAmount;
         shift.ActualCash = request.ActualCash;
         shift.Variance = request.ActualCash - shift.ExpectedCash;
@@ -312,20 +323,43 @@ catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException
                 (!filterEnd.HasValue || i.CreatedAt <= filterEnd.Value))
             .Include(i => i.Payments)
             .Include(i => i.User)
+            .Include(i => i.Order).ThenInclude(o => o.Customer)
             .ToListAsync();
 
         var payments = completedInvoices.SelectMany(i => i.Payments).ToList();
 
+        // Bao gồm thanh toán chênh lệch đổi hàng (gắn ShiftId, không nằm trên invoice của ca này)
+        var exchangePayments = await _context.Payments
+            .Where(p => p.ShiftId == shiftId && p.Status == "Confirmed")
+            .ToListAsync();
+        payments = payments.Concat(exchangePayments).ToList();
+
         var shiftRefunds = await _context.RefundRecords
             .Include(r => r.User)
-            .Where(r => r.UserId == shift.UserId && r.CreatedAt >= shift.StartedAt && (shift.EndedAt == null || r.CreatedAt <= shift.EndedAt) && r.Status == "REFUNDED")
+            .Include(r => r.Customer)
+            .Where(r => r.Status == "REFUNDED" &&
+                (r.ShiftId == shiftId ||
+                 (r.ShiftId == null && r.UserId == shift.UserId && r.CreatedAt >= shift.StartedAt && (shift.EndedAt == null || r.CreatedAt <= shift.EndedAt))))
+            .ToListAsync();
+
+        // Đổi hàng chênh lệch trong ca (ReturnType=EXCHANGE, hóa đơn gốc thuộc ca này)
+        var exchangeReturns = await _context.ReturnOrders
+            .Include(r => r.User)
+            .Include(r => r.Order).ThenInclude(o => o.Customer)
+            .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp.Product)
+            .Include(r => r.ExchangeItems).ThenInclude(ei => ei.BranchProduct).ThenInclude(bp => bp.Product)
+            .Where(r => r.ReturnType == "EXCHANGE" && r.Order != null && r.Order.Invoice != null && r.Order.Invoice.ShiftId == shiftId)
             .ToListAsync();
 
         var totalRefundAmount = shiftRefunds.Sum(r => r.RefundAmount);
         var cashRefundAmount = shiftRefunds.Where(r => r.RefundMethod == "CASH").Sum(r => r.RefundAmount);
         var transferRefundAmount = shiftRefunds.Where(r => r.RefundMethod == "TRANSFER").Sum(r => r.RefundAmount);
 
-        var realTimeRevenue = completedInvoices.Sum(i => i.TotalAmount) - totalRefundAmount;
+        // Tiền chênh lệch đổi hàng (khách trả thêm, Delta > 0) — cộng vào doanh số tạm tính ca.
+        // (Delta < 0 đã bị chặn ở PrepareExchangeAsync: chỉ cho đổi cùng giá hoặc cao hơn.)
+        var exchangeDeltaIn = exchangeReturns.Sum(r => r.DeltaAmount ?? 0m);
+
+        var realTimeRevenue = completedInvoices.Sum(i => i.TotalAmount) - totalRefundAmount + exchangeDeltaIn;
         var realTimeOrders = completedInvoices.Count;
         var realTimeCash = payments.Where(p => p.Method == "Cash" && p.Status == "Confirmed").Sum(p => p.Amount) - cashRefundAmount;
         var realTimeTransfer = payments.Where(p => p.Method == "Transfer" && p.Status == "Confirmed").Sum(p => p.Amount) - transferRefundAmount;
@@ -352,6 +386,71 @@ catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException
         .OrderByDescending(s => s.TotalAmount)
         .ToList();
 
+        // Build activity log (Bán / Hoàn / Đổi) — từng hành động trong ca, theo ShiftId chính xác
+        var activities = new List<ShiftSummaryDto.ShiftActivityDto>();
+
+        // Bán: mỗi hóa đơn hoàn tất = +TotalAmount
+        foreach (var inv in completedInvoices)
+        {
+            activities.Add(new ShiftSummaryDto.ShiftActivityDto
+            {
+                Type = "Sale",
+                Code = inv.InvoiceCode,
+                Amount = inv.TotalAmount,
+                Method = inv.Payments?.FirstOrDefault()?.Method,
+                CustomerName = inv.Order?.Customer?.CustomerName,
+                UserName = inv.User?.FullName,
+                CreatedAt = inv.CreatedAt ?? DateTime.UtcNow,
+            });
+        }
+
+        // Hoàn tiền (trả hàng): -RefundAmount
+        foreach (var r in shiftRefunds)
+        {
+            activities.Add(new ShiftSummaryDto.ShiftActivityDto
+            {
+                Type = "Refund",
+                Code = r.RefundCode,
+                Amount = -r.RefundAmount,
+                Method = r.RefundMethod,
+                CustomerName = r.Customer?.CustomerName,
+                UserName = r.User?.FullName,
+                CreatedAt = r.CreatedAt,
+            });
+        }
+
+        // Đổi hàng chênh lệch: DeltaAmount có dấu (+ thu thêm / - hoàn khách / 0 ngang giá)
+        foreach (var ex in exchangeReturns)
+        {
+            // Mô tả đổi: "SP A1, SP A2 → SP B1" để activity log biết đổi gì sang gì
+            var fromNames = ex.ReturnItems?
+                .Where(ri => ri.BranchProduct?.Product != null)
+                .Select(ri => ri.BranchProduct.Product.ProductName)
+                .Where(n => !string.IsNullOrEmpty(n))
+                .ToList() ?? new List<string>();
+            var toNames = ex.ExchangeItems?
+                .Where(ei => ei.BranchProduct?.Product != null)
+                .Select(ei => ei.BranchProduct.Product.ProductName)
+                .Where(n => !string.IsNullOrEmpty(n))
+                .ToList() ?? new List<string>();
+            var fromPart = fromNames.Count > 0 ? string.Join(", ", fromNames) : "—";
+            var toPart = toNames.Count > 0 ? string.Join(", ", toNames) : "—";
+
+            activities.Add(new ShiftSummaryDto.ShiftActivityDto
+            {
+                Type = "Exchange",
+                Code = ex.ReturnCode,
+                Amount = ex.DeltaAmount ?? 0m,
+                Method = ex.PaymentMethod,
+                CustomerName = ex.Order?.Customer?.CustomerName,
+                UserName = ex.User?.FullName,
+                Description = $"{fromPart} → {toPart}",
+                CreatedAt = ex.CreatedAt ?? DateTime.UtcNow,
+            });
+        }
+
+        activities = activities.OrderByDescending(a => a.CreatedAt).ToList();
+
         var summary = new ShiftSummaryDto
         {
             ShiftId = shift.ShiftId,
@@ -369,6 +468,7 @@ catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException
             Variance = shift.Variance,
             TotalOrders = isOpen ? realTimeOrders : shift.TotalOrders,
             ReturnCount = shiftRefunds.Count,
+            TotalRefunds = shiftRefunds.Count,
             OpenedByUserId = shift.UserId,
             OpenedByUserName = shift.User?.FullName,
             ClosedByUserId = shift.ClosedByUserId,
@@ -381,7 +481,8 @@ catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException
                 Total = g.Sum(p => p.Amount),
                 Count = g.Count()
             }).ToList(),
-            SalesByUser = salesByUser
+            SalesByUser = salesByUser,
+            Activities = activities
         };
 
         return Ok(summary);

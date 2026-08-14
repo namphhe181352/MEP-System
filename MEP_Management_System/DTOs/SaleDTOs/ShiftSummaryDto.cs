@@ -29,6 +29,8 @@ public class ShiftSummaryDto
     public string? Note { get; set; }
     public List<PaymentMethodSummary> PaymentBreakdown { get; set; } = new();
     public List<UserSalesSummary> SalesByUser { get; set; } = new();
+    /// <summary>Danh sách từng hành động trong ca (Bán/Hoàn/Đổi) — dùng cho Activity log.</summary>
+    public List<ShiftActivityDto> Activities { get; set; } = new();
 
     public class PaymentMethodSummary
     {
@@ -43,5 +45,25 @@ public class ShiftSummaryDto
         public string UserName { get; set; } = null!;
         public int InvoiceCount { get; set; }
         public decimal TotalAmount { get; set; }
+    }
+
+    /// <summary>1 hành động trong ca: bán / hoàn tiền / đổi hàng chênh lệch.</summary>
+    public class ShiftActivityDto
+    {
+        /// <summary>Loại: Sale | Refund | Exchange.</summary>
+        public string Type { get; set; } = null!;
+        /// <summary>Mã phiếu (mã hóa đơn / mã trả hàng).</summary>
+        public string? Code { get; set; }
+        /// <summary>Số tiền có dấu: + cho bán/thu thêm, - cho hoàn tiền, 0 = đổi ngang giá.</summary>
+        public decimal Amount { get; set; }
+        /// <summary>Phương thức: Cash/Transfer.</summary>
+        public string? Method { get; set; }
+        /// <summary>Tên khách (nếu có).</summary>
+        public string? CustomerName { get; set; }
+        /// <summary>NV thực hiện.</summary>
+        public string? UserName { get; set; }
+        /// <summary>Mô tả thêm (vd đổi hàng: "SP A → SP B").</summary>
+        public string? Description { get; set; }
+        public DateTime CreatedAt { get; set; }
     }
 }

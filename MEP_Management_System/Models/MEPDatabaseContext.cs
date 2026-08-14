@@ -62,6 +62,8 @@ public virtual DbSet<Customer> Customers { get; set; }
 
     public virtual DbSet<ReturnOrder> ReturnOrders { get; set; }
 
+    public virtual DbSet<ExchangeItem> ExchangeItems { get; set; }
+
     public virtual DbSet<WarrantyTicket> WarrantyTickets { get; set; }
 
     public virtual DbSet<WarrantyLotAllocation> WarrantyLotAllocations { get; set; }
@@ -603,6 +605,10 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
             entity.Property(e => e.CostPrice)
                 .HasPrecision(18, 4)
                 .HasColumnName("cost_price");
+            entity.Property(e => e.ReturnedQuantity)
+                .HasPrecision(18, 4)
+                .HasDefaultValue(0m)
+                .HasColumnName("returned_quantity");
 
             entity.HasOne(d => d.BranchProduct).WithMany()
                 .HasForeignKey(d => d.BranchProductId)
@@ -1215,6 +1221,46 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasConstraintName("return_orders_user_id_fkey");
         });
 
+        modelBuilder.Entity<ReturnOrder>(entity =>
+        {
+            entity.Property(e => e.DeltaAmount).HasPrecision(18, 2).HasColumnName("delta_amount");
+            entity.Property(e => e.PayAmount).HasPrecision(18, 2).HasColumnName("pay_amount");
+            entity.Property(e => e.RefundAmountCustomer).HasPrecision(18, 2).HasColumnName("refund_amount_customer");
+            entity.Property(e => e.PaymentMethod).HasMaxLength(50).HasColumnName("payment_method");
+        });
+
+        modelBuilder.Entity<ExchangeItem>(entity =>
+        {
+            entity.HasKey(e => e.ExchangeItemId).HasName("exchange_items_pkey");
+
+            entity.ToTable("exchange_items");
+
+            entity.Property(e => e.ExchangeItemId)
+                .HasDefaultValueSql("uuid_generate_v4()")
+                .HasColumnName("exchange_item_id");
+            entity.Property(e => e.ReturnOrderId).HasColumnName("return_order_id");
+            entity.Property(e => e.BranchProductId).HasColumnName("branch_product_id");
+            entity.Property(e => e.ProductId).HasColumnName("product_id");
+            entity.Property(e => e.Quantity).HasPrecision(18, 4).HasColumnName("quantity");
+            entity.Property(e => e.ConversionRate).HasPrecision(18, 4).HasColumnName("conversion_rate");
+            entity.Property(e => e.BaseQuantity).HasPrecision(18, 4).HasColumnName("base_quantity");
+            entity.Property(e => e.UnitPrice).HasPrecision(18, 2).HasColumnName("unit_price");
+            entity.Property(e => e.LineTotal).HasPrecision(18, 2).HasColumnName("line_total");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+
+            entity.HasOne(d => d.ReturnOrder).WithMany(p => p.ExchangeItems)
+                .HasForeignKey(d => d.ReturnOrderId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("exchange_items_return_order_id_fkey");
+
+            entity.HasOne(d => d.BranchProduct).WithMany()
+                .HasForeignKey(d => d.BranchProductId)
+                .HasConstraintName("exchange_items_branch_product_id_fkey");
+        });
+
         modelBuilder.Entity<Role>(entity =>
         {
             entity.HasKey(e => e.RoleId).HasName("roles_pkey");
@@ -1794,6 +1840,7 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasColumnName("created_at");
             entity.Property(e => e.BranchId).HasColumnName("branch_id");
             entity.Property(e => e.CustomerId).HasColumnName("customer_id");
+            entity.Property(e => e.ShiftId).HasColumnName("shift_id");
             entity.HasOne(d => d.Invoice).WithMany(p => p.Payments)
                 .HasForeignKey(d => d.InvoiceId)
                 .HasConstraintName("payments_invoice_id_fkey");
@@ -1895,6 +1942,7 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasDefaultValue("PENDING")
                 .HasColumnName("status");
             entity.Property(e => e.Reason).HasColumnName("reason");
+            entity.Property(e => e.ShiftId).HasColumnName("shift_id");
             entity.Property(e => e.ProcessedAt)
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("processed_at");

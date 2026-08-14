@@ -30,4 +30,8 @@ public partial class InvoiceItem
     public virtual BranchProduct BranchProduct { get; set; } = null!;
 
     public virtual Invoice Invoice { get; set; } = null!;
+
+    /// <summary>Số lượng đã đổi/trả trên dòng hóa đơn này (ĐVT bán).
+    /// Dùng để chặn đổi lặp lại cùng dòng hàng. Mặc định 0.</summary>
+    public decimal ReturnedQuantity { get; set; } = 0m;
 }

@@ -370,6 +370,67 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("daily_stock_snapshots", (string)null);
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.ExchangeItem", b =>
+                {
+                    b.Property<Guid>("ExchangeItemId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("exchange_item_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<decimal>("BaseQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("base_quantity");
+
+                    b.Property<Guid>("BranchProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_product_id");
+
+                    b.Property<decimal>("ConversionRate")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("conversion_rate");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<decimal>("LineTotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("line_total");
+
+                    b.Property<Guid?>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("quantity");
+
+                    b.Property<Guid>("ReturnOrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("return_order_id");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("unit_price");
+
+                    b.HasKey("ExchangeItemId")
+                        .HasName("exchange_items_pkey");
+
+                    b.HasIndex("BranchProductId");
+
+                    b.HasIndex("ReturnOrderId");
+
+                    b.ToTable("exchange_items", (string)null);
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.ExpenseCategory", b =>
                 {
                     b.Property<Guid>("CategoryId")
@@ -978,6 +1039,13 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("numeric(10,2)")
                         .HasColumnName("quantity");
 
+                    b.Property<decimal>("ReturnedQuantity")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("returned_quantity");
+
                     b.Property<string>("SelectedUnit")
                         .HasColumnType("text");
 
@@ -1569,6 +1637,10 @@ namespace MEP_Management_System.Migrations
                     b.Property<DateTime?>("QRExpiredAt")
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("qr_expired_at");
+
+                    b.Property<Guid?>("ShiftId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("shift_id");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -2200,6 +2272,10 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("refund_method");
 
+                    b.Property<Guid?>("ShiftId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("shift_id");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -2299,6 +2375,11 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<decimal?>("DeltaAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("delta_amount");
+
                     b.Property<string>("Note")
                         .HasColumnType("text")
                         .HasColumnName("note");
@@ -2307,10 +2388,25 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("order_id");
 
+                    b.Property<decimal>("PayAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("pay_amount");
+
+                    b.Property<string>("PaymentMethod")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("payment_method");
+
                     b.Property<decimal>("RefundAmount")
                         .HasPrecision(15, 2)
                         .HasColumnType("numeric(15,2)")
                         .HasColumnName("refund_amount");
+
+                    b.Property<decimal>("RefundAmountCustomer")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("refund_amount_customer");
 
                     b.Property<string>("RefundMethod")
                         .HasMaxLength(50)
@@ -3550,6 +3646,27 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("CreatedByUser");
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.ExchangeItem", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.BranchProduct", "BranchProduct")
+                        .WithMany()
+                        .HasForeignKey("BranchProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("exchange_items_branch_product_id_fkey");
+
+                    b.HasOne("MEP_Management_System.Models.ReturnOrder", "ReturnOrder")
+                        .WithMany("ExchangeItems")
+                        .HasForeignKey("ReturnOrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("exchange_items_return_order_id_fkey");
+
+                    b.Navigation("BranchProduct");
+
+                    b.Navigation("ReturnOrder");
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.ExpenseCategory", b =>
                 {
                     b.HasOne("MEP_Management_System.Models.Branch", "Branch")
@@ -4565,6 +4682,8 @@ namespace MEP_Management_System.Migrations
 
             modelBuilder.Entity("MEP_Management_System.Models.ReturnOrder", b =>
                 {
+                    b.Navigation("ExchangeItems");
+
                     b.Navigation("ReturnItems");
                 });
 

@@ -268,10 +268,10 @@ public class ReportService
             inwardQty = inData.ToDictionary(x => x.BranchProductId, x => x.Qty);
             inwardValue = inData.ToDictionary(x => x.BranchProductId, x => x.Value);
 
-            // Xuất trong kỳ: SALE + RETURN_SUPPLIER + WRITE_OFF + TRANSFER (dùng ABS cho qty)
+            // Xuất trong kỳ: SALE + RETURN_SUPPLIER + WRITE_OFF + TRANSFER + EXCHANGE_OUT (đổi hàng chênh lệch xuất SP B) (dùng ABS cho qty)
             var outData = await _context.InventoryLedgers
                 .Where(l => l.BranchId == branchId.Value && l.TransactionTime >= fromDate && l.TransactionTime <= toDate
-                    && (l.DocType == "SALE" || l.DocType == "RETURN_SUPPLIER" || l.DocType == "WRITE_OFF" || l.DocType == "TRANSFER"))
+                    && (l.DocType == "SALE" || l.DocType == "RETURN_SUPPLIER" || l.DocType == "WRITE_OFF" || l.DocType == "TRANSFER" || l.DocType == "EXCHANGE_OUT"))
                 .GroupBy(l => l.BranchProductId)
                 .Select(g => new { BranchProductId = g.Key, Qty = g.Sum(l => -l.QtyChange), Value = g.Sum(l => -l.TotalCostValue) })
                 .ToListAsync();

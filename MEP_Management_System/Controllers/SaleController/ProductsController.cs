@@ -33,6 +33,7 @@ public class ProductsController : ControllerBase
     private static ProductPriceDto MapBranchProductToDto(BranchProduct b) =>
         new()
         {
+            BranchProductId = b.BranchProductId,
             ProductId = b.ProductId,
             ProductName = b.Product?.ProductName,
             ProductCode = b.Product?.ProductCode,

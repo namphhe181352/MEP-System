@@ -134,6 +134,7 @@ public class ReturnsController : ControllerBase
             .Include(r => r.Order).ThenInclude(o => o!.Customer)
             .Include(r => r.User)
             .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product).ThenInclude(p => p!.ProductConversionUnits)
+            .Include(r => r.ExchangeItems).ThenInclude(ei => ei.BranchProduct).ThenInclude(bp => bp!.Product)
             .FirstOrDefaultAsync(r => r.ReturnOrderId == id && r.Order!.BranchId == branchId);
 
         if (r == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Không tìm thấy phiếu đổi trả."));
@@ -281,7 +282,8 @@ public class ReturnsController : ControllerBase
                 ReturnCode = await GenCodeAsync("RET"),
                 OrderId = invoice.OrderId,
                 UserId = userId,
-                RefundMethod = req.RefundMethod?.ToUpper() ?? "CASH",
+                // REFUND chỉ trả bằng TIỀN MẶT (bỏ qua method khác do client gửi).
+                RefundMethod = returnType == "REFUND" ? "CASH" : (req.RefundMethod?.ToUpper() ?? "CASH"),
                 ReturnType = returnType,
                 Status = "Pending",
                 Note = req.Note,
@@ -480,6 +482,7 @@ public class ReturnsController : ControllerBase
             .Include(r => r.Order).ThenInclude(o => o!.Invoice)
             .Include(r => r.User)
             .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product).ThenInclude(p => p!.ProductConversionUnits)
+            .Include(r => r.ExchangeItems).ThenInclude(ei => ei.BranchProduct).ThenInclude(bp => bp!.Product)
             .FirstOrDefaultAsync(r => r.ReturnOrderId == id && r.Order!.BranchId == branchId);
 
         if (ret == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Không tìm thấy phiếu đổi trả."));
@@ -620,6 +623,12 @@ public class ReturnsController : ControllerBase
         }
 
         // Create RefundRecord for Shift cash balancing
+        // Gắn ca bán đang mở để shift summary trừ đúng tiền mặt/doanh thu trong ca đó.
+        var openShiftId = await _context.Shifts
+            .Where(s => s.BranchId == branchId && s.Status == "OPEN")
+            .Select(s => (Guid?)s.ShiftId)
+            .FirstOrDefaultAsync();
+
         var refund = new RefundRecord
         {
             RefundId = Guid.NewGuid(),
@@ -629,11 +638,12 @@ public class ReturnsController : ControllerBase
             CustomerId = ret.Order?.CustomerId ?? Guid.Empty,
             UserId = ret.UserId,
             RefundAmount = ret.RefundAmount,
-            RefundMethod = ret.RefundMethod ?? "CASH",
+            RefundMethod = ret.ReturnType == "REFUND" ? "CASH" : (ret.RefundMethod ?? "CASH"),
             Status = "REFUNDED",
             Reason = ret.Note,
             ProcessedAt = DateTime.UtcNow,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            ShiftId = openShiftId
         };
         _context.RefundRecords.Add(refund);
 
@@ -950,5 +960,468 @@ public class ReturnsController : ControllerBase
             PageNumber = page,
             PageSize = pageSize
         });
+    }
+
+    // ============================================================
+    // ĐỔI HÀNG CHÊNH LỆCH (Exchange with Price Difference)
+    // ============================================================
+
+    // GET policies helper
+    private async Task<List<CategoryPolicyDto>?> GetCategoryPoliciesConfig(Guid branchId)
+    {
+        var config = await _context.SystemConfigs
+            .FirstOrDefaultAsync(c => c.BranchId == branchId && c.ConfigKey == "CATEGORY_RETURN_POLICIES");
+        if (config == null || string.IsNullOrWhiteSpace(config.ConfigValue)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<List<CategoryPolicyDto>>(config.ConfigValue,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch { return null; }
+    }
+
+    private static CategoryPolicyDto? MatchPolicy(List<CategoryPolicyDto> policies, Product? product)
+    {
+        if (product == null) return null;
+        var categoryId = product.CategoryTaxonomyId;
+        CategoryPolicyDto? p = null;
+        if (categoryId.HasValue)
+            p = policies.FirstOrDefault(c => c.CategoryId.HasValue && c.CategoryId.Value == categoryId.Value);
+        if (p == null)
+        {
+            var name = product.CategoryTaxonomy?.Name ?? product.CategoryName;
+            if (!string.IsNullOrEmpty(name))
+                p = policies.FirstOrDefault(c => c.CategoryName != null && c.CategoryName.Equals(name, StringComparison.OrdinalIgnoreCase));
+        }
+        return p;
+    }
+
+    private InventoryLedger MkLedger(BranchProduct bp, string docType, Guid docId, string? docCode, decimal qtyChange)
+    {
+        return new InventoryLedger
+        {
+            LedgerId = Guid.NewGuid(),
+            BranchId = bp.BranchId,
+            BranchProductId = bp.BranchProductId,
+            DocType = docType,
+            DocId = docId,
+            DocCode = docCode,
+            TransactionTime = DateTime.UtcNow,
+            QtyChange = qtyChange,
+            UnitCostPrice = Math.Round(bp.CostPrice, 4),
+            TotalCostValue = Math.Round(qtyChange * bp.CostPrice, 4),
+            StockAfter = bp.ActualStock,
+            AvgCostAfter = Math.Round(bp.CostPrice, 4),
+            CreatedAt = DateTime.UtcNow
+        };
+    }
+
+    // --- Prepared data structures ---
+    private class PreparedReturnItem
+    {
+        public InvoiceItem InvoiceItem { get; set; } = null!;
+        public decimal Quantity { get; set; }
+        public decimal ConversionRate { get; set; }
+        public decimal BaseQuantity { get; set; }
+        public string Reason { get; set; } = "DEFECTIVE";
+        public decimal LineRefundAmount { get; set; }
+    }
+
+    private class PreparedNewItem
+    {
+        public BranchProduct BranchProduct { get; set; } = null!;
+        public decimal Quantity { get; set; }
+        public decimal ConversionRate { get; set; }
+        public decimal BaseQuantity { get; set; }
+        public decimal UnitPrice { get; set; }
+        public decimal LineTotal { get; set; }
+    }
+
+    private class ExchangePreparation
+    {
+        public bool Eligible { get; set; }
+        public string? RestrictionReason { get; set; }
+        public string? RuleBreak { get; set; }
+        public decimal OldValue { get; set; }
+        public decimal NewValue { get; set; }
+        public decimal Delta { get; set; }
+        public string DeltaLabel { get; set; } = "Đổi ngang giá";
+        public List<StockAvailabilityDto> StockCheck { get; set; } = new();
+        public List<PreparedReturnItem> Returns { get; set; } = new();
+        public List<PreparedNewItem> NewItems { get; set; } = new();
+        public Invoice? Invoice { get; set; }
+    }
+
+    /// <summary>
+    /// Dry-run: validate + tính Delta + check tồn SP B. KHÔNG ghi DB.
+    /// </summary>
+    private async Task<ExchangePreparation> PrepareExchangeAsync(
+        Guid invoiceId, List<ExchangeQuoteItem> returnItems, List<ExchangeNewItem> newItems)
+    {
+        var prep = new ExchangePreparation();
+        var branchId = GetBranchId();
+
+        var invoice = await _context.Invoices
+            .Include(i => i.Order).ThenInclude(o => o!.Branch)
+            .Include(i => i.Order).ThenInclude(o => o!.Customer)
+            .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct).ThenInclude(bp => bp!.Product).ThenInclude(p => p!.CategoryTaxonomy)
+            .FirstOrDefaultAsync(i => i.InvoiceId == invoiceId && i.Order!.BranchId == branchId);
+
+        if (invoice == null)
+        {
+            prep.RestrictionReason = "Không tìm thấy hóa đơn."; prep.RuleBreak = "INVOICE"; return prep;
+        }
+        if (invoice.Status != "Completed")
+        {
+            prep.RestrictionReason = "Chỉ hóa đơn đã hoàn tất mới được đổi."; prep.RuleBreak = "INVOICE"; return prep;
+        }
+        prep.Invoice = invoice;
+
+        var policies = await GetCategoryPoliciesConfig(branchId);
+        if (policies == null || policies.Count == 0)
+        {
+            prep.RestrictionReason = "Chưa có chính sách đổi/trả theo nhóm hàng."; prep.RuleBreak = "POLICY"; return prep;
+        }
+
+        var branch = invoice.Order?.Branch;
+        var branchExchangeDays = branch?.ExchangeDaysAllowed ?? 30;
+        var invoiceDate = invoice.CreatedAt ?? DateTime.UtcNow;
+
+        var invoiceSubtotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
+        var discountRatio = invoiceSubtotal > 0 && invoice.DiscountAmount > 0
+            ? Math.Min(1m, Math.Max(0m, invoice.DiscountAmount / invoiceSubtotal))
+            : 0m;
+
+        decimal oldValue = 0m;
+
+        // --- SP A (hàng trả về) ---
+        foreach (var ri in returnItems)
+        {
+            if (ri.Quantity <= 0)
+            {
+                prep.RestrictionReason = "Số lượng đổi phải lớn hơn 0."; prep.RuleBreak = "QTY"; return prep;
+            }
+            var ii = invoice.InvoiceItems.FirstOrDefault(x => x.InvoiceItemId == ri.InvoiceItemId);
+            if (ii == null)
+            {
+                prep.RestrictionReason = $"Dòng hóa đơn không có trong hóa đơn gốc."; prep.RuleBreak = "INVOICE_ITEM"; return prep;
+            }
+
+            var product = ii.BranchProduct?.Product;
+            var policy = MatchPolicy(policies, product);
+            if (policy == null)
+            {
+                prep.RestrictionReason = $"Sản phẩm \"{product?.ProductName}\" chưa có chính sách đổi/trả."; prep.RuleBreak = "POLICY"; return prep;
+            }
+            var exDays = policy.ExchangeDays;
+            if (!exDays.HasValue || exDays.Value <= 0)
+            {
+                prep.RestrictionReason = $"Nhóm hàng \"{policy.CategoryName}\" không được phép đổi."; prep.RuleBreak = "EXCHANGE_DAYS"; return prep;
+            }
+            var allowedDays = Math.Min(exDays.Value, branchExchangeDays);
+            if (invoiceDate.AddDays(allowedDays) < DateTime.UtcNow)
+            {
+                var overDays = (int)(DateTime.UtcNow - invoiceDate.AddDays(allowedDays)).TotalDays;
+                prep.RestrictionReason = $"Đã quá thời hạn đổi {overDays} ngày."; prep.RuleBreak = "EXCHANGE_DAYS"; return prep;
+            }
+            // Chống đổi lặp
+            if (ri.Quantity + ii.ReturnedQuantity > ii.Quantity)
+            {
+                var maxQty = ii.Quantity - ii.ReturnedQuantity;
+                prep.RestrictionReason = $"Đã đổi/trả đủ số lượng cho dòng \"{product?.ProductName}\". Tối đa còn {maxQty}."; prep.RuleBreak = "DUPLICATE"; return prep;
+            }
+
+            var conversionRate = (ii.ConvertValue.HasValue && ii.ConvertValue.Value > 0) ? ii.ConvertValue.Value : 1m;
+            var baseQty = ri.Quantity * conversionRate;
+            var gross = ri.Quantity * ii.SellPrice;
+            var refundLine = Math.Max(0, gross - gross * discountRatio);
+            oldValue += refundLine;
+
+            prep.Returns.Add(new PreparedReturnItem
+            {
+                InvoiceItem = ii,
+                Quantity = ri.Quantity,
+                ConversionRate = conversionRate,
+                BaseQuantity = baseQty,
+                Reason = (ri.Reason?.ToUpper() ?? "DEFECTIVE"),
+                LineRefundAmount = refundLine
+            });
+        }
+
+        // --- SP B (hàng mới) ---
+        decimal newValue = 0m;
+        foreach (var ni in newItems)
+        {
+            if (ni.Quantity <= 0)
+            {
+                prep.RestrictionReason = "Số lượng hàng mới phải lớn hơn 0."; prep.RuleBreak = "QTY"; return prep;
+            }
+            var bp = await _context.BranchProducts
+                .Include(b => b.Product)
+                .FirstOrDefaultAsync(b => b.BranchProductId == ni.BranchProductId && b.BranchId == branchId);
+            if (bp == null)
+            {
+                prep.RestrictionReason = "Không tìm thấy sản phẩm mới trong chi nhánh."; prep.RuleBreak = "NEW_ITEM"; return prep;
+            }
+            var conversionRate = (ni.ConversionRate.HasValue && ni.ConversionRate.Value > 0) ? ni.ConversionRate.Value : 1m;
+            var baseQty = ni.Quantity * conversionRate;
+            // Đơn giá theo ĐVT khách chọn (client gửi — cùng cách với luồng bán hàng lưu ii.SellPrice).
+            // Nếu client không gửi → quy đổi từ giá base: bp.SellPrice * conversionRate.
+            // TRƯỚC ĐÂY dùng bp.SellPrice (giá/Cái) * ni.Quantity (Thùng) → thiếu hệ số -> sai Delta.
+            var unitPrice = (ni.UnitPrice.HasValue && ni.UnitPrice.Value > 0)
+                ? ni.UnitPrice.Value
+                : bp.SellPrice * conversionRate;
+            var lineTotal = ni.Quantity * unitPrice;
+            newValue += lineTotal;
+
+            prep.NewItems.Add(new PreparedNewItem
+            {
+                BranchProduct = bp,
+                Quantity = ni.Quantity,
+                ConversionRate = conversionRate,
+                BaseQuantity = baseQty,
+                UnitPrice = unitPrice,
+                LineTotal = lineTotal
+            });
+        }
+
+        // Check tồn SP B (group theo BranchProductId)
+        bool stockSufficient = true;
+        foreach (var g in prep.NewItems.GroupBy(x => x.BranchProduct.BranchProductId))
+        {
+            var bp = g.First().BranchProduct;
+            var requestedBase = g.Sum(x => x.BaseQuantity);
+            var available = bp.AvailableStock - bp.WarrantyQuantity - bp.ReservedStock;
+            var suff = available >= requestedBase;
+            if (!suff) stockSufficient = false;
+            prep.StockCheck.Add(new StockAvailabilityDto
+            {
+                BranchProductId = bp.BranchProductId,
+                ProductName = bp.Product?.ProductName,
+                ProductCode = bp.Product?.ProductCode,
+                RequestedBase = requestedBase,
+                AvailableBase = available,
+                Sufficient = suff
+            });
+        }
+        if (!stockSufficient)
+        {
+            prep.RestrictionReason = "Sản phẩm mới không đủ tồn kho khả dụng để xuất đổi."; prep.RuleBreak = "STOCK";
+        }
+
+        prep.OldValue = oldValue;
+        prep.NewValue = newValue;
+        prep.Delta = newValue - oldValue;
+        prep.DeltaLabel = prep.Delta > 0 ? "Thu thêm" : prep.Delta < 0 ? "Hoàn lại" : "Đổi ngang giá";
+
+        // Chính sách: chỉ cho đổi sang SP B cùng giá hoặc CAO HƠN (Delta >= 0).
+        // KHÔNG cho đổi sang hàng rẻ hơn (sẽ phải hoàn tiền lại cho khách).
+        if (prep.Delta < 0)
+        {
+            prep.RestrictionReason = "Chỉ được đổi sang sản phẩm cùng giá hoặc cao hơn. Không được đổi sang hàng rẻ hơn để hoàn tiền lại.";
+            prep.RuleBreak = "DELTA_NEGATIVE";
+        }
+
+        prep.Eligible = prep.RestrictionReason == null;
+        return prep;
+    }
+
+    // POST /api/pos/returns/exchange/quote
+    /// <summary>Dry-run: tính Delta + check tồn SP B, KHÔNG ghi DB. UI gọi mỗi khi đổi qty.</summary>
+    [HttpPost("exchange/quote")]
+    public async Task<ActionResult<ExchangeQuoteResponse>> QuoteExchange([FromBody] ExchangeQuoteRequest req)
+    {
+        var prep = await PrepareExchangeAsync(req.InvoiceId, req.ReturnItems, req.NewItems);
+        return Ok(new ExchangeQuoteResponse
+        {
+            Eligible = prep.Eligible,
+            RestrictionReason = prep.RestrictionReason,
+            RuleBreak = prep.RuleBreak,
+            OldValue = prep.OldValue,
+            NewValue = prep.NewValue,
+            DeltaAmount = prep.Delta,
+            DeltaLabel = prep.DeltaLabel,
+            StockCheck = prep.StockCheck
+        });
+    }
+
+    // POST /api/pos/returns/exchange
+    /// <summary>Thực thi đổi hàng chênh lệch đầy đủ (validate + tạo ReturnOrder(EXCHANGE) + ExchangeItems + stock moves + ReturnedQuantity + cân quỹ) trong 1 transaction.</summary>
+    [HttpPost("exchange")]
+    public async Task<ActionResult<ReturnOrderDto>> CreateExchange([FromBody] CreateExchangeRequest req)
+    {
+        var branchId = GetBranchId();
+        var userId = GetUserId();
+
+        var prep = await PrepareExchangeAsync(req.InvoiceId, req.ReturnItems, req.NewItems);
+        if (!prep.Eligible || prep.Invoice == null)
+            return BadRequest(ApiErrorResponse.Create("MSG-80", prep.RestrictionReason ?? "Không đủ điều kiện đổi hàng."));
+        if (prep.Returns.Count == 0)
+            return BadRequest(ApiErrorResponse.Create("MSG-61", "Phải có ít nhất 1 sản phẩm đổi (SP A)."));
+        if (prep.NewItems.Count == 0)
+            return BadRequest(ApiErrorResponse.Create("MSG-61", "Phải có ít nhất 1 sản phẩm mới (SP B)."));
+
+        var payMethod = (req.PaymentMethod?.ToUpper() ?? "CASH");
+        if (prep.Delta != 0 && payMethod != "CASH" && payMethod != "TRANSFER")
+            return BadRequest(ApiErrorResponse.Create("MSG-78", "Phương thức thanh toán không hợp lệ (CASH/TRANSFER)."));
+
+        var invoice = prep.Invoice;
+        var delta = prep.Delta;
+
+        using var tx = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            var ro = new ReturnOrder
+            {
+                ReturnOrderId = Guid.NewGuid(),
+                ReturnCode = await GenCodeAsync("RET"),
+                OrderId = invoice.OrderId,
+                UserId = userId,
+                RefundMethod = "EXCHANGE",
+                ReturnType = "EXCHANGE",
+                Status = "Completed",
+                RefundAmount = prep.OldValue,
+                DeltaAmount = delta,
+                PayAmount = Math.Max(0, delta),
+                RefundAmountCustomer = Math.Max(0, -delta),
+                PaymentMethod = delta != 0 ? payMethod : null,
+                Note = req.Note,
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.ReturnOrders.Add(ro);
+
+            // 1) SP A: ReturnItem + trả về kho bán + chống đổi lặp.
+            //    Đổi chênh lệch là giao dịch thương mại — KHÔNG sinh bảo hành (luồng riêng).
+            foreach (var ri in prep.Returns)
+            {
+                var ii = ri.InvoiceItem;
+                var bp = ii.BranchProduct!;
+                var returnItem = new ReturnItem
+                {
+                    ReturnItemId = Guid.NewGuid(),
+                    ReturnOrderId = ro.ReturnOrderId,
+                    BranchProductId = ii.BranchProductId,
+                    Quantity = ri.Quantity,
+                    ConversionRate = ri.ConversionRate,
+                    BaseQuantity = ri.BaseQuantity,
+                    RefundAmount = ri.LineRefundAmount,
+                    Reason = ri.Reason
+                };
+                ro.ReturnItems.Add(returnItem);
+                ii.ReturnedQuantity += ri.Quantity; // chống đổi lặp
+
+                // SP A về lại kho bán được (CUSTOMER_RETURN). Không giữ WarrantyQuantity,
+                // không tạo WarrantyTicket — bảo hành tách riêng, không liên quan đổi chênh.
+                bp.AvailableStock += ri.BaseQuantity;
+                bp.ActualStock += ri.BaseQuantity;
+                _context.InventoryLedgers.Add(MkLedger(bp, "CUSTOMER_RETURN", ro.ReturnOrderId, ro.ReturnCode, ri.BaseQuantity));
+            }
+
+            // 2) SP B: ExchangeItem + xuất kho
+            foreach (var ni in prep.NewItems)
+            {
+                var bp = ni.BranchProduct;
+                ro.ExchangeItems.Add(new ExchangeItem
+                {
+                    ExchangeItemId = Guid.NewGuid(),
+                    ReturnOrderId = ro.ReturnOrderId,
+                    BranchProductId = bp.BranchProductId,
+                    ProductId = bp.ProductId,
+                    Quantity = ni.Quantity,
+                    ConversionRate = ni.ConversionRate,
+                    BaseQuantity = ni.BaseQuantity,
+                    UnitPrice = ni.UnitPrice,
+                    LineTotal = ni.LineTotal
+                });
+                bp.AvailableStock -= ni.BaseQuantity;
+                bp.ActualStock -= ni.BaseQuantity;
+                _context.InventoryLedgers.Add(MkLedger(bp, "EXCHANGE_OUT", ro.ReturnOrderId, ro.ReturnCode, -ni.BaseQuantity));
+            }
+
+            // 3) Cân quỹ theo Delta — gắn ca bán đang mở để quản lý ca ghi nhận
+            var openShift = await _context.Shifts
+                .FirstOrDefaultAsync(s => s.BranchId == branchId && s.Status == "OPEN");
+            var openShiftId = openShift?.ShiftId;
+
+            if (delta < 0)
+            {
+                _context.RefundRecords.Add(new RefundRecord
+                {
+                    RefundId = Guid.NewGuid(),
+                    RefundCode = $"RFD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString()[..4].ToUpper()}",
+                    OrderId = ro.OrderId,
+                    InvoiceId = invoice.InvoiceId,
+                    CustomerId = invoice.Order?.CustomerId ?? Guid.Empty,
+                    UserId = userId,
+                    RefundAmount = -delta,
+                    RefundMethod = payMethod,
+                    Status = "REFUNDED",
+                    Reason = ro.Note,
+                    ProcessedAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow,
+                    ShiftId = openShiftId
+                });
+            }
+            else if (delta > 0)
+            {
+                _context.Payments.Add(new Payment
+                {
+                    PaymentId = Guid.NewGuid(),
+                    InvoiceId = invoice.InvoiceId,
+                    Method = payMethod == "TRANSFER" ? "Transfer" : "Cash",
+                    Amount = delta,
+                    Status = "Confirmed",
+                    PaidAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow,
+                    BranchId = branchId,
+                    ShiftId = openShiftId
+                });
+            }
+
+            await _context.SaveChangesAsync();
+            await tx.CommitAsync();
+
+            // SignalR: cập nhật tồn khả dụng
+            try
+            {
+                var allBps = prep.Returns.Select(r => r.InvoiceItem.BranchProduct)
+                    .Concat(prep.NewItems.Select(n => n.BranchProduct))
+                    .Where(b => b != null)
+                    .GroupBy(b => b!.BranchProductId)
+                    .Select(g => g.First());
+                foreach (var bp in allBps)
+                {
+                    await _posHub.Clients.Group($"branch_{bp!.BranchId}")
+                        .SendAsync("StockUpdated", new
+                        {
+                            ProductId = bp.ProductId,
+                            BranchId = bp.BranchId,
+                            NewSellableQuantity = bp.AvailableStock - bp.WarrantyQuantity,
+                            WarrantyQuantity = bp.WarrantyQuantity
+                        });
+                }
+            }
+            catch { /* SignalR fail silently */ }
+
+            await TryWriteSystemLog(userId, "CREATE_EXCHANGE", "return_orders", "ReturnOrder",
+                ro.ReturnOrderId, $"Tạo phiếu đổi hàng chênh lệch {ro.ReturnCode} - Delta={delta:N0}đ");
+
+            var full = await _context.ReturnOrders
+                .Include(r => r.Order).ThenInclude(o => o!.Branch)
+                .Include(r => r.Order).ThenInclude(o => o!.Customer)
+                .Include(r => r.Order).ThenInclude(o => o!.Invoice)
+                .Include(r => r.User)
+                .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product).ThenInclude(p => p!.ProductConversionUnits)
+                .Include(r => r.ExchangeItems).ThenInclude(ei => ei.BranchProduct).ThenInclude(bp => bp!.Product)
+                .FirstOrDefaultAsync(r => r.ReturnOrderId == ro.ReturnOrderId);
+
+            return CreatedAtAction(nameof(GetReturn), new { id = ro.ReturnOrderId }, _mapper.Map<ReturnOrderDto>(full));
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            Console.WriteLine($"[Exchange API Error]: {ex}");
+            return StatusCode(500, new { message = "Lỗi xử lý đổi hàng: " + ex.Message });
+        }
     }
 }

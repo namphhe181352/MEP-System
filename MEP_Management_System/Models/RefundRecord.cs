@@ -29,6 +29,9 @@ public partial class RefundRecord
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>Ca bán (Shift) ghi nhận hoàn này (đổi hàng lệch giá delta<0). Null cho dữ liệu cũ → fallback theo UserId+thời gian.</summary>
+    public Guid? ShiftId { get; set; }
+
     public virtual Order Order { get; set; } = null!;
 
     public virtual Invoice? Invoice { get; set; }
