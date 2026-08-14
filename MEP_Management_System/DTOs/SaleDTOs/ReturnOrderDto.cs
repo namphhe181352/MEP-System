@@ -19,6 +19,15 @@ public class ReturnOrderDto
     public string? Status { get; set; }
     public string? Note { get; set; }
     public DateTime? CreatedAt { get; set; }
+
+    // === Đổi hàng chênh lệch (NULL cho bảo hành thuần) ===
+    public decimal? DeltaAmount { get; set; }
+    public decimal? PayAmount { get; set; }
+    public decimal? RefundAmountCustomer { get; set; }
+    public string? PaymentMethod { get; set; }
+    public string? DeltaLabel { get; set; }
+    public List<ExchangeItemDto> ExchangeItems { get; set; } = new();
+
     public List<ReturnItemDto> Items { get; set; } = new();
 }
 

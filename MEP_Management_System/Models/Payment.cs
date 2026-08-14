@@ -32,6 +32,9 @@ public partial class Payment
     /// <summary>Optional — chi nhánh ghi nhận giao dịch. Nullable cho store không có branch.</summary>
     public Guid? BranchId { get; set; }
 
+    /// <summary>Ca bán (Shift) ghi nhận giao dịch này. Dùng cho thanh toán chênh lệch đổi hàng (không gắn Invoice của ca hiện tại).</summary>
+    public Guid? ShiftId { get; set; }
+
     public virtual Invoice Invoice { get; set; } = null!;
     public virtual Customer? Customer { get; set; }
 }

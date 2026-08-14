@@ -4,6 +4,7 @@ namespace MEP_Management_System.DTOs.SaleDTOs;
 
 public class ProductPriceDto
 {
+    public Guid BranchProductId { get; set; }
     public Guid ProductId { get; set; }
     public string? ProductName { get; set; }
     public string? ProductCode { get; set; }
