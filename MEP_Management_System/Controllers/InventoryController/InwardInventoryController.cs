@@ -1392,9 +1392,14 @@ th {{ background: #f0f0f0; }}
 
         /// <summary>Lấy danh sách phiếu nhập đã hoàn thành của 1 NCC (để chọn khi xuất trả).</summary>
         [HttpGet("by-supplier/{supplierId:guid}")]
-        [HasPermission("STOCK_VIEW")]
         public async Task<IActionResult> GetBySupplier(Guid supplierId, [FromQuery] Guid? branchId)
         {
+            if (!IsOwner() && !User.HasClaim("permission", PermissionConstants.STOCK_INWARD_CREATE)
+                && !User.HasClaim("permission", PermissionConstants.STOCK_INWARD_UPDATE)
+                && !User.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_CREATE))
+            {
+                return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền lấy danh sách phiếu nhập." });
+            }
             var jwtBranchId = _currentBranch.GetBranchId();
             var targetBranchId = (HasGlobalAccess() ? branchId : null) ?? jwtBranchId;
             if (targetBranchId == null || targetBranchId == Guid.Empty)
@@ -1426,9 +1431,14 @@ th {{ background: #f0f0f0; }}
 
         /// <summary>Lấy danh sách sản phẩm còn có thể trả của 1 phiếu nhập.</summary>
         [HttpGet("{id:guid}/returnable-items")]
-        [HasPermission("STOCK_VIEW")]
         public async Task<IActionResult> GetReturnableItems(Guid id)
         {
+            if (!IsOwner() && !User.HasClaim("permission", PermissionConstants.STOCK_INWARD_CREATE)
+                && !User.HasClaim("permission", PermissionConstants.STOCK_INWARD_UPDATE)
+                && !User.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_CREATE))
+            {
+                return StatusCode(403, new ApiResponse<object> { Success = false, Message = "Bạn không có quyền lấy danh sách sản phẩm." });
+            }
             var inwardTicket = await _context.StockTickets
                 .Include(st => st.StockTicketItems)
                     .ThenInclude(si => si.BranchProduct)
