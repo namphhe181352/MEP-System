@@ -25,6 +25,15 @@ public partial class StockTicketItem
     /// <summary>FK tới dòng hàng của phiếu nhập gốc (dùng khi xuất trả NCC).</summary>
     public Guid? InwardTicketItemId { get; set; }
 
+    /// <summary>Thời hạn bảo hành (số lượng). 0 = không bảo hành.</summary>
+    public int WarrantyPeriod { get; set; }
+
+    /// <summary>Đơn vị bảo hành: DAY, MONTH, YEAR.</summary>
+    public string WarrantyUnit { get; set; } = "MONTH";
+
+    /// <summary>Ngày hết hạn bảo hành = ImportDate + WarrantyPeriod theo WarrantyUnit.</summary>
+    public DateTime? WarrantyExpiryDate { get; set; }
+
     public virtual BranchProduct BranchProduct { get; set; } = null!;
 
     public virtual StockTicket StockTicket { get; set; } = null!;

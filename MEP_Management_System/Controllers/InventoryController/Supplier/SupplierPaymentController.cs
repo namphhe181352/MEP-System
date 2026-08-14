@@ -2,6 +2,7 @@
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Models;
+using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,10 +17,12 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
     public class SupplierPaymentController : ControllerBase
     {
         private readonly MEPDatabaseContext _context;
+        private readonly ICurrentBranchAccessor _currentBranch;
 
-        public SupplierPaymentController(MEPDatabaseContext context)
+        public SupplierPaymentController(MEPDatabaseContext context, ICurrentBranchAccessor currentBranch)
         {
             _context = context;
+            _currentBranch = currentBranch;
         }
 
         private Guid GetCurrentUserId()
@@ -44,6 +47,12 @@ namespace MEP_Management_System.Controllers.InventoryController.Supplier
                     .Include(p => p.PurchaseOrder)
                     .Include(p => p.RecordedByUser)
                     .AsQueryable();
+
+                var branchId = _currentBranch.GetBranchId();
+                if (branchId.HasValue)
+                {
+                    query = query.Where(p => p.Supplier != null && p.Supplier.BranchId == branchId.Value);
+                }
 
                 if (supplierId.HasValue)
                     query = query.Where(p => p.SupplierId == supplierId.Value);

@@ -60,6 +60,12 @@ public partial class Product
 
     public short? SalesChannelLinked { get; set; }
 
+    /// <summary>Thời hạn bảo hành mặc định (số lượng). 0 = không bảo hành.</summary>
+    public int WarrantyPeriod { get; set; } = 12;
+
+    /// <summary>Đơn vị bảo hành: DAY, MONTH, YEAR. Mặc định MONTH.</summary>
+    public string WarrantyUnit { get; set; } = "MONTH";
+
     /// <summary>Trạng thái sản phẩm: 1=Active, 0=Inactive. Mặc định 1 (theo SRS).</summary>
     public short? Status { get; set; }
 

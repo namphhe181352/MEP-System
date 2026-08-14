@@ -434,6 +434,8 @@ public class ReturnsController : ControllerBase
             ReturnOrderId = id,
             BranchProductId = branchProductId,
             Quantity = req.Quantity,
+            ConversionRate = req.ConversionRate > 0 ? req.ConversionRate : 1,
+            BaseQuantity = req.Quantity * (req.ConversionRate > 0 ? req.ConversionRate : 1),
             RefundAmount = refundLine,
             Reason = req.Reason?.ToUpper() ?? "OTHER"
         };
@@ -478,8 +480,9 @@ public class ReturnsController : ControllerBase
                 var bp = await _context.BranchProducts.FindAsync(ri.BranchProductId);
                 if (bp != null)
                 {
-                    bp.AvailableStock += ri.Quantity;
-                    bp.ActualStock += ri.Quantity;
+                    var baseQty = ri.BaseQuantity > 0 ? ri.BaseQuantity : ri.Quantity;
+                    bp.AvailableStock += baseQty;
+                    bp.ActualStock += baseQty;
 
                     // Ghi inventory_ledger cho tra hang khach (CUSTOMER_RETURN)
                     _context.InventoryLedgers.Add(new InventoryLedger
@@ -491,9 +494,9 @@ public class ReturnsController : ControllerBase
                         DocId = ret.ReturnOrderId,
                         DocCode = ret.ReturnCode,
                         TransactionTime = DateTime.UtcNow,
-                        QtyChange = ri.Quantity,
+                        QtyChange = baseQty,
                         UnitCostPrice = Math.Round(bp.CostPrice, 4),
-                        TotalCostValue = Math.Round(ri.Quantity * bp.CostPrice, 4),
+                        TotalCostValue = Math.Round(baseQty * bp.CostPrice, 4),
                         StockAfter = bp.ActualStock,
                         AvgCostAfter = Math.Round(bp.CostPrice, 4),
                         CreatedAt = DateTime.UtcNow
@@ -503,27 +506,40 @@ public class ReturnsController : ControllerBase
         }
         else if (ret.ReturnType == "EXCHANGE")
         {
-            // EXCHANGE: Tạo WarrantyTicket PENDING_ASSIGN + tăng WarrantyQuantity
-            foreach (var ri in ret.ReturnItems)
-            {
-                var bp = await _context.BranchProducts.FindAsync(ri.BranchProductId);
-                if (bp != null)
-                {
-                    bp.WarrantyQuantity += ri.Quantity;
+            // EXCHANGE: Gom nhóm ReturnItem theo ProductId -> 1 WarrantyTicket / ProductId
+            var groupedByProduct = ret.ReturnItems
+                .GroupBy(ri => ri.BranchProduct!.ProductId)
+                .ToList();
 
-                    var warrantyTicket = new WarrantyTicket
-                    {
-                        WarrantyTicketId = Guid.NewGuid(),
-                        ReturnItemId = ri.ReturnItemId,
-                        BranchProductId = ri.BranchProductId,
-                        ProductId = bp.ProductId,
-                        Quantity = ri.Quantity,
-                        Status = "PENDING_ASSIGN",
-                        CreatedAt = DateTime.UtcNow,
-                        CreatedBy = GetUserId()
-                    };
-                    _context.WarrantyTickets.Add(warrantyTicket);
-                }
+            foreach (var group in groupedByProduct)
+            {
+                var firstItem = group.First();
+                var bp = await _context.BranchProducts.FindAsync(firstItem.BranchProductId);
+                if (bp == null) continue;
+
+                var totalBaseQty = group.Sum(ri => ri.BaseQuantity > 0 ? ri.BaseQuantity : ri.Quantity);
+
+                var sellable = bp.AvailableStock - bp.WarrantyQuantity;
+                if (sellable < totalBaseQty)
+                    return BadRequest(ApiErrorResponse.Create("MSG-81",
+                        $"Sản phẩm xuất đổi hiện không đủ tồn kho khả dụng để thực hiện giao dịch (Tồn khả dụng bán: {sellable}, cần: {totalBaseQty})"));
+
+                bp.WarrantyQuantity += totalBaseQty;
+
+                var warrantyTicket = new WarrantyTicket
+                {
+                    WarrantyTicketId = Guid.NewGuid(),
+                    ReturnItemId = firstItem.ReturnItemId,
+                    BranchProductId = firstItem.BranchProductId,
+                    ProductId = bp.ProductId,
+                    Quantity = totalBaseQty,
+                    ConversionRate = 1,
+                    BaseQuantity = totalBaseQty,
+                    Status = "PENDING_ASSIGN",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = GetUserId()
+                };
+                _context.WarrantyTickets.Add(warrantyTicket);
             }
         }
 
@@ -838,6 +854,8 @@ public class ReturnsController : ControllerBase
                 ProductName = ri.BranchProduct.Product.ProductName ?? "",
                 SkuCode = ri.BranchProduct.Product.ProductCode ?? "",
                 Quantity = ri.Quantity,
+                ConversionRate = ri.ConversionRate,
+                BaseQuantity = ri.BaseQuantity,
                 Reason = ri.Reason,
                 CustomerName = ri.ReturnOrder.Order.Customer != null ? ri.ReturnOrder.Order.Customer.CustomerName : "",
                 InvoiceCode = ri.ReturnOrder.Order.Invoice != null ? ri.ReturnOrder.Order.Invoice.InvoiceCode : "",

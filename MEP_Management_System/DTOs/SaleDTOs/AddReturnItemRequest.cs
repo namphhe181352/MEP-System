@@ -11,6 +11,9 @@ public class AddReturnItemRequest
     [Range(0.0001, double.MaxValue, ErrorMessage = "Số lượng phải lớn hơn 0.")]
     public decimal Quantity { get; set; }
 
+    /// <summary>Hệ số quy đổi từ ĐVT bán về ĐVT cơ bản (mặc định 1).</summary>
+    public decimal ConversionRate { get; set; } = 1;
+
     [Required(ErrorMessage = "Lý do là bắt buộc.")]
     [RegularExpression(@"^(DEFECTIVE|WRONG_ITEM|NOT_SATISFIED|OTHER)$",
         ErrorMessage = "Lý do không hợp lệ. Các giá trị hợp lệ: DEFECTIVE, WRONG_ITEM, NOT_SATISFIED, OTHER.")]

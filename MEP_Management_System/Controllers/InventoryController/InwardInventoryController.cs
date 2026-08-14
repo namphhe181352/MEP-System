@@ -51,6 +51,17 @@ namespace MEP_Management_System.Controllers.InventoryController
 
         private bool IsOwner() => User.IsInRole("Owner");
 
+        private static DateTime? ComputeWarrantyExpiry(DateTime baseDate, int period, string unit)
+        {
+            if (period <= 0) return null;
+            return (unit?.ToUpper()) switch
+            {
+                "DAY" => baseDate.AddDays(period),
+                "YEAR" => baseDate.AddYears(period),
+                _ => baseDate.AddMonths(period)
+            };
+        }
+
         private async Task TryWriteSystemLog(Guid userId, string action, string tableName,
             string entityType, Guid entityId, string description)
         {
@@ -616,8 +627,13 @@ namespace MEP_Management_System.Controllers.InventoryController
                         SystemQuantity = branchProduct.ActualStock,
                         ActualQuantity = branchProduct.ActualStock,
                         Discrepancy = item.Quantity,
-                        UnitPrice = effectiveCostPrice, // Snapshot giá nhập tại thời điểm tạo phiếu
-                        UnitName = branchProduct.Product?.BaseUnit ?? "" // Snapshot tên đơn vị cơ bản
+                        UnitPrice = effectiveCostPrice,
+                        UnitName = branchProduct.Product?.BaseUnit ?? "",
+                        WarrantyPeriod = item.WarrantyPeriod > 0 ? item.WarrantyPeriod : (branchProduct.Product?.WarrantyPeriod ?? 0),
+                        WarrantyUnit = !string.IsNullOrEmpty(item.WarrantyUnit) ? item.WarrantyUnit : (branchProduct.Product?.WarrantyUnit ?? "MONTH"),
+                        WarrantyExpiryDate = ComputeWarrantyExpiry(DateTime.UtcNow,
+                            item.WarrantyPeriod > 0 ? item.WarrantyPeriod : (branchProduct.Product?.WarrantyPeriod ?? 0),
+                            !string.IsNullOrEmpty(item.WarrantyUnit) ? item.WarrantyUnit : (branchProduct.Product?.WarrantyUnit ?? "MONTH"))
                     };
 
                     _context.StockTicketItems.Add(ticketItem);

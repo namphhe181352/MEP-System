@@ -878,6 +878,13 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
             entity.Property(e => e.SalesChannelLinked)
                 .HasDefaultValue((short)1)
                 .HasColumnName("sales_channel_linked");
+            entity.Property(e => e.WarrantyPeriod)
+                .HasDefaultValue(12)
+                .HasColumnName("warranty_period");
+            entity.Property(e => e.WarrantyUnit)
+                .HasMaxLength(10)
+                .HasDefaultValue("MONTH")
+                .HasColumnName("warranty_unit");
             entity.Property(e => e.Status)
                 .HasDefaultValue((short)1)
                 .HasColumnName("status");
@@ -1056,6 +1063,14 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
             entity.Property(e => e.Quantity)
                 .HasPrecision(10, 2)
                 .HasColumnName("quantity");
+            entity.Property(e => e.ConversionRate)
+                .HasPrecision(10, 2)
+                .HasDefaultValue(1m)
+                .HasColumnName("conversion_rate");
+            entity.Property(e => e.BaseQuantity)
+                .HasPrecision(10, 2)
+                .HasDefaultValue(0m)
+                .HasColumnName("base_quantity");
             entity.Property(e => e.ReturnOrderId).HasColumnName("return_order_id");
             entity.Property(e => e.RefundAmount)
                 .HasPrecision(15, 2)
@@ -1089,6 +1104,14 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
             entity.Property(e => e.Quantity)
                 .HasPrecision(10, 2)
                 .HasColumnName("quantity");
+            entity.Property(e => e.ConversionRate)
+                .HasPrecision(10, 2)
+                .HasDefaultValue(1m)
+                .HasColumnName("conversion_rate");
+            entity.Property(e => e.BaseQuantity)
+                .HasPrecision(10, 2)
+                .HasDefaultValue(0m)
+                .HasColumnName("base_quantity");
             entity.Property(e => e.SupplierId).HasColumnName("supplier_id");
             entity.Property(e => e.Status)
                 .HasMaxLength(50)
@@ -1323,6 +1346,15 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
             entity.Property(e => e.UnitPrice)
                 .HasPrecision(15, 2)
                 .HasColumnName("unit_price");
+            entity.Property(e => e.WarrantyPeriod)
+                .HasDefaultValue(0)
+                .HasColumnName("warranty_period");
+            entity.Property(e => e.WarrantyUnit)
+                .HasMaxLength(10)
+                .HasDefaultValue("MONTH")
+                .HasColumnName("warranty_unit");
+            entity.Property(e => e.WarrantyExpiryDate)
+                .HasColumnName("warranty_expiry_date");
 
             entity.HasOne(d => d.BranchProduct).WithMany(p => p.StockTicketItems)
                 .HasForeignKey(d => d.BranchProductId)

@@ -13,6 +13,12 @@ public partial class ReturnItem
 
     public decimal Quantity { get; set; }
 
+    /// <summary>Hệ số quy đổi từ ĐVT bán về ĐVT cơ bản (vd: 1 Thùng = 2 Cái -> ConversionRate = 2).</summary>
+    public decimal ConversionRate { get; set; } = 1;
+
+    /// <summary>SL quy về ĐVT cơ bản = Quantity * ConversionRate.</summary>
+    public decimal BaseQuantity { get; set; }
+
     /// <summary>Tiền hoàn cho dòng hàng này (snapshot lúc trả).</summary>
     public decimal? RefundAmount { get; set; }
 
