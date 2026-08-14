@@ -17,6 +17,8 @@ public class InvoiceDto
     public decimal? DiscountPercent { get; set; }
     public decimal TotalAmount { get; set; }
     public string? PaymentMethod { get; set; }
+    public decimal? CashReceived { get; set; }
+    public decimal? ChangeAmount { get; set; }
     public string Status { get; set; } = null!;
     public string? Note { get; set; }
     public string? HoldNote { get; set; }
