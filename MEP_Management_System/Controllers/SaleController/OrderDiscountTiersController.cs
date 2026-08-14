@@ -38,13 +38,12 @@ public class OrderDiscountTiersController : ControllerBase
 
             if (resolvedBranchId != null && resolvedBranchId != Guid.Empty)
             {
-                // Tier của chi nhánh đó + tier toàn cục (BranchId == null).
-                query = query.Where(t => t.BranchId == resolvedBranchId || t.BranchId == null);
+                query = query.Where(t => t.BranchId == resolvedBranchId);
             }
             else
             {
-                // Không xác định được chi nhánh → CHỈ trả tier toàn cục, KHÔNG rò rấu tier của chi nhánh khác.
-                query = query.Where(t => t.BranchId == null);
+                // Nếu không xác định được chi nhánh, trả về rỗng để tránh rò rỉ dữ liệu
+                query = query.Where(t => false);
             }
 
             var tiers = await query
@@ -134,6 +133,33 @@ public class OrderDiscountTiersController : ControllerBase
             .AnyAsync(t => t.BranchId == resolvedBranchId && t.MinOrderValue == req.MinOrderValue);
         if (exists)
             return Conflict(ApiErrorResponse.Create("MSG-68", "MinOrderValue đã tồn tại trong chi nhánh này"));
+
+        // Xử lý dữ liệu global rác (BranchId == null) gây lỗi unique index khi thêm mới
+        var rogueGlobalTier = await _context.OrderDiscountTiers
+            .FirstOrDefaultAsync(t => t.MinOrderValue == req.MinOrderValue && t.BranchId == null);
+
+        if (rogueGlobalTier != null)
+        {
+            rogueGlobalTier.BranchId = resolvedBranchId;
+            rogueGlobalTier.DiscountPercent = req.DiscountPercent;
+            rogueGlobalTier.IsActive = req.IsActive;
+            rogueGlobalTier.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            var updatedDto = new OrderDiscountTierDto
+            {
+                OrderDiscountTierId = rogueGlobalTier.OrderDiscountTierId,
+                BranchId = rogueGlobalTier.BranchId,
+                MinOrderValue = rogueGlobalTier.MinOrderValue,
+                DiscountPercent = rogueGlobalTier.DiscountPercent,
+                IsActive = rogueGlobalTier.IsActive,
+                CreatedAt = rogueGlobalTier.CreatedAt,
+                UpdatedAt = rogueGlobalTier.UpdatedAt
+            };
+
+            return CreatedAtAction(nameof(GetById), new { id = rogueGlobalTier.OrderDiscountTierId }, updatedDto);
+        }
 
         var tier = new OrderDiscountTier
         {

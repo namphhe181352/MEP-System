@@ -50,7 +50,7 @@ namespace MEP_Management_System.Services
                 // Nếu hóa đơn đang Draft, tính discount on the fly để POS hiển thị
                 if (invoice.Status == "Draft")
                 {
-                    var (dynDiscountPercent, dynDiscountAmount, _) = await orderDiscountService.CalculateDiscountAsync(subtotal);
+                    var (dynDiscountPercent, dynDiscountAmount, _) = await orderDiscountService.CalculateDiscountAsync(subtotal, branchId);
                     dto.DiscountPercent = dynDiscountPercent;
                     dto.DiscountAmount = dynDiscountAmount;
                 }

@@ -19,7 +19,7 @@ public class OrderDiscountService : IOrderDiscountService
     /// Tính chiết khấu dựa trên tổng giá trị đơn hàng.
     /// Logic: Lấy bậc cao nhất mà subTotal đạt được.
     /// </summary>
-    public async Task<(decimal? DiscountPercent, decimal DiscountAmount, decimal FinalTotal)> CalculateDiscountAsync(decimal subTotal)
+    public async Task<(decimal? DiscountPercent, decimal DiscountAmount, decimal FinalTotal)> CalculateDiscountAsync(decimal subTotal, Guid branchId)
     {
         // T12: Validate discount percent in [0, 100] before applying
         if (subTotal <= 0)
@@ -29,7 +29,7 @@ public class OrderDiscountService : IOrderDiscountService
 
         // Lấy các bậc chiết khấu đang active và có ngưỡng <= subTotal
         var tiers = await _context.OrderDiscountTiers
-            .Where(t => t.IsActive && t.MinOrderValue <= subTotal)
+            .Where(t => t.IsActive && t.MinOrderValue <= subTotal && t.BranchId == branchId)
             .OrderByDescending(t => t.MinOrderValue)
             .ToListAsync();
 
