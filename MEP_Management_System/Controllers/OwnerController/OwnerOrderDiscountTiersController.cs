@@ -42,16 +42,46 @@ public class OwnerOrderDiscountTiersController : ControllerBase
         if (request.DiscountPercent < 0.01m || request.DiscountPercent > 100)
             return BadRequest(ApiErrorResponse.Create("MSG-02", "Phần trăm chiết khấu phải trong khoảng 0.01 - 100"));
 
-        // Kiểm tra trùng MinOrderValue (theo branch nếu có)
+        // Kiểm tra trùng MinOrderValue (theo branch)
         var existingTier = await _context.OrderDiscountTiers
-            .AnyAsync(t => t.MinOrderValue == request.MinOrderValue
+            .FirstOrDefaultAsync(t => t.MinOrderValue == request.MinOrderValue
                 && t.BranchId == resolvedBranchId);
 
-        if (existingTier)
+        if (existingTier != null)
             return Conflict(ApiErrorResponse.Create("MSG-03", $"Ngưỡng giá trị {request.MinOrderValue:N0} đã tồn tại"));
+
+        // Xử lý dữ liệu global rác (BranchId == null) gây lỗi unique index khi thêm mới
+        var rogueGlobalTier = await _context.OrderDiscountTiers
+            .FirstOrDefaultAsync(t => t.MinOrderValue == request.MinOrderValue && t.BranchId == null);
+
+        if (rogueGlobalTier != null)
+        {
+            rogueGlobalTier.BranchId = resolvedBranchId;
+            rogueGlobalTier.DiscountPercent = request.DiscountPercent;
+            rogueGlobalTier.IsActive = true;
+            rogueGlobalTier.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+            await _context.Entry(rogueGlobalTier).Reference(rt => rt.Branch).LoadAsync();
+
+            var updatedResult = new OrderDiscountTierDto
+            {
+                OrderDiscountTierId = rogueGlobalTier.OrderDiscountTierId,
+                BranchId = rogueGlobalTier.BranchId,
+                BranchName = rogueGlobalTier.Branch?.BranchName,
+                MinOrderValue = rogueGlobalTier.MinOrderValue,
+                DiscountPercent = rogueGlobalTier.DiscountPercent,
+                IsActive = rogueGlobalTier.IsActive,
+                CreatedAt = rogueGlobalTier.CreatedAt,
+                UpdatedAt = rogueGlobalTier.UpdatedAt
+            };
+
+            return CreatedAtAction("GetById", "OrderDiscountTiers", new { id = rogueGlobalTier.OrderDiscountTierId }, updatedResult);
+        }
 
         var tier = new OrderDiscountTier
         {
+            OrderDiscountTierId = Guid.NewGuid(),
             BranchId = resolvedBranchId,
             MinOrderValue = request.MinOrderValue,
             DiscountPercent = request.DiscountPercent,

@@ -475,7 +475,7 @@ public class InvoicesController : ControllerBase
 
         // Tính tier discount TRƯỚC validation
         var subTotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
-        var (discountPercent, discountAmount, totalAmount) = await _orderDiscountService.CalculateDiscountAsync(subTotal);
+        var (discountPercent, discountAmount, totalAmount) = await _orderDiscountService.CalculateDiscountAsync(subTotal, branchId);
 
         var hasPending = invoice.Payments.Any(p => p.Status == "Pending");
         if (hasPending)

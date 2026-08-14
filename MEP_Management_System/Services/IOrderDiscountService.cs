@@ -9,6 +9,5 @@ public interface IOrderDiscountService
     /// Tính chiết khấu dựa trên tổng giá trị đơn hàng.
     /// </summary>
     /// <param name="subTotal">Tổng tiền trước chiết khấu.</param>
-    /// <returns>Tuple: (DiscountPercent, DiscountAmount, FinalTotal)</returns>
-    Task<(decimal? DiscountPercent, decimal DiscountAmount, decimal FinalTotal)> CalculateDiscountAsync(decimal subTotal);
+    Task<(decimal? DiscountPercent, decimal DiscountAmount, decimal FinalTotal)> CalculateDiscountAsync(decimal subTotal, Guid branchId);
 }
