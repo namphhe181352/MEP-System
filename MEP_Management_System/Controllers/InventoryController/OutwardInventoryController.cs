@@ -160,7 +160,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                     .Include(st => st.StockTicketItems)
                         .ThenInclude(item => item.BranchProduct)
                             .ThenInclude(bp => bp.Product)
-                    .Where(st => st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER")
+                    .Where(st => st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER" || st.TicketType == "SALE")
                     .AsQueryable();
 
                 // Lọc theo branch từ token - áp dụng cho TẤT CẢ user (bao gồm Owner)
@@ -274,7 +274,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                         .ThenInclude(item => item.BranchProduct)
                             .ThenInclude(bp => bp.Product)
                     .Where(st => st.StockTicketId == id &&
-                        (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER"));
+                        (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER" || st.TicketType == "SALE"));
 
                 if (!HasGlobalAccess())
                 {
