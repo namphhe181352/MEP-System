@@ -61,8 +61,8 @@ public class CustomerDebtService
             .ToDictionaryAsync(x => x.CustomerId, x => x.Total);
 
         var refunded = await _context.RefundRecords
-            .Where(r => idList.Contains(r.CustomerId) && CompletedStatuses.Contains(r.Status))
-            .GroupBy(r => r.CustomerId)
+            .Where(r => r.CustomerId.HasValue && idList.Contains(r.CustomerId.Value) && CompletedStatuses.Contains(r.Status))
+            .GroupBy(r => r.CustomerId!.Value)
             .Select(g => new { CustomerId = g.Key, Total = g.Sum(r => (decimal?)r.RefundAmount) ?? 0m })
             .ToDictionaryAsync(x => x.CustomerId, x => x.Total);
 

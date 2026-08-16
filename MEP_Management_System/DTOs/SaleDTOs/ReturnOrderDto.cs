@@ -27,6 +27,10 @@ public class ReturnOrderDto
     public string? PaymentMethod { get; set; }
     public Guid? PaymentId { get; set; }
     public string? DeltaLabel { get; set; }
+
+    // === Tiền mặt khách đưa / thối lại (lấy từ Payment liên kết, cho đơn đổi chênh dương CASH) ===
+    public decimal? CashReceived { get; set; }
+    public decimal? ChangeAmount { get; set; }
     public List<ExchangeItemDto> ExchangeItems { get; set; } = new();
 
     public List<ReturnItemDto> Items { get; set; } = new();
