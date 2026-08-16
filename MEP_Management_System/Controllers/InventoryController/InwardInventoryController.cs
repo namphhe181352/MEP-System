@@ -459,6 +459,16 @@ namespace MEP_Management_System.Controllers.InventoryController
                     Guid parsedId;
                     bool isGuid = Guid.TryParse(item.Id, out parsedId);
 
+                    // FE (đặc biệt Excel import) có thể gửi flat productCode/productName thay vì id
+                    // khi matchedProduct không resolve được (ví dụ SP nằm ngoài trang lookup 200 dòng).
+                    // Chuẩn hóa: thiếu id thì dùng productCode làm id để resolve BranchProduct/Product theo mã.
+                    // Nhờ vậy mã đã tồn tại & active sẽ được DÙNG LẠI (nhập thêm tồn) thay vì throw "đã tồn tại".
+                    if (string.IsNullOrWhiteSpace(item.Id) && !string.IsNullOrWhiteSpace(item.ProductCode))
+                    {
+                        item.Id = item.ProductCode;
+                        isGuid = Guid.TryParse(item.Id, out parsedId);
+                    }
+
                     // Tìm BranchProduct
                     var branchProduct = await _context.BranchProducts
                         .Include(bp => bp.Product)
@@ -911,8 +921,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                                 UPDATE branch_products
                                 SET actual_stock = actual_stock + {item.Discrepancy},
                                     available_stock = available_stock + {item.Discrepancy},
-                                    is_active = CASE WHEN is_active = -1 THEN 1 ELSE is_active END,
-                                    direct_sale = CASE WHEN is_active = -1 THEN 1 ELSE direct_sale END
+                                    is_active = CASE WHEN is_active = -1 THEN 1 ELSE is_active END
                                 WHERE branch_product_id = {item.BranchProductId}
                             ");
                         }
@@ -923,7 +932,6 @@ namespace MEP_Management_System.Controllers.InventoryController
                                 SET actual_stock = actual_stock + {item.Discrepancy},
                                     available_stock = available_stock + {item.Discrepancy},
                                     is_active = CASE WHEN is_active = -1 THEN 1 ELSE is_active END,
-                                    direct_sale = CASE WHEN is_active = -1 THEN 1 ELSE direct_sale END,
                                     cost_price = CASE
                                         WHEN (actual_stock + {item.Discrepancy}) > 0
                                         THEN ROUND((

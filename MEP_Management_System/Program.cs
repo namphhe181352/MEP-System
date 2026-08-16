@@ -344,6 +344,39 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// Migration 1-lần: chuyển unit_price của SALE StockTicketItem CŨ từ GIÁ GỐC (SellPrice) sang GIÁ NET
+// (sau chiết khấu đơn hàng). Áp dụng cho các SALE ticket tạo TRƯỚC fix Task 9 (InvoicesController:610).
+// Dùng system_configs làm sentinel để idempotent — chạy lại không scale lần thứ 2.
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<MEPDatabaseContext>();
+    try
+    {
+        var rows = await context.Database.ExecuteSqlRawAsync(@"
+UPDATE stock_ticket_items sti
+SET unit_price = ROUND(sti.unit_price * (inv.total_amount / NULLIF(inv.sub_total_amount, 0)), 4)
+FROM stock_tickets st, invoices inv
+WHERE sti.stock_ticket_id = st.stock_ticket_id
+  AND inv.invoice_code = st.ticket_code
+  AND st.ticket_type = 'SALE'
+  AND COALESCE(inv.sub_total_amount, 0) > 0
+  AND inv.total_amount < inv.sub_total_amount
+  AND NOT EXISTS (SELECT 1 FROM system_configs WHERE config_key = 'SALE_NET_PRICE_MIGRATION_V1');
+");
+        Console.WriteLine($"[Startup] SALE net-price migration: {rows} dòng đã scale sang giá NET.");
+        await context.Database.ExecuteSqlRawAsync(@"
+INSERT INTO system_configs (config_id, branch_id, config_key, config_value)
+SELECT gen_random_uuid(), NULL, 'SALE_NET_PRICE_MIGRATION_V1', 'done'
+WHERE NOT EXISTS (SELECT 1 FROM system_configs WHERE config_key = 'SALE_NET_PRICE_MIGRATION_V1');
+");
+        Console.WriteLine("[Startup] SALE net-price migration sentinel OK.");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Startup] SALE net-price migration thất bại: {ex.Message}");
+    }
+}
+
 
 app.Run();
 

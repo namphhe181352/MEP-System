@@ -470,7 +470,7 @@ namespace MEP_Management_System.Services
                             ActualStock = 0,
                             ReservedStock = 0,
                             AvailableStock = 0,
-                            DirectSale = 1
+                            DirectSale = 0
                         };
 
                         _context.BranchProducts.Add(branchProduct);
