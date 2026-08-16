@@ -307,6 +307,43 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// Cho phép RefundRecord.customer_id NULL — đơn trả hàng cho khách lẻ (Order.CustomerId == null)
+// không có Customer thật. Trước đây gán Guid.Empty → vi phạm FK refund_records_customer_id_fkey → HTTP 500.
+// DROP NOT NULL là idempotent (an toàn khi chạy lại trên cột đã nullable).
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<MEPDatabaseContext>();
+    try
+    {
+        await context.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE refund_records ALTER COLUMN customer_id DROP NOT NULL;"
+        );
+        Console.WriteLine("[Startup] refund_records.customer_id -> nullable OK");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Startup] Alter refund_records.customer_id thất bại: {ex.Message}");
+    }
+}
+
+// Mở rộng inventory_ledger.doc_type lên varchar(50) — giá trị "CUSTOMER_RETURN_DEFECTIVE" (25 ký tự)
+// tràn cột varchar(20) cũ → lỗi 22001 khi hoàn tiền đơn trả có line DEFECTIVE. ALTER TYPE idempotent.
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<MEPDatabaseContext>();
+    try
+    {
+        await context.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE inventory_ledger ALTER COLUMN doc_type TYPE VARCHAR(50);"
+        );
+        Console.WriteLine("[Startup] inventory_ledger.doc_type -> varchar(50) OK");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Startup] Alter inventory_ledger.doc_type thất bại: {ex.Message}");
+    }
+}
+
 
 app.Run();
 

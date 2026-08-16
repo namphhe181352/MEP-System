@@ -147,10 +147,16 @@ public class InvoicesController : ControllerBase
             }
             if (invoice.Payments != null && invoice.Payments.Any())
             {
-                dto.PaymentMethod = invoice.Payments.Count > 1
-                    ? "[" + string.Join(",", invoice.Payments.Select(p => $"{{\"method\":\"{p.Method}\",\"amount\":{p.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)}}}")) + "]" 
-                    : invoice.Payments.First().Method.ToString();
-                    
+                // Gom theo method (dedup) — tránh hiện "Tiền mặt, Tiền mặt" khi invoice có cả
+                // payment bán + payment đổi chênh lệch (cùng link InvoiceId, cùng method).
+                var payByMethod = invoice.Payments
+                    .GroupBy(p => p.Method)
+                    .Select(g => new { Method = g.Key, Amount = g.Sum(x => x.Amount) })
+                    .ToList();
+                dto.PaymentMethod = payByMethod.Count > 1
+                    ? "[" + string.Join(",", payByMethod.Select(p => $"{{\"method\":\"{p.Method}\",\"amount\":{p.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)}}}")) + "]"
+                    : payByMethod.First().Method;
+
                 var cashPayment = invoice.Payments.FirstOrDefault(p => p.Method == "Cash" || p.Method == "Tiền mặt");
                 if (cashPayment != null)
                 {
@@ -476,6 +482,10 @@ public class InvoicesController : ControllerBase
         // Tính tier discount TRƯỚC validation
         var subTotal = invoice.InvoiceItems.Sum(ii => ii.Quantity * ii.SellPrice);
         var (discountPercent, discountAmount, totalAmount) = await _orderDiscountService.CalculateDiscountAsync(subTotal, branchId);
+        // Tỉ lệ chiết khấu đơn hàng — để ghi giá NET (sau CK) lên phiếu xuất SALE,
+        // sao cho "thành tiền" = qty × giá net = đúng số tiền khách thực trả.
+        var invoiceDiscountRatio = subTotal > 0m ? Math.Max(0m, 1m - totalAmount / subTotal) : 0m;
+        Console.WriteLine($"[FinalizeSale] SubTotal={subTotal:N0} Total={totalAmount:N0} DiscountRatio={invoiceDiscountRatio:P2} -> UnitPrice se ghi gia NET");
 
         var hasPending = invoice.Payments.Any(p => p.Status == "Pending");
         if (hasPending)
@@ -601,7 +611,9 @@ public class InvoicesController : ControllerBase
                     SystemQuantity = stockAfter + actualQty,
                     ActualQuantity = stockAfter,
                     Discrepancy = actualQty,
-                    UnitPrice = item.SellPrice,
+                    // Giá bán NET (sau chiết khấu đơn hàng) → "thành tiền" = qty × giá net
+                    // = đúng số tiền khách thực trả cho dòng này. (Trước đây ghi SellPrice gốc.)
+                    UnitPrice = Math.Round(item.SellPrice * (1m - invoiceDiscountRatio), 4),
                     UnitName = item.UnitName ?? item.BranchProduct.Product?.BaseUnit ?? ""
                 };
                 _context.StockTicketItems.Add(ticketItem);
@@ -649,9 +661,14 @@ public class InvoicesController : ControllerBase
 
         if (invoice.Payments != null && invoice.Payments.Any())
         {
-            dto.PaymentMethod = invoice.Payments.Count > 1
-                ? "[" + string.Join(",", invoice.Payments.Select(p => $"{{\"method\":\"{p.Method}\",\"amount\":{p.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)}}}")) + "]" 
-                : invoice.Payments.First().Method.ToString();
+            // Gom theo method (dedup) — tránh "Tiền mặt, Tiền mặt" khi có cả payment bán + payment đổi chênh.
+            var payByMethod = invoice.Payments
+                .GroupBy(p => p.Method)
+                .Select(g => new { Method = g.Key, Amount = g.Sum(x => x.Amount) })
+                .ToList();
+            dto.PaymentMethod = payByMethod.Count > 1
+                ? "[" + string.Join(",", payByMethod.Select(p => $"{{\"method\":\"{p.Method}\",\"amount\":{p.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)}}}")) + "]"
+                : payByMethod.First().Method;
         }
 
         // Real-time: query items fresh (not from change-tracked entity) for notification payload

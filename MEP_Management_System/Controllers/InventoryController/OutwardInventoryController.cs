@@ -1453,7 +1453,13 @@ th {{ background: #f0f0f0; }}
                     SystemQuantity = item.SystemQuantity,
                     Quantity = item.Discrepancy,
                     ActualQuantity = item.ActualQuantity,
-                    UnitPrice = (item.UnitPrice ?? 0) > 0 ? item.UnitPrice : (item.BranchProduct?.CostPrice ?? 0),
+                    // SALE = phiếu xuất bán hàng -> ghi GIÁ BÁN. Các loại xuất nội bộ/hủy/trả NCC -> GIÁ VỐN.
+                    // Ưu tiên snapshot UnitPrice lưu lúc tạo; nếu =0 thì lấy theo loại phiếu.
+                    UnitPrice = (item.UnitPrice ?? 0) > 0
+                        ? item.UnitPrice
+                        : (stockTicket.TicketType == "SALE"
+                            ? (item.BranchProduct?.SellPrice ?? 0)
+                            : (item.BranchProduct?.CostPrice ?? 0)),
                     UnitName = item.UnitName ?? item.BranchProduct?.Product?.BaseUnit,
                     InwardTicketItemId = item.InwardTicketItemId
                 }).ToList() ?? new()

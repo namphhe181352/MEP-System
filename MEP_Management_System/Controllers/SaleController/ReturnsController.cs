@@ -117,9 +117,28 @@ public class ReturnsController : ControllerBase
             .Take(pageSize)
             .ToListAsync();
 
+        var dtos = items.Select(r => _mapper.Map<ReturnOrderDto>(r)).ToList();
+
+        // Nạp CashReceived/ChangeAmount từ Payment liên kết (cho đơn đổi chênh dương CASH)
+        var paymentIds = dtos.Where(d => d.PaymentId.HasValue).Select(d => d.PaymentId!.Value).Distinct().ToList();
+        if (paymentIds.Count > 0)
+        {
+            var payments = await _context.Payments
+                .Where(p => paymentIds.Contains(p.PaymentId))
+                .ToDictionaryAsync(p => p.PaymentId);
+            foreach (var d in dtos)
+            {
+                if (d.PaymentId.HasValue && payments.TryGetValue(d.PaymentId.Value, out var pay))
+                {
+                    d.CashReceived = pay.CashReceived;
+                    d.ChangeAmount = pay.ChangeAmount;
+                }
+            }
+        }
+
         return Ok(new PageResultDto<ReturnOrderDto>
         {
-            Items = items.Select(r => _mapper.Map<ReturnOrderDto>(r)).ToList(),
+            Items = dtos,
             TotalCount = total,
             PageNumber = page,
             PageSize = pageSize
@@ -142,7 +161,20 @@ public class ReturnsController : ControllerBase
 
         if (r == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Không tìm thấy phiếu đổi trả."));
 
-        return Ok(_mapper.Map<ReturnOrderDto>(r));
+        var dto = _mapper.Map<ReturnOrderDto>(r);
+
+        // Nạp CashReceived/ChangeAmount từ Payment liên kết
+        if (r.PaymentId.HasValue)
+        {
+            var pay = await _context.Payments.FindAsync(r.PaymentId.Value);
+            if (pay != null)
+            {
+                dto.CashReceived = pay.CashReceived;
+                dto.ChangeAmount = pay.ChangeAmount;
+            }
+        }
+
+        return Ok(dto);
     }
 
     // POST /api/pos/returns
@@ -424,11 +456,31 @@ public class ReturnsController : ControllerBase
         var avgPrice = originalItems.Sum(ii => ii.SellPrice * ii.Quantity) / totalBought;
         var grossRefundLine = req.Quantity * avgPrice;
 
-        // Áp dụng chiết khấu trả hàng branch-level (thay cho prorate chiết khấu của hóa đơn gốc)
-        var returnDiscountPercent = await GetReturnDiscountPercent(GetBranchId());
-        var discountRatio = returnDiscountPercent > 0m ? returnDiscountPercent / 100m : 0m;
-        var discountPortion = grossRefundLine * discountRatio;
-        var refundLine = Math.Max(0, grossRefundLine - discountPortion);
+        // === Áp dụng chiết khấu HÓA ĐƠN GỐC: hoàn theo GIÁ KHÁCH THỰC TRẢ ===
+        //    Đơn gốc có CK (vd 5%) → SP gốc 500k nhưng khách chỉ trả 475k →
+        //    tiền hoàn phải dựa 475k, KHÔNG dựa giá gốc 500k.
+        //    Dùng tỉ lệ TotalAmount/SubTotalAmount để đúng cho cả CK % và CK số tiền.
+        var inv = originalItems.First().Invoice;
+        decimal invoiceDiscountRatio = 0m;
+        if (inv != null && inv.SubTotalAmount > 0m)
+            invoiceDiscountRatio = Math.Max(0m, 1m - inv.TotalAmount / inv.SubTotalAmount);
+        var paidRefundLine = Math.Max(0m, grossRefundLine * (1m - invoiceDiscountRatio));
+
+        // === Áp dụng chiết khấu trả hàng branch-level.
+        //    QUY TẮC: Chiết khấu CHỈ áp dụng cho luồng TRẢ HÀNG (REFUND).
+        //    Luồng ĐỔI (EXCHANGE / đổi lệch giá) KHÔNG trừ chiết khấu — tính giá trị gốc.
+        decimal refundLine;
+        if (ret.ReturnType == "EXCHANGE")
+        {
+            refundLine = grossRefundLine;
+        }
+        else
+        {
+            var returnDiscountPercent = await GetReturnDiscountPercent(GetBranchId());
+            var discountRatio = returnDiscountPercent > 0m ? returnDiscountPercent / 100m : 0m;
+            var discountPortion = paidRefundLine * discountRatio;
+            refundLine = Math.Max(0, paidRefundLine - discountPortion);
+        }
 
         // === FIX: Tự tra hệ số quy đổi (ConvertValue) từ dòng hóa đơn gốc ===
         // Trước đây tin tưởng req.ConversionRate (FE hay gửi thiếu -> mặc định 1 ->
@@ -682,7 +734,7 @@ public class ReturnsController : ControllerBase
                 RefundCode = $"RFD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString()[..4].ToUpper()}",
                 OrderId = ret.OrderId,
                 InvoiceId = (await _context.Invoices.FirstOrDefaultAsync(i => i.OrderId == ret.OrderId))?.InvoiceId,
-                CustomerId = ret.Order?.CustomerId ?? Guid.Empty,
+                CustomerId = ret.Order?.CustomerId,
                 UserId = ret.UserId,
                 RefundAmount = ret.RefundAmount,
                 RefundMethod = ret.ReturnType == "REFUND" ? "CASH" : (ret.RefundMethod ?? "CASH"),
@@ -847,6 +899,10 @@ public class ReturnsController : ControllerBase
         var method = (req?.Method?.ToUpper() ?? ret.PaymentMethod ?? "CASH");
         if (method != "CASH" && method != "TRANSFER")
             return BadRequest(ApiErrorResponse.Create("MSG-78", "Phương thức thanh toán không hợp lệ (CASH/TRANSFER)."));
+
+        // Ghi nhận phương thức thực tế khách dùng (fix: trước đây giữ default "CASH" từ lúc tạo
+        //  → ReturnOrder.PaymentMethod luôn là "CASH" → nhãn hiện "Tiền mặt" kể cả khi trả chuyển khoản).
+        ret.PaymentMethod = method;
 
         var openShiftId = await GetOpenShiftIdAsync(branchId);
         var invoiceId = ret.Order?.Invoice?.InvoiceId;
@@ -1024,6 +1080,7 @@ public class ReturnsController : ControllerBase
         {
             p.Status = "Confirmed";
             p.PaidAt = DateTime.UtcNow;
+            ret.PaymentMethod = "TRANSFER";
 
             var stockErr = await ApplyExchangeDiffStockAsync(ret);
             if (stockErr != null)
@@ -1496,7 +1553,7 @@ public class ReturnsController : ControllerBase
                 SystemQuantity = bp.ActualStock,
                 ActualQuantity = bp.ActualStock - baseQty,
                 Discrepancy = baseQty,
-                UnitPrice = bp.CostPrice,
+                UnitPrice = ei.UnitPrice, // giá bán (ExchangeItem.UnitPrice), KHÔNG lấy CostPrice
                 UnitName = bp.Product?.BaseUnit ?? ""
             };
             _context.StockTicketItems.Add(ticketItem);
@@ -1608,10 +1665,9 @@ public class ReturnsController : ControllerBase
         var branchExchangeDays = branch?.ExchangeDaysAllowed ?? 30;
         var invoiceDate = invoice.CreatedAt ?? DateTime.UtcNow;
 
-        // Chiết khấu trả hàng branch-level (thay cho prorate chiết khấu của hóa đơn gốc)
-        var returnDiscountPercent = await GetReturnDiscountPercent(branchId);
-        var discountRatio = returnDiscountPercent > 0m ? returnDiscountPercent / 100m : 0m;
-
+        // === QUY TẮC: Chiết khấu trả hàng (RETURN_DISCOUNT_PERCENT) KHÔNG áp dụng
+        //    cho luồng ĐỔI LỆCH GIÁ. Đổi trả chỉ tính giá trị ngang/giá gốc, không trừ %.
+        //    Chiết khấu này chỉ dùng cho luồng TRẢ HÀNG (REFUND) ở AddReturnItem.
         decimal oldValue = 0m;
 
         // --- SP A (hàng trả về) ---
@@ -1653,8 +1709,8 @@ public class ReturnsController : ControllerBase
 
             var conversionRate = (ii.ConvertValue.HasValue && ii.ConvertValue.Value > 0) ? ii.ConvertValue.Value : 1m;
             var baseQty = ri.Quantity * conversionRate;
-            var gross = ri.Quantity * ii.SellPrice;
-            var refundLine = Math.Max(0, gross - gross * discountRatio);
+            // Giá trị hàng cũ = giá gốc (KHÔNG trừ chiết khấu trả hàng).
+            var refundLine = ri.Quantity * ii.SellPrice;
             oldValue += refundLine;
 
             prep.Returns.Add(new PreparedReturnItem
