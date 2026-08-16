@@ -517,6 +517,21 @@ public class InvoicesController : ControllerBase
                 return BadRequest(ApiErrorResponse.Create("MSG-78", "Invoice already finalized or not found"));
             }
 
+            // Create StockTicket for Sale
+            var stockTicket = new StockTicket
+            {
+                StockTicketId = Guid.NewGuid(),
+                TicketCode = invoice.InvoiceCode,
+                BranchId = invoice.Order.BranchId,
+                UserId = invoice.UserId,
+                TicketType = "SALE",
+                Status = "COMPLETED",
+                Notes = "Xuất bán hàng " + invoice.InvoiceCode,
+                CreatedAt = DateTime.UtcNow,
+                CompletedAt = DateTime.UtcNow
+            };
+            _context.StockTickets.Add(stockTicket);
+
             // Deduct stock - POS bán lẻ: trừ cả ActualStock và AvailableStock
             // (AvailableStock là stored field, không phải computed property)
             // Fix concurrent checkout with atomic update
@@ -577,6 +592,19 @@ public class InvoicesController : ControllerBase
                     CreatedAt = DateTime.UtcNow
                 };
                 _context.InventoryLedgers.Add(ledgerEntry);
+
+                var ticketItem = new StockTicketItem
+                {
+                    TicketItemId = Guid.NewGuid(),
+                    StockTicketId = stockTicket.StockTicketId,
+                    BranchProductId = item.BranchProductId,
+                    SystemQuantity = stockAfter + actualQty,
+                    ActualQuantity = stockAfter,
+                    Discrepancy = actualQty,
+                    UnitPrice = item.SellPrice,
+                    UnitName = item.UnitName ?? item.BranchProduct.Product?.BaseUnit ?? ""
+                };
+                _context.StockTicketItems.Add(ticketItem);
             }
 
             invoice.Status = "Completed";
