@@ -1,15 +1,11 @@
 using System;
-using System.Linq;
 using System.Security.Claims;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using AutoMapper;
 using MEP_Management_System.Authorization;
 using MEP_Management_System.DTOs.SaleDTOs;
-using MEP_Management_System.Models;
+using MEP_Management_System.Services.SaleServices;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace MEP_Management_System.Controllers.SaleController;
 
@@ -19,46 +15,18 @@ namespace MEP_Management_System.Controllers.SaleController;
 [Tags("Quản lý bán hàng (Sale)")]
 public class CustomersController : ControllerBase
 {
-    private readonly Models.MEPDatabaseContext _context;
-    private readonly IMapper _mapper;
+    private readonly ICustomerService _customerService;
 
-    public CustomersController(Models.MEPDatabaseContext context, IMapper mapper)
+    public CustomersController(ICustomerService customerService)
     {
-        _context = context;
-        _mapper = mapper;
+        _customerService = customerService;
     }
-
-    private static readonly Regex PhoneRegex = new(@"^0[3|5|7|8|9][0-9]{8}$", RegexOptions.Compiled);
 
     private Guid GetBranchId() =>
         Guid.Parse(User.FindFirst("branchId")?.Value ?? throw new Exception("branchId not found in token"));
 
     private Guid GetUserId() =>
         Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value ?? throw new Exception("userId not found"));
-
-    private async Task TryWriteSystemLog(Guid userId, string action, string tableName,
-        string entityType, Guid entityId, string description)
-    {
-        try
-        {
-            var log = new SystemLog
-            {
-                LogId = Guid.NewGuid(),
-                UserId = userId,
-                Action = action,
-                TableName = tableName,
-                EntityType = entityType,
-                EntityId = entityId,
-                Description = description,
-                Level = "INFO",
-                Source = "CustomersController",
-                Timestamp = DateTime.UtcNow
-            };
-            _context.SystemLogs.Add(log);
-            await _context.SaveChangesAsync();
-        }
-        catch { /* Silent */ }
-    }
 
     // GET /api/pos/customers
     [HttpGet]
@@ -68,28 +36,13 @@ public class CustomersController : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
     {
         var branchId = GetBranchId();
-
-        var query = _context.Customers.Where(c => c.BranchId == branchId && (c.Status == 1 || c.Status == null)).AsQueryable();
-
-        if (!string.IsNullOrEmpty(search))
-            query = query.Where(c =>
-                (c.CustomerName != null && c.CustomerName.Contains(search)) ||
-                (c.PhoneNumber != null && c.PhoneNumber.Contains(search)) ||
-                (c.Email != null && c.Email.Contains(search)));
-        if (!string.IsNullOrEmpty(group))
-            query = query.Where(c => c.Group == group);
-
-        var total = await query.CountAsync();
-        var customers = await query
-            .OrderBy(c => c.CustomerName)
-            .Skip((page - 1) * pageSize).Take(pageSize)
-            .ToListAsync();
+        var (items, total) = await _customerService.GetCustomersAsync(branchId, search, group, page, pageSize);
 
         Response.Headers["X-Total-Count"] = total.ToString();
 
         return Ok(new PageResultDto<CustomerDto>
         {
-            Items = customers.Select(_mapper.Map<CustomerDto>).ToList(),
+            Items = items,
             PageNumber = page,
             PageSize = pageSize,
             TotalCount = total
@@ -102,17 +55,8 @@ public class CustomersController : ControllerBase
     public async Task<ActionResult<List<CustomerDto>>> GetAllCustomers([FromQuery] string? search)
     {
         var branchId = GetBranchId();
-
-        var query = _context.Customers.Where(c => c.BranchId == branchId && (c.Status == 1 || c.Status == null)).AsQueryable();
-
-        if (!string.IsNullOrEmpty(search))
-            query = query.Where(c =>
-                (c.CustomerName != null && c.CustomerName.Contains(search)) ||
-                (c.PhoneNumber != null && c.PhoneNumber.Contains(search)) ||
-                (c.Email != null && c.Email.Contains(search)));
-
-        var customers = await query.OrderBy(c => c.CustomerName).ToListAsync();
-        return Ok(customers.Select(_mapper.Map<CustomerDto>).ToList());
+        var customers = await _customerService.GetAllCustomersAsync(branchId, search);
+        return Ok(customers);
     }
 
     // POST /api/pos/customers
@@ -120,35 +64,16 @@ public class CustomersController : ControllerBase
     [HasPermission(PermissionConstants.CUSTOMER_CREATE)]
     public async Task<ActionResult<CustomerDto>> CreateCustomer([FromBody] CreateCustomerRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.CustomerName))
-            return BadRequest(ApiErrorResponse.Create("MSG-85", "Customer name is required"));
-        if (!string.IsNullOrEmpty(request.PhoneNumber))
+        var (customer, errorCode, errorMessage) = await _customerService.CreateCustomerAsync(GetBranchId(), GetUserId(), request);
+
+        if (customer == null)
         {
-            if (!PhoneRegex.IsMatch(request.PhoneNumber))
-                return BadRequest(ApiErrorResponse.Create("MSG-67", "Invalid phone number format. Expected: 0x-xxxx-xxxx (x = digit)"));
-            var branchId = GetBranchId();
-            var exists = await _context.Customers.AnyAsync(c => c.PhoneNumber == request.PhoneNumber && c.BranchId == branchId && (c.Status == 1 || c.Status == null));
-            if (exists) return Conflict(ApiErrorResponse.Create("MSG-68", "Phone number already registered in this store"));
+            if (errorCode == "MSG-68")
+                return Conflict(ApiErrorResponse.Create(errorCode, errorMessage!));
+            return BadRequest(ApiErrorResponse.Create(errorCode!, errorMessage!));
         }
 
-        var customer = _mapper.Map<Customer>(request);
-        customer.CustomerId = Guid.NewGuid();
-        customer.CreatedBy = GetUserId();
-        customer.BranchId = GetBranchId();
-        Console.WriteLine($"[DEBUG] CreateCustomer - BranchId: {customer.BranchId}, CreatedBy: {customer.CreatedBy}");
-
-        _context.Customers.Add(customer);
-        await _context.SaveChangesAsync();
-
-        await TryWriteSystemLog(
-            GetUserId(),
-            "CREATE_CUSTOMER",
-            "customers",
-            "Customer",
-            customer.CustomerId,
-            $"Tạo khách hàng {customer.CustomerName} - SĐT: {customer.PhoneNumber ?? "—"}");
-
-        return CreatedAtAction(nameof(GetCustomer), new { id = customer.CustomerId }, _mapper.Map<CustomerDto>(customer));
+        return CreatedAtAction(nameof(GetCustomer), new { id = customer.CustomerId }, customer);
     }
 
     // PUT /api/pos/customers/{id}
@@ -156,30 +81,18 @@ public class CustomersController : ControllerBase
     [HasPermission(PermissionConstants.CUSTOMER_UPDATE)]
     public async Task<ActionResult<CustomerDto>> UpdateCustomer(Guid id, [FromBody] UpdateCustomerRequest request)
     {
-        var branchId = GetBranchId();
-        var customer = await _context.Customers.FirstOrDefaultAsync(c => c.CustomerId == id && c.BranchId == branchId);
-        if (customer == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Customer not found"));
+        var (customer, errorCode, errorMessage) = await _customerService.UpdateCustomerAsync(id, GetBranchId(), request);
 
-        if (!string.IsNullOrEmpty(request.PhoneNumber) && request.PhoneNumber != customer.PhoneNumber)
+        if (customer == null)
         {
-            if (!PhoneRegex.IsMatch(request.PhoneNumber))
-                return BadRequest(ApiErrorResponse.Create("MSG-67", "Invalid phone number format"));
-            var exists = await _context.Customers.AnyAsync(c => c.PhoneNumber == request.PhoneNumber && c.CustomerId != id && c.BranchId == branchId && (c.Status == 1 || c.Status == null));
-            if (exists) return Conflict(ApiErrorResponse.Create("MSG-68", "Phone number already registered in this store"));
+            if (errorCode == "MSG-01")
+                return NotFound(ApiErrorResponse.Create(errorCode, errorMessage!));
+            if (errorCode == "MSG-68")
+                return Conflict(ApiErrorResponse.Create(errorCode, errorMessage!));
+            return BadRequest(ApiErrorResponse.Create(errorCode!, errorMessage!));
         }
 
-        _mapper.Map(request, customer);
-        await _context.SaveChangesAsync();
-
-        await TryWriteSystemLog(
-            GetUserId(),
-            "UPDATE_CUSTOMER",
-            "customers",
-            "Customer",
-            customer.CustomerId,
-            $"Cập nhật khách hàng {customer.CustomerName} - SĐT: {customer.PhoneNumber ?? "—"}");
-
-        return Ok(_mapper.Map<CustomerDto>(customer));
+        return Ok(customer);
     }
 
     // GET /api/pos/customers/{id}
@@ -187,54 +100,27 @@ public class CustomersController : ControllerBase
     [Authorize]
     public async Task<ActionResult<CustomerDto>> GetCustomer(Guid id)
     {
-        var branchId = GetBranchId();
-        var customer = await _context.Customers.FirstOrDefaultAsync(c => c.CustomerId == id && c.BranchId == branchId);
-        if (customer == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Customer not found"));
-        return Ok(_mapper.Map<CustomerDto>(customer));
+        var customer = await _customerService.GetCustomerAsync(id, GetBranchId());
+        if (customer == null)
+            return NotFound(ApiErrorResponse.Create("MSG-01", "Customer not found"));
+        return Ok(customer);
     }
 
     // DELETE /api/pos/customers/{id}
-    // Có đơn hàng → soft-delete (Status = 0) để giữ lịch sử.
-    // Không có đơn → hard-delete.
     [HttpDelete("{id:guid}")]
     [HasPermission(PermissionConstants.CUSTOMER_DELETE)]
     public async Task<IActionResult> DeleteCustomer(Guid id)
     {
-        var branchId = GetBranchId();
-        var customer = await _context.Customers.FirstOrDefaultAsync(c => c.CustomerId == id && c.BranchId == branchId);
-        if (customer == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Customer not found"));
+        var (success, errorCode, errorMessage, softDelete) = await _customerService.DeleteCustomerAsync(id, GetBranchId());
 
-        var hasOrders = await _context.Orders.AnyAsync(o => o.CustomerId == id);
-        var action = hasOrders ? "SOFT_DELETE_CUSTOMER" : "HARD_DELETE_CUSTOMER";
-
-        if (hasOrders)
+        if (!success)
         {
-            customer.Status = 0;
-            if (!string.IsNullOrEmpty(customer.PhoneNumber))
-            {
-                var shortId = customer.CustomerId.ToString().Substring(0, 6);
-                var newPhone = $"d_{shortId}_{customer.PhoneNumber}";
-                if (newPhone.Length > 20) newPhone = newPhone.Substring(0, 20);
-                customer.PhoneNumber = newPhone;
-            }
-            customer.UpdatedAt = DateTime.UtcNow;
-        }
-        else
-        {
-            _context.Customers.Remove(customer);
+            if (errorCode == "MSG-01")
+                return NotFound(ApiErrorResponse.Create(errorCode, errorMessage!));
+            return BadRequest(ApiErrorResponse.Create(errorCode!, errorMessage!));
         }
 
-        await _context.SaveChangesAsync();
-
-        await TryWriteSystemLog(
-            GetUserId(),
-            action,
-            "customers",
-            "Customer",
-            customer.CustomerId,
-            $"Xóa khách hàng {customer.CustomerName} - SĐT: {customer.PhoneNumber ?? "—"} ({(hasOrders ? "soft-delete" : "hard-delete")})");
-
-        return Ok(new { success = true, message = hasOrders ? "Customer blocked" : "Customer deleted", softDelete = hasOrders });
+        return Ok(new { success = true, message = softDelete ? "Customer blocked" : "Customer deleted", softDelete });
     }
 
     // GET /api/pos/customers/{id}/orders
@@ -243,31 +129,7 @@ public class CustomersController : ControllerBase
     public async Task<ActionResult<PageResultDto<CustomerOrderDto>>> GetCustomerOrders(
         Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
-        var branchId = GetBranchId();
-        var customer = await _context.Customers.FirstOrDefaultAsync(c => c.CustomerId == id && c.BranchId == branchId);
-        if (customer == null) return NotFound(ApiErrorResponse.Create("MSG-01", "Customer not found"));
-
-        var query = _context.Invoices
-            .Where(i => i.Order.CustomerId == id && i.Status == "Completed")
-            .Include(i => i.InvoiceItems)
-            .AsQueryable();
-
-        var total = await query.CountAsync();
-        var invoices = await query
-            .OrderByDescending(i => i.CreatedAt)
-            .Skip((page - 1) * pageSize).Take(pageSize)
-            .ToListAsync();
-
-        var items = invoices.Select(i => new CustomerOrderDto
-        {
-            InvoiceId = i.InvoiceId,
-            InvoiceCode = i.InvoiceCode,
-            TotalAmount = i.TotalAmount,
-            PaymentMethod = i.PaymentMethod,
-            Status = i.Status,
-            CreatedAt = i.CreatedAt ?? DateTime.MinValue,
-            ItemCount = i.InvoiceItems.Count
-        }).ToList();
+        var (items, total) = await _customerService.GetCustomerOrdersAsync(id, GetBranchId(), page, pageSize);
 
         return Ok(new PageResultDto<CustomerOrderDto>
         {

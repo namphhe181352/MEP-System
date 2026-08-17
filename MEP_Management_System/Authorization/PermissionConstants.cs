@@ -40,6 +40,7 @@ public static class PermissionConstants
 
     // === STOCK / INVENTORY (Xuất nhập kho) ===
     public const string STOCK_VIEW = "STOCK_VIEW";
+    public const string STOCK_UPDATE = "STOCK_UPDATE";
     public const string STOCK_INWARD_CREATE = "STOCK_INWARD_CREATE";
     public const string STOCK_INWARD_UPDATE = "STOCK_INWARD_UPDATE";
     public const string STOCK_INWARD_DELETE = "STOCK_INWARD_DELETE";

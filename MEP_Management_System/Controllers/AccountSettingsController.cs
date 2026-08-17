@@ -1,11 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.AccountSettings_DTOs;
-using MEP_Management_System.Models;
+using MEP_Management_System.Services.AccountSettingsServices;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
@@ -22,11 +20,11 @@ namespace MEP_Management_System.Controllers
     [Route("api/account-settings")]
     public class AccountSettingsController : ControllerBase
     {
-        private readonly MEPDatabaseContext _context;
+        private readonly IAccountSettingsService _accountSettingsService;
 
-        public AccountSettingsController(MEPDatabaseContext context)
+        public AccountSettingsController(IAccountSettingsService accountSettingsService)
         {
-            _context = context;
+            _accountSettingsService = accountSettingsService;
         }
 
         /// <summary>
@@ -58,11 +56,8 @@ namespace MEP_Management_System.Controllers
                 });
             }
 
-            var user = await _context.Users
-                .Include(u => u.Roles)
-                .FirstOrDefaultAsync(u => u.UserId == userId.Value);
-
-            if (user == null)
+            var dto = await _accountSettingsService.GetProfileAsync(userId.Value);
+            if (dto == null)
             {
                 return NotFound(new ApiResponse<AccountProfileDto>
                 {
@@ -70,19 +65,6 @@ namespace MEP_Management_System.Controllers
                     Message = "Không tìm thấy người dùng."
                 });
             }
-
-            var dto = new AccountProfileDto
-            {
-                UserId = user.UserId,
-                Username = user.Username,
-                FullName = user.FullName,
-                Email = user.Email,
-                PhoneNumber = user.PhoneNumber,
-                Status = user.Status ?? "ACTIVE",
-                SuspendedUntil = user.SuspendedUntil,
-                CreatedAt = user.CreatedAt,
-                Roles = user.Roles.Select(r => r.RoleName).ToList()
-            };
 
             return Ok(new ApiResponse<AccountProfileDto>
             {
@@ -128,65 +110,7 @@ namespace MEP_Management_System.Controllers
                 });
             }
 
-            var user = await _context.Users
-                .Include(u => u.Roles)
-                .FirstOrDefaultAsync(u => u.UserId == userId.Value);
-
-            if (user == null)
-            {
-                return NotFound(new ApiResponse<AccountProfileDto>
-                {
-                    Success = false,
-                    Message = "Không tìm thấy người dùng."
-                });
-            }
-
-            // Kiểm tra SĐT đã tồn tại chưa (nếu có thay đổi)
-            if (!string.IsNullOrWhiteSpace(request.PhoneNumber))
-            {
-                var phoneTrimmed = request.PhoneNumber.Trim();
-
-                // Validate định dạng số điện thoại Việt Nam (10 số, bắt đầu 0[35789])
-                if (!System.Text.RegularExpressions.Regex.IsMatch(phoneTrimmed, @"^0[35789]\d{8}$"))
-                {
-                    return BadRequest(new ApiResponse<AccountProfileDto>
-                    {
-                        Success = false,
-                        Message = "Số điện thoại không hợp lệ. Vui lòng nhập số điện thoại Việt Nam 10 chữ số."
-                    });
-                }
-
-                var existingUser = await _context.Users
-                    .AnyAsync(u => u.PhoneNumber == phoneTrimmed && u.UserId != userId.Value);
-
-                if (existingUser)
-                {
-                    return BadRequest(new ApiResponse<AccountProfileDto>
-                    {
-                        Success = false,
-                        Message = "Số điện thoại đã được sử dụng bởi tài khoản khác."
-                    });
-                }
-            }
-
-            // Cập nhật chỉ FullName và PhoneNumber
-            user.FullName = request.FullName.Trim();
-            user.PhoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim();
-
-            await _context.SaveChangesAsync();
-
-            var dto = new AccountProfileDto
-            {
-                UserId = user.UserId,
-                Username = user.Username,
-                FullName = user.FullName,
-                Email = user.Email,
-                PhoneNumber = user.PhoneNumber,
-                Status = user.Status ?? "ACTIVE",
-                SuspendedUntil = user.SuspendedUntil,
-                CreatedAt = user.CreatedAt,
-                Roles = user.Roles.Select(r => r.RoleName).ToList()
-            };
+            var dto = await _accountSettingsService.UpdateProfileAsync(userId.Value, request.FullName, request.PhoneNumber);
 
             return Ok(new ApiResponse<AccountProfileDto>
             {
@@ -232,39 +156,7 @@ namespace MEP_Management_System.Controllers
                 });
             }
 
-            var user = await _context.Users.FindAsync(userId.Value);
-            if (user == null)
-            {
-                return NotFound(new ApiResponse<bool>
-                {
-                    Success = false,
-                    Message = "Không tìm thấy người dùng."
-                });
-            }
-
-            // Xác minh mật khẩu hiện tại
-            if (!BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash))
-            {
-                return BadRequest(new ApiResponse<bool>
-                {
-                    Success = false,
-                    Message = "Mật khẩu hiện tại không đúng."
-                });
-            }
-
-            // Kiểm tra mật khẩu mới không được trùng với mật khẩu cũ
-            if (BCrypt.Net.BCrypt.Verify(request.NewPassword, user.PasswordHash))
-            {
-                return BadRequest(new ApiResponse<bool>
-                {
-                    Success = false,
-                    Message = "Mật khẩu mới không được trùng với mật khẩu cũ."
-                });
-            }
-
-            // Hash và lưu mật khẩu mới
-            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
-            await _context.SaveChangesAsync();
+            await _accountSettingsService.ChangePasswordAsync(userId.Value, request.CurrentPassword, request.NewPassword);
 
             return Ok(new ApiResponse<bool>
             {

@@ -11,7 +11,7 @@ public partial class RefundRecord
 
     public Guid? InvoiceId { get; set; }
 
-    public Guid CustomerId { get; set; }
+    public Guid? CustomerId { get; set; }
 
     public Guid UserId { get; set; }
 
@@ -36,7 +36,7 @@ public partial class RefundRecord
 
     public virtual Invoice? Invoice { get; set; }
 
-    public virtual Customer Customer { get; set; } = null!;
+    public virtual Customer? Customer { get; set; }
 
     public virtual User User { get; set; } = null!;
 }

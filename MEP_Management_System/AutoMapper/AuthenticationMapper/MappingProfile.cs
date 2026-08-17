@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using MEP_Management_System.DTOs;
+using MEP_Management_System.DTOs.AuthenticationDTOs;
 using MEP_Management_System.Models;
 
 namespace MEP_Management_System.AutoMapper

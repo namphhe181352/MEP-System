@@ -125,3 +125,48 @@ public class LotAllocationItemDto
     /// <summary>SL_Con_BH_NCC còn lại sau khi phân bổ.</summary>
     public decimal RemainingAfter { get; set; }
 }
+public class CreateWarrantyClaimRequest
+{
+    public decimal Quantity { get; set; }
+    public string ClaimType { get; set; } = "REPAIR";
+    public string? IssueDescription { get; set; }
+    public string? CustomerName { get; set; }
+    public string? CustomerPhone { get; set; }
+    public Guid? ReplacementProductId { get; set; }
+}
+
+public class UpdateWarrantyClaimRequest
+{
+    public string Status { get; set; } = "PENDING";
+    public string? ProcessNotes { get; set; }
+}
+
+public class WarrantyClaimDto
+{
+    public Guid ClaimId { get; set; }
+    public string? ClaimCode { get; set; }
+    public DateTime? ClaimDate { get; set; }
+    public decimal ClaimedQuantity { get; set; }
+    public string? ClaimType { get; set; }
+    public string? IssueDescription { get; set; }
+    public string? CustomerName { get; set; }
+    public string? CustomerPhone { get; set; }
+    public string? Status { get; set; }
+    public string? ProcessNotes { get; set; }
+    public Guid ProductId { get; set; }
+    public string? ProductName { get; set; }
+    public string? TicketCode { get; set; }
+    public string? SupplierName { get; set; }
+    public string? ClaimedByUserName { get; set; }
+    public string? ProcessedByUserName { get; set; }
+    public DateTime? ProcessedAt { get; set; }
+    public DateTime? CreatedAt { get; set; }
+}
+
+public class WarrantyClaimResultDto
+{
+    public Guid ClaimId { get; set; }
+    public string? ClaimCode { get; set; }
+    public string? Status { get; set; }
+    public decimal RemainingWarranty { get; set; }
+}
