@@ -147,11 +147,11 @@ public class ReportService : IReportService
                 && st.CreatedAt < nextDate)
             .CountAsync();
 
-        // 5. Lấy phiếu xuất kho trong ngày (RETURN_SUPPLIER, WRITE_OFF, TRANSFER)
+        // 5. Lấy phiếu xuất kho trong ngày (RETURN_SUPPLIER, WRITE_OFF, TRANSFER, SALE)
         var outwardTickets = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
                 && (st.Status == "COMPLETED" || st.Status == "Completed")
-                && (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER")
+                && (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER" || st.TicketType == "SALE")
                 && st.CreatedAt >= reportDate
                 && st.CreatedAt < nextDate)
             .CountAsync();
@@ -176,16 +176,30 @@ public class ReportService : IReportService
             paymentBreakdown.TransferAmount -= refundTransfer;
         }
 
-        // 6. Lấy chi phí (phiếu chi tiền) trong ngày - chỉ tính CONFIRMED
-        var totalExpense = await _context.ExpenseVouchers
+        // 6b. Bổ sung: Chênh lệch thu thêm từ Đổi hàng (EXCHANGE)
+        var exchangeReturns = await _context.ReturnOrders
+            .Where(r => r.Order.BranchId == branchId.Value
+                && r.ReturnType == "EXCHANGE"
+                && (r.Status == "COMPLETED" || r.Status == "Completed")
+                && r.CreatedAt >= reportDate
+                && r.CreatedAt < nextDate)
+            .ToListAsync();
+        var exchangeDeltaIn = exchangeReturns.Sum(r => r.DeltaAmount ?? 0m);
+
+        // 7. Lấy chi phí (phiếu chi tiền) trong ngày - chỉ tính CONFIRMED
+        var expenses = await _context.ExpenseVouchers
             .Where(ev => ev.BranchId == branchId.Value
                 && (ev.Status == "COMPLETED" || ev.Status == "Completed")
                 && ev.CreatedAt >= reportDate
                 && ev.CreatedAt < nextDate)
-            .SumAsync(ev => ev.Amount);
+            .ToListAsync();
+        var totalExpense = expenses.Sum(ev => ev.Amount);
 
-        // Tính lợi nhuận ròng = Doanh thu - Chi phí
-        var totalRevenue = orders.Sum(o => o.TotalAmount);
+        // Tính tổng doanh thu THUẦN (Gross - Refunds + ExchangeDelta) để khớp với POS Shift
+        var grossRevenue = orders.Sum(o => o.TotalAmount);
+        var totalRevenue = grossRevenue - (refundCash + refundTransfer) + exchangeDeltaIn;
+
+        // Tính lợi nhuận ròng = Doanh thu thuần - Chi phí
         var netProfit = totalRevenue - totalExpense;
 
         var result = new DailyEndReportDto

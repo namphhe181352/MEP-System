@@ -1404,6 +1404,7 @@ public class ReturnServiceImpl : IReturnService
             TicketType = "SALE",
             Status = "COMPLETED",
             Notes = "Doi hang (Xuat giao) " + ret.ReturnCode,
+            TotalAmount = (ret.DeltaAmount ?? 0m) > 0 ? (ret.DeltaAmount ?? 0m) : 0m,
             CreatedAt = DateTime.UtcNow,
             CompletedAt = DateTime.UtcNow
         };
@@ -1423,7 +1424,7 @@ public class ReturnServiceImpl : IReturnService
                 SystemQuantity = bp.ActualStock,
                 ActualQuantity = bp.ActualStock - baseQty,
                 Discrepancy = baseQty,
-                UnitPrice = bp.CostPrice,
+                UnitPrice = ei.UnitPrice,
                 UnitName = bp.Product?.BaseUnit ?? ""
             });
 
