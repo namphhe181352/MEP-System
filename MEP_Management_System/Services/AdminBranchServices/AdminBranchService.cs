@@ -118,7 +118,9 @@ public class AdminBranchService : IAdminBranchService
             return;
 
         var candidateList = candidate.ToList();
+        // Lấy danh sách users kèm theo Role để kiểm tra Admin
         var users = await _context.Users
+            .Include(u => u.Roles)
             .Where(u => candidateList.Contains(u.UserId))
             .ToListAsync();
 
@@ -127,6 +129,10 @@ public class AdminBranchService : IAdminBranchService
 
         foreach (var u in users)
         {
+            // Bỏ qua nếu là Admin vì Admin không thuộc chi nhánh nào
+            if (u.Roles.Any(r => r.RoleName == "Admin"))
+                continue;
+
             // Bỏ qua user còn đang hoạt động ở chi nhánh KHÁC.
             var hasOtherActiveBranch = await _context.StaffAssignments
                 .AnyAsync(sa => sa.UserId == u.UserId

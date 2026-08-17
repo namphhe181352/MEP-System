@@ -1330,6 +1330,7 @@ th {{ background: #f0f0f0; }}
             CancelledBy = stockTicket.CancelledBy,
             CancelReason = stockTicket.CancelReason,
             CanConfirm = canConfirm,
+            TotalAmount = stockTicket.TotalAmount,
             Items = stockTicket.StockTicketItems?.Select(item => new OutwardInventoryItemResponseDto
             {
                 TicketItemId = item.TicketItemId,

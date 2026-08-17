@@ -252,9 +252,27 @@ public class AuthService : IAuthService
             throw new BusinessException("Mật khẩu không chính xác.");
         }
 
+        var userRoles = await _context.Roles
+            .Where(r => r.Users.Any(u => u.UserId == user.UserId))
+            .Select(r => r.RoleName)
+            .ToListAsync();
+
+        var isOwner = userRoles.Contains("Owner");
+        var isAdmin = userRoles.Contains("Admin");
+
         if (string.Equals(user.Status, "BRANCH_DELETED", StringComparison.OrdinalIgnoreCase))
         {
-            throw new BusinessException("Cửa hàng của bạn đã bị xóa. Vui lòng liên hệ quản trị viên để được phân công lại.");
+            if (isAdmin)
+            {
+                user.Status = "ACTIVE";
+                user.IsActive = 1;
+                user.DeletedAt = null;
+                await _context.SaveChangesAsync();
+            }
+            else
+            {
+                throw new BusinessException("Cửa hàng của bạn đã bị xóa. Vui lòng liên hệ quản trị viên để được phân công lại.");
+            }
         }
 
         if (user.IsActive != 1)
@@ -272,13 +290,7 @@ public class AuthService : IAuthService
             throw new BusinessException("Tài khoản của bạn chưa được xác thực.");
         }
 
-        var userRoles = await _context.Roles
-            .Where(r => r.Users.Any(u => u.UserId == user.UserId))
-            .Select(r => r.RoleName)
-            .ToListAsync();
 
-        var isOwner = userRoles.Contains("Owner");
-        var isAdmin = userRoles.Contains("Admin");
 
         string? branchIdForToken = null;
 
