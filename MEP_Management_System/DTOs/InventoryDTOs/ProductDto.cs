@@ -149,6 +149,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public int PageSize { get; set; } = 10;
         public string? SearchTerm { get; set; }
         public string? Sort { get; set; }
+        public string? SortOrder { get; set; }
         public string? Order { get; set; } = "asc";
         public string? CategoryName { get; set; }
         public string? BrandName { get; set; }
@@ -310,14 +311,19 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
     {
         ReturnToSupplier = 1,
         DamagedHaoHut = 2,
-        InternalUse = 3
+        InternalUse = 3,
+        SupplierReturn = 4,
+        Sale = 5
     }
 
     public class OutwardInventoryItemDto
     {
+        /// <summary>Flexible ID: can be BranchProductId, ProductId, or ProductCode.</summary>
+        public string? Id { get; set; }
         public Guid BranchProductId { get; set; }
         public decimal Quantity { get; set; }
         public decimal? UnitPrice { get; set; }
+        public decimal? CostPrice { get; set; }
         /// <summary>FK tới dòng hàng của phiếu nhập gốc (dùng khi xuất trả NCC).</summary>
         public Guid? InwardTicketItemId { get; set; }
     }
@@ -351,6 +357,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public decimal Quantity { get; set; }
         public decimal ActualQuantity { get; set; }
         public decimal? UnitPrice { get; set; }
+        public decimal? CostPrice { get; set; }
         public string? UnitName { get; set; }
         /// <summary>FK tới dòng hàng của phiếu nhập gốc.</summary>
         public Guid? InwardTicketItemId { get; set; }
@@ -382,6 +389,8 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
 
         /// <summary>Chỉ true khi Status=PENDING VÀ user có quyền STOCK_OUTWARD_CONFIRM hoặc là Owner.</summary>
         public bool CanConfirm { get; set; }
+
+        public decimal TotalAmount { get; set; }
 
         public List<OutwardInventoryItemResponseDto> Items { get; set; } = new();
     }
@@ -504,8 +513,8 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public decimal Quantity { get; set; }
         public decimal ActualQuantity { get; set; }
 
-        public decimal CostPrice { get; set; }
         public decimal? UnitPrice { get; set; }
+        public decimal? CostPrice { get; set; }
         public string? UnitName { get; set; }
 
     }

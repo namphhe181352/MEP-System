@@ -6,6 +6,19 @@ using MEP_Management_System.Models;
 using MEP_Management_System.Services;
 using MEP_Management_System.Services.Email;
 using MEP_Management_System.Services.InventoryService;
+using MEP_Management_System.Services.InventoryServices;
+using InventoryServices = MEP_Management_System.Services.InventoryServices;
+using MEP_Management_System.Services.UserServices;
+using MEP_Management_System.Services.AccountSettingsServices;
+using MEP_Management_System.Services.SaleServices;
+using MEP_Management_System.Services.OwnerServices;
+using MEP_Management_System.Services.AdminAccountServices;
+using MEP_Management_System.Services.AdminDashboardServices;
+using MEP_Management_System.Services.AdminBranchServices;
+using MEP_Management_System.Services.AdminRoleServices;
+using MEP_Management_System.Services.AdminUserServices;
+using MEP_Management_System.Services.AuthServices;
+using MEP_Management_System.Services.ChatbotServices;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -36,20 +49,60 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentBranchAccessor, CurrentBranchAccessor>();
 builder.Services.AddScoped<IOrderDiscountService, OrderDiscountService>();
 builder.Services.AddScoped<IInwardInventoryExcelService, InwardInventoryExcelService>();
-builder.Services.AddScoped<ReportService>();
+builder.Services.AddScoped<IReportService, ReportService>();
 //builder.Services.AddScoped<IProductService, ProductService>(); // Removed: using static ProductService methods directly
 //builder.Services.AddScoped<IInvoiceService, InvoiceService>(); // Removed: InvoiceService is now static
 builder.Services.AddScoped<ISupplierDebtService, SupplierDebtService>();
+builder.Services.AddScoped<ISupplierService, SupplierService>();
+builder.Services.AddScoped<ISupplierPaymentService, SupplierPaymentService>();
+builder.Services.AddScoped<ILocationService, LocationService>();
+builder.Services.AddScoped<IProductTaxonomyService, ProductTaxonomyService>();
 builder.Services.AddScoped<InventoryLedgerService>();
 builder.Services.AddScoped<CustomerDebtService>();
 builder.Services.AddScoped<InwardInventoryQueryService>();
-builder.Services.AddScoped<StockPrintTemplateService>();
-builder.Services.AddScoped<InvoicePrintTemplateService>();
+builder.Services.AddScoped<IProductService, ProductServiceImpl>();
+builder.Services.AddScoped<IInwardInventoryService, InwardInventoryServiceImpl>();
+builder.Services.AddScoped<IOutwardInventoryService, OutwardInventoryServiceImpl>();
+builder.Services.AddScoped<IInventoryCheckService, InventoryCheckServiceImpl>();
+builder.Services.AddScoped<InventoryServices.IOutwardInventoryExcelService, InventoryServices.OutwardInventoryExcelServiceImpl>();
+builder.Services.AddScoped<IStockPrintTemplateService, StockPrintTemplateService>();
+// builder.Services.AddScoped<InvoicePrintTemplateService>(); // Now using InvoicePrintTemplateServiceImpl via IInvoicePrintTemplateService
 //builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.ToolDispatcher>(); // Removed: ToolDispatcher not found
 builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.SqlExecutor>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IAccountSettingsService, AccountSettingsService>();
+builder.Services.AddScoped<ICustomerService, CustomerService>();
+builder.Services.AddScoped<ICustomerPaymentService, CustomerPaymentService>();
+builder.Services.AddScoped<IPOSProductService, POSProductService>();
+builder.Services.AddScoped<IReturnService, ReturnServiceImpl>();
+builder.Services.AddScoped<IOrderDiscountTierService, OrderDiscountTierService>();
+builder.Services.AddScoped<IOwnerAccountService, OwnerAccountService>();
+builder.Services.AddScoped<IOwnerBranchService, OwnerBranchService>();
+builder.Services.AddScoped<IOwnerOrderDiscountTierService, OwnerOrderDiscountTierService>();
+builder.Services.AddScoped<IOwnerDashboardService, OwnerDashboardService>();
+builder.Services.AddScoped<IOwnerAuditLogService, OwnerAuditLogService>();
+builder.Services.AddScoped<IOwnerStaffService, OwnerStaffService>();
+builder.Services.AddScoped<IInvoicePrintTemplateService, InvoicePrintTemplateServiceImpl>();
+builder.Services.AddScoped<IBranchResolutionService, BranchResolutionService>();
+builder.Services.AddScoped<IExpenseService, ExpenseServiceImpl>();
+builder.Services.AddScoped<ISystemLogService, SystemLogService>();
+builder.Services.AddScoped<ISystemNotificationService, SystemNotificationService>();
+builder.Services.AddScoped<IShiftService, ShiftService>();
+builder.Services.AddScoped<IWarrantyService, WarrantyService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IPrintingService, PrintingService>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddSingleton<MEP_Management_System.Services.Chatbot.ChatbotRateLimiter>();
+builder.Services.AddScoped<IChatbotService, ChatbotService>();
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
 builder.Services.AddTransient<IEmailService, EmailService>();
+
+// Admin Services
+builder.Services.AddScoped<IAdminAccountService, AdminAccountService>();
+builder.Services.AddScoped<MEP_Management_System.Services.AdminDashboardServices.IAdminDashboardService, MEP_Management_System.Services.AdminDashboardServices.AdminDashboardService>();
+builder.Services.AddScoped<MEP_Management_System.Services.AdminBranchServices.IAdminBranchService, MEP_Management_System.Services.AdminBranchServices.AdminBranchService>();
+builder.Services.AddScoped<MEP_Management_System.Services.AdminRoleServices.IAdminRoleService, MEP_Management_System.Services.AdminRoleServices.AdminRoleService>();
+builder.Services.AddScoped<MEP_Management_System.Services.AdminUserServices.IAdminUserService, MEP_Management_System.Services.AdminUserServices.AdminUserService>();
 
 // Background Services
 builder.Services.AddHostedService<UserCleanupService>();
@@ -253,6 +306,7 @@ app.UseSwaggerUI(c =>
 app.UseCors("AllowFrontend");
 // app.UseHttpsRedirection(); // Bỏ comment khi deploy lên server thật có SSL/TLS
 app.UseAuthentication();
+app.UseGlobalExceptionHandler(); // Bắt tất cả exceptions, trả về ApiResponse chuẩn
 app.UseActiveUserCheck();
 app.UseAuthorization();
 

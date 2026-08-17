@@ -65,6 +65,7 @@ public virtual DbSet<Customer> Customers { get; set; }
     public virtual DbSet<ExchangeItem> ExchangeItems { get; set; }
 
     public virtual DbSet<WarrantyTicket> WarrantyTickets { get; set; }
+    public virtual DbSet<WarrantyClaim> WarrantyClaims { get; set; }
 
     public virtual DbSet<WarrantyLotAllocation> WarrantyLotAllocations { get; set; }
 
@@ -1440,6 +1441,11 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasPrecision(15, 2)
                 .HasDefaultValue(0m)
                 .HasColumnName("claimed_warranty_qty");
+            entity.Property(e => e.UnitName)
+                .HasColumnName("unit_name");
+            entity.Property(e => e.Notes)
+                .HasColumnName("notes");
+
 
             entity.HasOne(d => d.BranchProduct).WithMany(p => p.StockTicketItems)
                 .HasForeignKey(d => d.BranchProductId)

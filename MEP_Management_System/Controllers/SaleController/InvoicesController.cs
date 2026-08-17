@@ -7,6 +7,7 @@ using AutoMapper;
 using MEP_Management_System.Authorization;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.DTOs.SaleDTOs;
+using CategoryPolicyDto = MEP_Management_System.DTOs.InventoryDTOs.CategoryPolicyDto;
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Authorization;
