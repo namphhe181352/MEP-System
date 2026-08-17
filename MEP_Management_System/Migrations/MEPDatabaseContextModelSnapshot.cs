@@ -2236,7 +2236,7 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-                    b.Property<Guid>("CustomerId")
+                    b.Property<Guid?>("CustomerId")
                         .HasColumnType("uuid")
                         .HasColumnName("customer_id");
 
@@ -4174,8 +4174,6 @@ namespace MEP_Management_System.Migrations
                     b.HasOne("MEP_Management_System.Models.Customer", "Customer")
                         .WithMany()
                         .HasForeignKey("CustomerId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
                         .HasConstraintName("refund_records_customer_id_fkey");
 
                     b.HasOne("MEP_Management_System.Models.Invoice", "Invoice")

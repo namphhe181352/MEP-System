@@ -500,48 +500,19 @@ public class ReturnsController : ControllerBase
         // REFUND (tra hang hoan tien) → tang ton kho
         if (ret.ReturnType == "REFUND")
         {
-            var stockTicketReturn = new StockTicket
-            {
-                StockTicketId = Guid.NewGuid(),
-                TicketCode = ret.ReturnCode,
-                BranchId = ret.Order!.BranchId,
-                UserId = GetUserId(),
-                TicketType = "CUSTOMER_RETURN",
-                Status = "COMPLETED",
-                Notes = "Khách trả hàng " + ret.ReturnCode,
-                CreatedAt = DateTime.UtcNow,
-                CompletedAt = DateTime.UtcNow
-            };
-            _context.StockTickets.Add(stockTicketReturn);
-
             foreach (var ri in ret.ReturnItems)
             {
-                var bp = await _context.BranchProducts.Include(b => b.Product).FirstOrDefaultAsync(b => b.BranchProductId == ri.BranchProductId);
+                var bp = await _context.BranchProducts.FindAsync(ri.BranchProductId);
                 if (bp != null)
                 {
                     var baseQty = ri.BaseQuantity > 0 ? ri.BaseQuantity : ri.Quantity;
                     var isDefective = string.Equals(ri.Reason, "DEFECTIVE", StringComparison.OrdinalIgnoreCase);
 
-                    var ticketItem = new StockTicketItem
-                    {
-                        TicketItemId = Guid.NewGuid(),
-                        StockTicketId = stockTicketReturn.StockTicketId,
-                        BranchProductId = ri.BranchProductId,
-                        SystemQuantity = bp.ActualStock,
-                        ActualQuantity = bp.ActualStock + baseQty,
-                        Discrepancy = baseQty,
-                        UnitPrice = bp.CostPrice,
-                        UnitName = bp.Product?.BaseUnit ?? ""
-                    };
-                    _context.StockTicketItems.Add(ticketItem);
-
-                    bp.ActualStock += baseQty;
-                    bp.AvailableStock += baseQty;
-
                     if (isDefective)
                     {
-                        // Vẫn tạo WarrantyTicket để theo dõi bảo hành, nhưng không trừ tồn kho nữa (theo yêu cầu của user)
-                        // bp.WarrantyQuantity += baseQty;
+                        // FIX L1: hàng LỖI không về sellable — giữ làm defective hold (WarrantyQuantity)
+                        // + tạo WarrantyTicket (PENDING_ASSIGN) để gửi BH NCC claim lại.
+                        bp.WarrantyQuantity += baseQty;
 
                         _context.WarrantyTickets.Add(new WarrantyTicket
                         {
@@ -562,13 +533,13 @@ public class ReturnsController : ControllerBase
                             LedgerId = Guid.NewGuid(),
                             BranchId = bp.BranchId,
                             BranchProductId = bp.BranchProductId,
-                            DocType = "CUSTOMER_RETURN_DEFECTIVE",
+                            DocType = "DEFECTIVE_HOLD",
                             DocId = ret.ReturnOrderId,
                             DocCode = ret.ReturnCode,
                             TransactionTime = DateTime.UtcNow,
-                            QtyChange = baseQty, // Tồn vật lý TĂNG (hàng trả lại về kho)
+                            QtyChange = 0, // tồn vật lý giữ nguyên (hàng lỗi nằm trong ActualStock, chỉ đánh dấu hold)
                             UnitCostPrice = Math.Round(bp.CostPrice, 4),
-                            TotalCostValue = Math.Round(baseQty * bp.CostPrice, 4),
+                            TotalCostValue = 0,
                             StockAfter = bp.ActualStock,
                             AvgCostAfter = Math.Round(bp.CostPrice, 4),
                             CreatedAt = DateTime.UtcNow
@@ -576,6 +547,10 @@ public class ReturnsController : ControllerBase
                     }
                     else
                     {
+                        // REFUND bình thường (không lỗi) → hàng về sellable
+                        bp.AvailableStock += baseQty;
+                        bp.ActualStock += baseQty;
+
                         _context.InventoryLedgers.Add(new InventoryLedger
                         {
                             LedgerId = Guid.NewGuid(),
@@ -646,8 +621,6 @@ public class ReturnsController : ControllerBase
 
                 var baseQty = ri.BaseQuantity > 0 ? ri.BaseQuantity : ri.Quantity;
                 bp.WarrantyQuantity += baseQty;
-                bp.ActualStock += baseQty;
-                bp.AvailableStock += baseQty;
 
                 _context.WarrantyTickets.Add(new WarrantyTicket
                 {
@@ -1134,14 +1107,6 @@ public class ReturnsController : ControllerBase
         }
     }
 
-    [HttpGet("discount-percent")]
-    public async Task<ActionResult<object>> GetReturnDiscount()
-    {
-        var branchId = GetBranchId();
-        var percent = await GetReturnDiscountPercent(branchId);
-        return Ok(new { returnDiscountPercent = percent });
-    }
-
     /// <summary>
     /// Kiểm tra sản phẩm trong hóa đơn có đủ điều kiện đổi/trả không.
     /// Mỗi item được đánh giá độc lập theo policy của category riêng.
@@ -1428,79 +1393,23 @@ public class ReturnsController : ControllerBase
                 return $"Sản phẩm đổi mới không đủ tồn kho khả dụng để thực hiện giao dịch (Tồn bán: {available}, cần: {pg.TotalBase})";
         }
 
-        var stockTicketReturn = new StockTicket
-        {
-            StockTicketId = Guid.NewGuid(),
-            TicketCode = ret.ReturnCode,
-            BranchId = ret.Order!.BranchId,
-            UserId = ret.UserId,
-            TicketType = "CUSTOMER_RETURN",
-            Status = "COMPLETED",
-            Notes = "Đổi hàng (Nhập trả) " + ret.ReturnCode,
-            CreatedAt = DateTime.UtcNow,
-            CompletedAt = DateTime.UtcNow
-        };
-        _context.StockTickets.Add(stockTicketReturn);
-
         // SP A: hàng trả về lại kho bán (CUSTOMER_RETURN). Không sinh bảo hành.
         foreach (var ri in ret.ReturnItems)
         {
-            var bp = await _context.BranchProducts.Include(b => b.Product).FirstOrDefaultAsync(b => b.BranchProductId == ri.BranchProductId);
+            var bp = await _context.BranchProducts.FindAsync(ri.BranchProductId);
             if (bp == null) continue;
             var baseQty = ri.BaseQuantity > 0 ? ri.BaseQuantity : ri.Quantity;
-
-            var ticketItem = new StockTicketItem
-            {
-                TicketItemId = Guid.NewGuid(),
-                StockTicketId = stockTicketReturn.StockTicketId,
-                BranchProductId = ri.BranchProductId,
-                SystemQuantity = bp.ActualStock,
-                ActualQuantity = bp.ActualStock + baseQty,
-                Discrepancy = baseQty,
-                UnitPrice = bp.CostPrice,
-                UnitName = bp.Product?.BaseUnit ?? ""
-            };
-            _context.StockTicketItems.Add(ticketItem);
-
             bp.AvailableStock += baseQty;
             bp.ActualStock += baseQty;
             _context.InventoryLedgers.Add(MkLedger(bp, "CUSTOMER_RETURN", ret.ReturnOrderId, ret.ReturnCode, baseQty));
         }
 
-        var stockTicketSale = new StockTicket
-        {
-            StockTicketId = Guid.NewGuid(),
-            TicketCode = ret.ReturnCode + "-OUT",
-            BranchId = ret.Order!.BranchId,
-            UserId = ret.UserId,
-            TicketType = "SALE", // Xuất cho KH như bán hàng
-            Status = "COMPLETED",
-            Notes = "Đổi hàng (Xuất giao) " + ret.ReturnCode,
-            CreatedAt = DateTime.UtcNow,
-            CompletedAt = DateTime.UtcNow
-        };
-        _context.StockTickets.Add(stockTicketSale);
-
         // SP B: xuất kho (EXCHANGE_OUT)
         foreach (var ei in ret.ExchangeItems)
         {
-            var bp = await _context.BranchProducts.Include(b => b.Product).FirstOrDefaultAsync(b => b.BranchProductId == ei.BranchProductId);
+            var bp = await _context.BranchProducts.FindAsync(ei.BranchProductId);
             if (bp == null) continue;
             var baseQty = ei.BaseQuantity > 0 ? ei.BaseQuantity : ei.Quantity;
-
-            var ticketItem = new StockTicketItem
-            {
-                TicketItemId = Guid.NewGuid(),
-                StockTicketId = stockTicketSale.StockTicketId,
-                BranchProductId = ei.BranchProductId,
-                SystemQuantity = bp.ActualStock,
-                ActualQuantity = bp.ActualStock - baseQty,
-                Discrepancy = baseQty,
-                UnitPrice = bp.CostPrice,
-                UnitName = bp.Product?.BaseUnit ?? ""
-            };
-            _context.StockTicketItems.Add(ticketItem);
-
             bp.AvailableStock -= baseQty;
             bp.ActualStock -= baseQty;
             _context.InventoryLedgers.Add(MkLedger(bp, "EXCHANGE_OUT", ret.ReturnOrderId, ret.ReturnCode, -baseQty));
