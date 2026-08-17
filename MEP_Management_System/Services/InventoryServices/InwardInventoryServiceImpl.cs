@@ -792,6 +792,29 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
                     {
                         branchProduct.ActualStock -= item.Discrepancy;
                         branchProduct.AvailableStock -= item.Discrepancy;
+
+                        // Ghi bút toán ĐẢO vào inventory_ledger: dòng nhập gốc ghi +discrepancy
+                        // -> dòng hủy ghi -discrepancy (trả hàng ra khỏi kho do hủy phiếu).
+                        // Phải cùng DbTransaction với rollback tồn kho (xem note InventoryLedgerService).
+                        // Không có dòng này -> báo cáo xuất nhập tồn vẫn tính số nhập gốc (sai) &
+                        // thẻ kho không thấy movement hủy.
+                        var cancelUnitPrice = item.UnitPrice ?? 0m;
+                        _context.InventoryLedgers.Add(new InventoryLedger
+                        {
+                            LedgerId = Guid.NewGuid(),
+                            BranchId = stockTicket.BranchId,
+                            BranchProductId = item.BranchProductId,
+                            DocType = stockTicket.TicketType ?? "PURCHASE",
+                            DocId = stockTicket.StockTicketId,
+                            DocCode = stockTicket.TicketCode,
+                            TransactionTime = DateTime.UtcNow,
+                            QtyChange = -item.Discrepancy,
+                            UnitCostPrice = Math.Round(cancelUnitPrice, 4),
+                            TotalCostValue = Math.Round(-item.Discrepancy * cancelUnitPrice, 4),
+                            StockAfter = branchProduct.ActualStock,
+                            AvgCostAfter = Math.Round(branchProduct.CostPrice, 4),
+                            CreatedAt = DateTime.UtcNow
+                        });
                     }
                 }
             }
