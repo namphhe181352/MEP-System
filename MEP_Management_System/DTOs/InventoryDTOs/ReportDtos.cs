@@ -265,6 +265,8 @@ public class SupplierPaymentHistoryItemDto
     public DateTime CreatedAt { get; set; }
     public decimal Amount { get; set; }
     public string? Note { get; set; }
+    /// <summary>"ACTIVE" hoặc "CANCELLED" (phiếu chi đã hủy).</summary>
+    public string Status { get; set; } = "ACTIVE";
 }
 
 #endregion
@@ -347,4 +349,8 @@ public class StockLedgerEntryDto
     public decimal QtyIn { get; set; }
     public decimal QtyOut { get; set; }
     public decimal StockAfter { get; set; }
+    /// <summary>Ghi chú dòng (vd: "Hủy: &lt;lý do&gt;" cho dòng bút toán đảo khi hủy phiếu).</summary>
+    public string? Note { get; set; }
+    /// <summary>True nếu đây là dòng bút toán ĐẢO khi hủy phiếu (để FE tô màu/label riêng phân biệt hủy nhập vs hủy xuất).</summary>
+    public bool IsCancellation { get; set; }
 }

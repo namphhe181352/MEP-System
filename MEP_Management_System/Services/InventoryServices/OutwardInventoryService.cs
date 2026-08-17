@@ -1060,7 +1060,8 @@ public class OutwardInventoryService : IOutwardInventoryService
                 .Include(st => st.StockTicketItems)
                     .ThenInclude(item => item.BranchProduct)
                 .Where(st => st.StockTicketId == id &&
-                    (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER"));
+                    (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF"
+                        || st.TicketType == "TRANSFER" || st.TicketType == "SALE"));
 
             if (!hasGlobalAccess)
             {
@@ -1136,6 +1137,28 @@ public class OutwardInventoryService : IOutwardInventoryService
                     {
                         item.BranchProduct.ActualStock += item.Discrepancy;
                         item.BranchProduct.AvailableStock += item.Discrepancy;
+
+                        // Ghi bút toán ĐẢO vào inventory_ledger: dòng xuất gốc ghi -discrepancy
+                        // -> dòng hủy ghi +discrepancy (nhận hàng về lại kho do hủy phiếu).
+                        // Phải cùng DbTransaction với rollback tồn kho. Không có dòng này ->
+                        // báo cáo xuất nhập tồn vẫn tính số xuất gốc (sai) & thẻ kho không thấy movement hủy.
+                        var cancelUnitPrice = item.UnitPrice ?? 0m;
+                        _context.InventoryLedgers.Add(new InventoryLedger
+                        {
+                            LedgerId = Guid.NewGuid(),
+                            BranchId = stockTicket.BranchId,
+                            BranchProductId = item.BranchProductId,
+                            DocType = stockTicket.TicketType ?? "WRITE_OFF",
+                            DocId = stockTicket.StockTicketId,
+                            DocCode = stockTicket.TicketCode,
+                            TransactionTime = DateTime.UtcNow,
+                            QtyChange = item.Discrepancy,
+                            UnitCostPrice = Math.Round(cancelUnitPrice, 4),
+                            TotalCostValue = Math.Round(item.Discrepancy * cancelUnitPrice, 4),
+                            StockAfter = item.BranchProduct.ActualStock,
+                            AvgCostAfter = Math.Round(item.BranchProduct.CostPrice, 4),
+                            CreatedAt = DateTime.UtcNow
+                        });
                     }
                 }
             }
@@ -1144,6 +1167,23 @@ public class OutwardInventoryService : IOutwardInventoryService
             stockTicket.CancelledAt = DateTime.UtcNow;
             stockTicket.CancelledBy = currentUserId;
             stockTicket.CancelReason = dto?.CancelReason;
+
+            // Nếu hủy phiếu xuất BÁN (SALE) -> đồng bộ hủy hóa đơn + đơn hàng liên quan
+            // (SALE ticket.TicketCode = InvoiceCode) để báo cáo doanh thu & thẻ kho nhất quán.
+            // Lưu ý: thanh toán (payments) KHÔNG tự hoàn — cần xử lý hoàn tiền riêng qua flow trả hàng.
+            if (stockTicket.TicketType == "SALE")
+            {
+                var linkedInvoice = await _context.Invoices
+                    .Include(inv => inv.Order)
+                    .FirstOrDefaultAsync(inv => inv.InvoiceCode == stockTicket.TicketCode
+                        && inv.Order != null && inv.Order.BranchId == stockTicket.BranchId);
+                if (linkedInvoice != null)
+                {
+                    linkedInvoice.Status = "Cancelled";
+                    if (linkedInvoice.Order != null)
+                        linkedInvoice.Order.Status = "Cancelled";
+                }
+            }
 
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();

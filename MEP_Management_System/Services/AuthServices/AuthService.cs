@@ -252,6 +252,11 @@ public class AuthService : IAuthService
             throw new BusinessException("Mật khẩu không chính xác.");
         }
 
+        if (string.Equals(user.Status, "BRANCH_DELETED", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new BusinessException("Cửa hàng của bạn đã bị xóa. Vui lòng liên hệ quản trị viên để được phân công lại.");
+        }
+
         if (user.IsActive != 1)
         {
             throw new BusinessException("Tài khoản của bạn hiện đang bị khóa.");
@@ -283,78 +288,92 @@ public class AuthService : IAuthService
         }
         else if (isOwner)
         {
-            var branches = await _context.StaffAssignments
-                .Where(sa => sa.UserId == user.UserId)
-                .Include(sa => sa.Branch)
-                .Select(sa => new
-                {
-                    sa.Branch.BranchId,
-                    sa.Branch.BranchName,
-                    sa.Branch.Address,
-                    sa.Branch.City,
-                    sa.Branch.Phone,
-                    sa.Branch.IsActive
-                })
+            // CHỈ lấy chi nhánh user được phân công VÀ đang hoạt động (chưa bị xóa/xóa mềm).
+            // KHÔNG fallback sang chi nhánh bất kỳ trong hệ thống — tránh user của chi nhánh đã xóa
+            // vẫn vào được một chi nhánh khác.
+            var activeBranches = await _context.StaffAssignments
+                .Where(sa => sa.UserId == user.UserId && sa.Branch.IsActive == 1)
+                .Select(sa => new { sa.Branch.BranchId })
                 .ToListAsync();
 
-            if (user.DefaultBranchId != null)
+            Guid? resolved = null;
+            if (user.DefaultBranchId.HasValue
+                && await _context.Branches.AnyAsync(b => b.BranchId == user.DefaultBranchId.Value && b.IsActive == 1))
             {
-                branchIdForToken = user.DefaultBranchId.ToString();
+                resolved = user.DefaultBranchId.Value;
             }
-            else if (branches.Any())
+            else if (activeBranches.Any())
             {
-                branchIdForToken = branches.First().BranchId.ToString();
+                resolved = activeBranches.First().BranchId;
             }
-            else
+
+            if (resolved == null)
+                throw new BusinessException("Cửa hàng của bạn đã bị xóa/tạm ngưng hoạt động. Vui lòng liên hệ quản trị viên để được phân công lại.");
+
+            if (user.DefaultBranchId != resolved)
             {
-                var firstActiveBranch = await _context.Branches.FirstOrDefaultAsync(b => b.IsActive == 1);
-                if (firstActiveBranch != null)
-                {
-                    branchIdForToken = firstActiveBranch.BranchId.ToString();
-                }
+                user.DefaultBranchId = resolved;
+                await _context.SaveChangesAsync();
             }
+            branchIdForToken = resolved.Value.ToString();
         }
         else
         {
-            if (user.DefaultBranchId.HasValue)
+            // Ưu tiên DefaultBranchId nếu chi nhánh đó CÒN hoạt động (chưa bị xóa/xóa mềm).
+            Guid? resolved = null;
+            if (user.DefaultBranchId.HasValue
+                && await _context.Branches.AnyAsync(b => b.BranchId == user.DefaultBranchId.Value && b.IsActive == 1))
             {
-                branchIdForToken = user.DefaultBranchId.Value.ToString();
+                resolved = user.DefaultBranchId.Value;
             }
-            else
+
+            if (resolved == null)
             {
-                var assignment = await _context.StaffAssignments
-                    .Where(sa => sa.UserId == user.UserId)
+                // Tìm phân công thuộc chi nhánh đang hoạt động (bỏ qua chi nhánh đã xóa).
+                var activeAssignment = await _context.StaffAssignments
+                    .Where(sa => sa.UserId == user.UserId && sa.Branch.IsActive == 1)
                     .OrderByDescending(sa => sa.AssignedAt)
+                    .Select(sa => (Guid?)sa.BranchId)
                     .FirstOrDefaultAsync();
 
-                if (assignment == null)
+                if (activeAssignment.HasValue)
+                    resolved = activeAssignment.Value;
+            }
+
+            if (resolved == null)
+            {
+                // Chỉ khi user CHƯA CÓ BẤT KỲ phân công nào mới tạm gán vào chi nhánh đang hoạt động
+                // đầu tiên (giữ behavior cũ). Nếu user ĐÃ có phân công nhưng toàn bộ thuộc chi nhánh
+                // đã xóa -> KHÔNG fallback, chặn đăng nhập.
+                var hasAnyAssignment = await _context.StaffAssignments.AnyAsync(sa => sa.UserId == user.UserId);
+                if (!hasAnyAssignment)
                 {
-                    var firstBranch = await _context.Branches.FirstOrDefaultAsync(b => b.IsActive == 1);
-                    if (firstBranch != null)
+                    var firstActiveBranch = await _context.Branches.FirstOrDefaultAsync(b => b.IsActive == 1);
+                    if (firstActiveBranch != null)
                     {
-                        user.DefaultBranchId = firstBranch.BranchId;
+                        user.DefaultBranchId = firstActiveBranch.BranchId;
                         _context.StaffAssignments.Add(new StaffAssignment
                         {
                             AssignmentId = Guid.NewGuid(),
                             UserId = user.UserId,
-                            BranchId = firstBranch.BranchId,
+                            BranchId = firstActiveBranch.BranchId,
                             AssignedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
                         });
                         await _context.SaveChangesAsync();
-                        branchIdForToken = firstBranch.BranchId.ToString();
+                        resolved = firstActiveBranch.BranchId;
                     }
-                    else
-                    {
-                        throw new BusinessException("Tài khoản chưa được phân công chi nhánh.");
-                    }
-                }
-                else
-                {
-                    user.DefaultBranchId = assignment.BranchId;
-                    await _context.SaveChangesAsync();
-                    branchIdForToken = assignment.BranchId.ToString();
                 }
             }
+
+            if (resolved == null)
+                throw new BusinessException("Cửa hàng của bạn đã bị xóa/tạm ngưng hoạt động. Vui lòng liên hệ quản trị viên để được phân công lại.");
+
+            if (user.DefaultBranchId != resolved)
+            {
+                user.DefaultBranchId = resolved;
+                await _context.SaveChangesAsync();
+            }
+            branchIdForToken = resolved.Value.ToString();
         }
 
         var rolePermissions = await _context.Roles
@@ -382,6 +401,16 @@ public class AuthService : IAuthService
             .Except(deniedPermissions)
             .Distinct()
             .ToList();
+
+        // === Bảo đảm quyền "xem đơn hàng ở POS" (SALE_VIEW) cho user được phân quyền bán hàng. ===
+        // Nếu user có bất kỳ quyền SALE_/CUSTOMER_/PAYMENT_ thì LUÔN thêm SALE_VIEW vào token,
+        // bất kể cấu hình role/user-permission cũ có thiếu (do save trước khi có auto-include).
+        // Inventory "Đơn hàng" vẫn yêu cầu OWNER_MANAGE nên KHÔNG mở thêm ở inventory.
+        if (!allPermissions.Contains("SALE_VIEW") &&
+            allPermissions.Any(c => c.StartsWith("SALE_") || c.StartsWith("CUSTOMER_") || c.StartsWith("PAYMENT_")))
+        {
+            allPermissions.Add("SALE_VIEW");
+        }
 
         var jwtToken = _jwtHelper.GenerateToken(
             user.UserId,
