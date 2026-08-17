@@ -145,6 +145,11 @@ public class ReturnServiceImpl : IReturnService
         if (invoice == null)
             throw new KeyNotFoundException("Không tìm thấy hóa đơn gốc.");
 
+        // Chặn tạo đổi/trả (và gián tiếp chặn luồng bảo hành khiếu nại) cho đơn bán đã bị hủy
+        // (do hủy phiếu xuất bán → hóa đơn/đơn hàng = "Cancelled"). Không động đến dữ liệu cũ.
+        if (string.Equals(invoice.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
+            throw new BusinessException("MSG-78", "Đơn bán này đã bị hủy (phiếu xuất bán đã hủy). Không thể tạo đổi/trả hoặc bảo hành cho đơn đã hủy.");
+
         if (invoice.Status != "Completed")
             throw new BusinessException("MSG-78", "Chỉ hóa đơn đã hoàn tất mới được đổi trả.");
 
@@ -270,6 +275,11 @@ public class ReturnServiceImpl : IReturnService
 
         if (!originalItems.Any())
             throw new BusinessException("MSG-59", "Sản phẩm này không có trong hóa đơn gốc.");
+
+        // Chặn thêm dòng trả cho đơn đã bị hủy (trường hợp hủy sale sau khi tạo phiếu đổi trả chờ).
+        var inv0 = originalItems.First().Invoice;
+        if (inv0 != null && string.Equals(inv0.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
+            throw new BusinessException("MSG-78", "Đơn bán này đã bị hủy (phiếu xuất bán đã hủy). Không thể đổi/trả hoặc bảo hành cho đơn đã hủy.");
 
         var branchProductId = originalItems.First().BranchProductId;
 
@@ -414,6 +424,11 @@ public class ReturnServiceImpl : IReturnService
 
         if (!ret.ReturnItems.Any())
             throw new BusinessException("MSG-61", "Phiếu đổi trả phải có ít nhất 1 sản phẩm.");
+
+        // Chặn hoàn tất đổi/trả nếu đơn bán gốc đã bị hủy (phiếu xuất bán bị hủy sau khi tạo phiếu chờ).
+        var retInvoice = ret.Order?.Invoice;
+        if (retInvoice != null && string.Equals(retInvoice.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
+            throw new BusinessException("MSG-78", "Đơn bán này đã bị hủy (phiếu xuất bán đã hủy). Không thể hoàn tất đổi/trả hoặc bảo hành cho đơn đã hủy.");
 
         // Calculate total refund
         ret.RefundAmount = ret.ReturnItems.Sum(ri => ri.RefundAmount ?? 0);
@@ -951,6 +966,8 @@ public class ReturnServiceImpl : IReturnService
 
         var policies = await GetCategoryPoliciesListAsync(branchId);
         var invoiceDate = invoice.CreatedAt ?? DateTime.UtcNow;
+        // Đơn đã hủy: toàn bộ dòng đều không được đổi/trả (gián tiếp chặn luồng bảo hành khiếu nại).
+        var invoiceCancelled = string.Equals(invoice.Status, "Cancelled", StringComparison.OrdinalIgnoreCase);
         var items = new List<InvoiceItemEligibilityDto>();
 
         foreach (var invoiceItem in invoice.InvoiceItems)
@@ -1023,6 +1040,16 @@ public class ReturnServiceImpl : IReturnService
                 {
                     eligibility.RestrictionReason = $"Nhóm hàng \"{categoryName}\" không được phép đổi/trả hoặc đã quá hạn.";
                 }
+            }
+
+            // Override: đơn đã hủy → không đổi/trả/bảo hành.
+            if (invoiceCancelled)
+            {
+                eligibility.RefundAllowed = false;
+                eligibility.ExchangeAllowed = false;
+                eligibility.RemainingRefundDays = 0;
+                eligibility.RemainingExchangeDays = 0;
+                eligibility.RestrictionReason = "Đơn bán này đã bị hủy (phiếu xuất bán đã hủy). Không thể đổi/trả hoặc bảo hành.";
             }
 
             items.Add(eligibility);
@@ -1532,6 +1559,8 @@ public class ReturnServiceImpl : IReturnService
 
         if (invoice == null)
         { prep.RestrictionReason = "Không tìm thấy hóa đơn."; prep.RuleBreak = "INVOICE"; return prep; }
+        if (string.Equals(invoice.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
+        { prep.RestrictionReason = "Đơn bán này đã bị hủy (phiếu xuất bán đã hủy). Không thể đổi hàng cho đơn đã hủy."; prep.RuleBreak = "INVOICE"; return prep; }
         if (invoice.Status != "Completed")
         { prep.RestrictionReason = "Chỉ hóa đơn đã hoàn tất mới được đổi."; prep.RuleBreak = "INVOICE"; return prep; }
         prep.Invoice = invoice;
