@@ -76,9 +76,28 @@ public class ReturnServiceImpl : IReturnService
             .Take(pageSize)
             .ToListAsync();
 
+        var dtos = items.Select(r => _mapper.Map<ReturnOrderDto>(r)).ToList();
+
+        // Nạp CashReceived/ChangeAmount từ Payment liên kết (cho đơn đổi chênh dương CASH)
+        var paymentIds = dtos.Where(d => d.PaymentId.HasValue).Select(d => d.PaymentId!.Value).Distinct().ToList();
+        if (paymentIds.Count > 0)
+        {
+            var payments = await _context.Payments
+                .Where(p => paymentIds.Contains(p.PaymentId))
+                .ToDictionaryAsync(p => p.PaymentId);
+            foreach (var d in dtos)
+            {
+                if (d.PaymentId.HasValue && payments.TryGetValue(d.PaymentId.Value, out var pay))
+                {
+                    d.CashReceived = pay.CashReceived;
+                    d.ChangeAmount = pay.ChangeAmount;
+                }
+            }
+        }
+
         return new PageResultDto<ReturnOrderDto>
         {
-            Items = items.Select(r => _mapper.Map<ReturnOrderDto>(r)).ToList(),
+            Items = dtos,
             TotalCount = total,
             PageNumber = page,
             PageSize = pageSize
@@ -96,7 +115,22 @@ public class ReturnServiceImpl : IReturnService
             .Include(r => r.ExchangeItems).ThenInclude(ei => ei.BranchProduct).ThenInclude(bp => bp!.Product)
             .FirstOrDefaultAsync(r => r.ReturnOrderId == id && r.Order!.BranchId == branchId);
 
-        return r == null ? null : _mapper.Map<ReturnOrderDto>(r);
+        if (r == null) return null;
+
+        var dto = _mapper.Map<ReturnOrderDto>(r);
+
+        // Nạp CashReceived/ChangeAmount từ Payment liên kết
+        if (r.PaymentId.HasValue)
+        {
+            var pay = await _context.Payments.FindAsync(r.PaymentId.Value);
+            if (pay != null)
+            {
+                dto.CashReceived = pay.CashReceived;
+                dto.ChangeAmount = pay.ChangeAmount;
+            }
+        }
+
+        return dto;
     }
 
     public async Task<ReturnOrderDto> CreateReturnAsync(CreateReturnOrderRequest req, Guid userId, Guid branchId)
@@ -109,28 +143,28 @@ public class ReturnServiceImpl : IReturnService
             .FirstOrDefaultAsync(i => i.InvoiceId == req.InvoiceId && i.Order!.BranchId == branchId);
 
         if (invoice == null)
-            throw new KeyNotFoundException("Khong tim thay hoa don goc.");
+            throw new KeyNotFoundException("Không tìm thấy hóa đơn gốc.");
 
         if (invoice.Status != "Completed")
-            throw new BusinessException("MSG-78", "Chi hoa don da hoan tat moi duoc doi tra.");
+            throw new BusinessException("MSG-78", "Chỉ hóa đơn đã hoàn tất mới được đổi trả.");
 
         // Check return window from branch settings
         var branch = invoice.Order?.Branch;
-        var allowedDays = branch?.ReturnDaysAllowed ?? 30;
+        var allowedDays = branch?.ReturnDaysAllowed ?? (int?)30;
         var invoiceDate = invoice.CreatedAt ?? DateTime.UtcNow;
-        if (allowedDays > 0 && invoiceDate.AddDays(allowedDays) < DateTime.UtcNow)
-            throw new BusinessException("MSG-65", $"Da qua thoi han {allowedDays} ngay ke tu ngay mua. Khong the doi tra.");
+        if (allowedDays.HasValue && invoiceDate.AddDays(allowedDays.Value) < DateTime.UtcNow)
+            throw new BusinessException("MSG-65", $"Đã quá thời hạn {allowedDays.Value} ngày kể từ ngày mua. Không thể đổi trả.");
 
         // Check no pending return exists
         var existing = await _context.ReturnOrders
             .AnyAsync(r => r.OrderId == invoice.OrderId && r.Status == "Pending");
         if (existing)
-            throw new BusinessException("MSG-66", "Hoa don nay dang co phieu doi tra dang xu ly.");
+            throw new BusinessException("MSG-66", "Hóa đơn này đang có phiếu đổi trả đang xử lý.");
 
         // Get category policies
         var policies = await GetCategoryPoliciesListAsync(branchId);
         if (policies == null || policies.Count == 0)
-            throw new BusinessException("MSG-80", "Chua co chinh sach doi/tra theo nhom hang. Vui long thiet lap trong phan Cai dat.");
+            throw new BusinessException("MSG-80", "Chưa có chính sách đổi/trả theo nhóm hàng. Vui lòng thiết lập trong phần Cài đặt trước khi thực hiện đổi/trả.");
 
         var returnType = req.ReturnType?.ToUpper() ?? "REFUND";
         var hasEligibleItem = false;
@@ -159,8 +193,8 @@ public class ReturnServiceImpl : IReturnService
 
             if (itemPolicy == null)
             {
-                var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(khong xac dinh)";
-                ineligibleReasons.Add($"\"{product?.ProductName}\" (nhom \"{displayName}\"): chua co chinh sach");
+                var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(không xác định)";
+                ineligibleReasons.Add($"\"{product?.ProductName}\" (nhóm \"{displayName}\"): chưa có chính sách");
                 continue;
             }
 
@@ -170,8 +204,8 @@ public class ReturnServiceImpl : IReturnService
 
             if (!policyAllowedDays.HasValue || policyAllowedDays.Value <= 0)
             {
-                var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(khong xac dinh)";
-                ineligibleReasons.Add($"\"{product?.ProductName}\" (nhom \"{displayName}\"): khong duoc phep {(returnType == "EXCHANGE" ? "doi" : "tra")}");
+                var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(không xác định)";
+                ineligibleReasons.Add($"\"{product?.ProductName}\" (nhóm \"{displayName}\"): không được phép {(returnType == "EXCHANGE" ? "đổi" : "trả")}");
                 continue;
             }
 
@@ -183,16 +217,16 @@ public class ReturnServiceImpl : IReturnService
             }
             else
             {
-                var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(khong xac dinh)";
-                ineligibleReasons.Add($"\"{product?.ProductName}\" (nhom \"{displayName}\"): da qua han {policyAllowedDays} ngay");
+                var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(không xác định)";
+                ineligibleReasons.Add($"\"{product?.ProductName}\" (nhóm \"{displayName}\"): đã quá hạn {policyAllowedDays.Value} ngày");
             }
         }
 
         if (!hasEligibleItem)
             throw new BusinessException("MSG-80",
-                $"Hoa don nay khong co san pham nao duoc phep {(returnType == "EXCHANGE" ? "doi" : "tra")}. " +
+                $"Hóa đơn này không có sản phẩm nào được phép {(returnType == "EXCHANGE" ? "đổi" : "trả")}. " +
                 string.Join("; ", ineligibleReasons.Take(3)) +
-                (ineligibleReasons.Count > 3 ? $" (va {ineligibleReasons.Count - 3} san pham khac)" : ""));
+                (ineligibleReasons.Count > 3 ? $" (và {ineligibleReasons.Count - 3} sản phẩm khác)" : ""));
 
         var entity = new ReturnOrder
         {
@@ -222,10 +256,10 @@ public class ReturnServiceImpl : IReturnService
             .FirstOrDefaultAsync(r => r.ReturnOrderId == id && r.Order!.BranchId == branchId);
 
         if (ret == null)
-            throw new KeyNotFoundException("Khong tim thay phieu doi tra.");
+            throw new KeyNotFoundException("Không tìm thấy phiếu đổi trả.");
 
         if (ret.Status != "Pending")
-            throw new BusinessException("MSG-78", "Chi phieu dang cho xu ly moi duoc them san pham.");
+            throw new BusinessException("MSG-78", "Chỉ phiếu đang chờ xử lý mới được thêm sản phẩm.");
 
         // Validate product belongs to original invoice
         var originalItems = await _context.InvoiceItems
@@ -235,7 +269,7 @@ public class ReturnServiceImpl : IReturnService
             .ToListAsync();
 
         if (!originalItems.Any())
-            throw new BusinessException("MSG-59", "San pham nay khong co trong hoa don goc.");
+            throw new BusinessException("MSG-59", "Sản phẩm này không có trong hóa đơn gốc.");
 
         var branchProductId = originalItems.First().BranchProductId;
 
@@ -245,14 +279,15 @@ public class ReturnServiceImpl : IReturnService
             .SumAsync(ri => ri.Quantity);
 
         if (totalReturned + req.Quantity > totalBought)
-            throw new BusinessException("MSG-66", $"So luong tra vuot qua so luong da mua. Toi da: {totalBought - totalReturned}");
+            throw new BusinessException("MSG-66", $"Số lượng trả vượt quá số lượng đã mua. Tối đa: {totalBought - totalReturned}");
 
         // Category-level policy check
         var product = originalItems.First().BranchProduct?.Product;
         var policies = await GetCategoryPoliciesListAsync(branchId);
 
         if (policies == null || policies.Count == 0)
-            throw new BusinessException("MSG-80", "Chua co chinh sach doi/tra theo nhom hang.");
+            throw new BusinessException("MSG-80",
+                "Chưa có chính sách đổi/trả theo nhóm hàng. Vui lòng thiết lập trong phần Cài đặt trước khi thực hiện đổi/trả.");
 
         CategoryPolicyDto? categoryPolicy = null;
         var categoryId = product?.CategoryTaxonomyId;
@@ -275,9 +310,9 @@ public class ReturnServiceImpl : IReturnService
 
         if (categoryPolicy == null)
         {
-            var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(khong xac dinh)";
+            var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(không xác định)";
             throw new BusinessException("MSG-80",
-                $"San pham \"{product?.ProductName}\" thuoc nhom \"{displayName}\" khong duoc phep {(ret.ReturnType == "EXCHANGE" ? "doi" : "tra")}.");
+                $"Sản phẩm \"{product?.ProductName}\" thuộc nhóm \"{displayName}\" không được phép {(ret.ReturnType == "EXCHANGE" ? "đổi" : "trả")}.");
         }
 
         var allowedDays = ret.ReturnType == "EXCHANGE"
@@ -286,27 +321,45 @@ public class ReturnServiceImpl : IReturnService
 
         if (!allowedDays.HasValue || allowedDays.Value <= 0)
         {
-            var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(khong xac dinh)";
+            var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(không xác định)";
             throw new BusinessException("MSG-80",
-                $"San pham \"{product?.ProductName}\" thuoc nhom \"{displayName}\" khong duoc phep {(ret.ReturnType == "EXCHANGE" ? "doi" : "tra")}.");
+                $"Sản phẩm \"{product?.ProductName}\" thuộc nhóm \"{displayName}\" không được phép {(ret.ReturnType == "EXCHANGE" ? "đổi" : "trả")}.");
         }
 
         var invoiceDate = originalItems.First().Invoice?.CreatedAt ?? DateTime.UtcNow;
         if (invoiceDate.AddDays(allowedDays.Value) < DateTime.UtcNow)
         {
-            var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(khong xac dinh)";
+            var displayName = product?.CategoryTaxonomy?.Name ?? product?.CategoryName ?? "(không xác định)";
             throw new BusinessException("MSG-79",
-                $"San pham \"{product?.ProductName}\" thuoc nhom \"{displayName}\" da qua thoi han {allowedDays} ngay. Khong the doi tra.");
+                $"Sản phẩm \"{product?.ProductName}\" thuộc nhóm \"{displayName}\" đã quá thời hạn {allowedDays.Value} ngày. Không thể đổi trả.");
         }
 
         var avgPrice = originalItems.Sum(ii => ii.SellPrice * ii.Quantity) / totalBought;
         var grossRefundLine = req.Quantity * avgPrice;
 
-        // Apply return discount
-        var returnDiscountPercent = await GetReturnDiscountPercentAsync(branchId);
-        var discountRatio = returnDiscountPercent > 0m ? returnDiscountPercent / 100m : 0m;
-        var discountPortion = grossRefundLine * discountRatio;
-        var refundLine = Math.Max(0, grossRefundLine - discountPortion);
+        // === Áp dụng chiết khấu HÓA ĐƠN GỐC: hoàn theo GIÁ KHÁCH THỰC TRẢ ===
+        //    Dùng tỉ lệ TotalAmount/SubTotalAmount để đúng cho cả CK % và CK số tiền.
+        var inv = originalItems.First().Invoice;
+        decimal invoiceDiscountRatio = 0m;
+        if (inv != null && inv.SubTotalAmount > 0m)
+            invoiceDiscountRatio = Math.Max(0m, 1m - inv.TotalAmount / inv.SubTotalAmount);
+        var paidRefundLine = Math.Max(0m, grossRefundLine * (1m - invoiceDiscountRatio));
+
+        // === Áp dụng chiết khấu trả hàng branch-level.
+        //    QUY TẮC: Chiết khấu CHỈ áp dụng cho luồng TRẢ HÀNG (REFUND).
+        //    Luồng ĐỔI (EXCHANGE / đổi lệch giá) KHÔNG trừ chiết khấu — tính giá trị gốc.
+        decimal refundLine;
+        if (ret.ReturnType == "EXCHANGE")
+        {
+            refundLine = grossRefundLine;
+        }
+        else
+        {
+            var returnDiscountPercent = await GetReturnDiscountPercentAsync(branchId);
+            var discountRatio = returnDiscountPercent > 0m ? returnDiscountPercent / 100m : 0m;
+            var discountPortion = paidRefundLine * discountRatio;
+            refundLine = Math.Max(0, paidRefundLine - discountPortion);
+        }
 
         // Determine conversion rate
         var pinnedItem = req.InvoiceItemId.HasValue
@@ -354,13 +407,13 @@ public class ReturnServiceImpl : IReturnService
             .FirstOrDefaultAsync(r => r.ReturnOrderId == id && r.Order!.BranchId == branchId);
 
         if (ret == null)
-            throw new KeyNotFoundException("Khong tim thay phieu doi tra.");
+            throw new KeyNotFoundException("Không tìm thấy phiếu đổi trả.");
 
         if (ret.Status != "Pending")
-            throw new BusinessException("MSG-78", "Phieu doi tra khong o trang thai cho xu ly.");
+            throw new BusinessException("MSG-78", "Phiếu đổi trả không ở trạng thái chờ xử lý.");
 
         if (!ret.ReturnItems.Any())
-            throw new BusinessException("MSG-61", "Phieu doi tra phai co it nhat 1 san pham.");
+            throw new BusinessException("MSG-61", "Phiếu đổi trả phải có ít nhất 1 sản phẩm.");
 
         // Calculate total refund
         ret.RefundAmount = ret.ReturnItems.Sum(ri => ri.RefundAmount ?? 0);
@@ -376,7 +429,7 @@ public class ReturnServiceImpl : IReturnService
         {
             var exDelta = ret.DeltaAmount ?? 0m;
             if (exDelta > 0)
-                throw new BusinessException("MSG-78", "Don doi chenh lech (thu them) phai thanh toan qua popup, khong xac nhan truc tiep.");
+                throw new BusinessException("MSG-78", "Đơn đổi chênh lệch (thu thêm) phải thanh toán qua popup, không xác nhận trực tiếp.");
 
             var stockErr = await ApplyExchangeDiffStockAsync(ret, userId);
             if (stockErr != null)
@@ -402,7 +455,7 @@ public class ReturnServiceImpl : IReturnService
                 RefundCode = $"RFD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString()[..4].ToUpper()}",
                 OrderId = ret.OrderId,
                 InvoiceId = (await _context.Invoices.FirstOrDefaultAsync(i => i.OrderId == ret.OrderId))?.InvoiceId,
-                CustomerId = ret.Order?.CustomerId ?? Guid.Empty,
+                CustomerId = ret.Order?.CustomerId,
                 UserId = ret.UserId,
                 RefundAmount = ret.RefundAmount,
                 RefundMethod = ret.ReturnType == "REFUND" ? "CASH" : (ret.RefundMethod ?? "CASH"),
@@ -438,10 +491,10 @@ public class ReturnServiceImpl : IReturnService
             .FirstOrDefaultAsync(r => r.ReturnOrderId == id && r.Order!.BranchId == branchId);
 
         if (ret == null)
-            throw new KeyNotFoundException("Khong tim thay phieu doi tra.");
+            throw new KeyNotFoundException("Không tìm thấy phiếu đổi trả.");
 
         if (ret.Status != "Pending")
-            throw new BusinessException("MSG-78", "Chi phieu dang cho xu ly moi duoc huy.");
+            throw new BusinessException("MSG-78", "Chỉ phiếu đang chờ xử lý mới được hủy.");
 
         // Restore reserved quantities for exchange
         if (ret.ReturnType == "EXCHANGE" && ret.ExchangeItems.Any())
@@ -502,17 +555,17 @@ public class ReturnServiceImpl : IReturnService
     {
         var prep = await PrepareExchangeAsync(req.InvoiceId, req.ReturnItems, req.NewItems, branchId);
         if (!prep.Eligible || prep.Invoice == null)
-            throw new BusinessException("MSG-80", prep.RestrictionReason ?? "Khong du dieu kien doi hang.");
+            throw new BusinessException("MSG-80", prep.RestrictionReason ?? "Không đủ điều kiện đổi hàng.");
 
         if (prep.Returns.Count == 0)
-            throw new BusinessException("MSG-61", "Phai co it nhat 1 san pham doi (SP A).");
+            throw new BusinessException("MSG-61", "Phải có ít nhất 1 sản phẩm đổi (SP A).");
 
         if (prep.NewItems.Count == 0)
-            throw new BusinessException("MSG-61", "Phai co it nhat 1 san pham moi (SP B).");
+            throw new BusinessException("MSG-61", "Phải có ít nhất 1 sản phẩm mới (SP B).");
 
         var payMethod = (req.PaymentMethod?.ToUpper() ?? "CASH");
         if (prep.Delta != 0 && payMethod != "CASH" && payMethod != "TRANSFER")
-            throw new BusinessException("MSG-78", "Phuong thuc thanh toan khong hop le (CASH/TRANSFER).");
+            throw new BusinessException("MSG-78", "Phương thức thanh toán không hợp lệ (CASH/TRANSFER).");
 
         var invoice = prep.Invoice;
         var delta = prep.Delta;
@@ -521,7 +574,7 @@ public class ReturnServiceImpl : IReturnService
         var hasPending = await _context.ReturnOrders
             .AnyAsync(r => r.OrderId == invoice.OrderId && r.Status == "Pending");
         if (hasPending)
-            throw new BusinessException("MSG-66", "Hoa don nay dang co phieu doi tra dang xu ly.");
+            throw new BusinessException("MSG-66", "Hóa đơn này đang có phiếu đổi trả đang xử lý.");
 
         using var tx = await _context.Database.BeginTransactionAsync();
         try
@@ -630,9 +683,9 @@ public class ReturnServiceImpl : IReturnService
             throw new BusinessException("MSG-78", err);
 
         var delta = ret!.DeltaAmount ?? 0m;
-        var method = (req?.PaymentMethod?.ToUpper() ?? ret.PaymentMethod ?? "CASH");
+        var method = (req?.Method?.ToUpper() ?? ret.PaymentMethod ?? "CASH");
         if (method != "CASH" && method != "TRANSFER")
-            throw new BusinessException("MSG-78", "Phuong thuc thanh toan khong hop le (CASH/TRANSFER).");
+            throw new BusinessException("MSG-78", "Phương thức thanh toán không hợp lệ (CASH/TRANSFER).");
 
         var openShiftId = await _context.Shifts
             .Where(s => s.BranchId == branchId && s.Status == "OPEN")
@@ -642,7 +695,7 @@ public class ReturnServiceImpl : IReturnService
         if (method == "CASH")
         {
             if (req!.CashReceived == null || req.CashReceived < delta)
-                throw new BusinessException("MSG-76", "Tien khach dua nho hon so phai tra.");
+                throw new BusinessException("MSG-76", "Tiền khách đưa nhỏ hơn số phải trả.");
 
             using var tx = await _context.Database.BeginTransactionAsync();
             try
@@ -674,7 +727,7 @@ public class ReturnServiceImpl : IReturnService
 
                 var stockErr = await ApplyExchangeDiffStockAsync(ret, userId);
                 if (stockErr != null)
-                    throw new Exception(stockErr);
+                    throw new BusinessException("MSG-81", stockErr);
 
                 ret.Status = "Completed";
                 await _context.SaveChangesAsync();
@@ -687,7 +740,7 @@ public class ReturnServiceImpl : IReturnService
             }
 
             await LogActionAsync(userId, "PAY_EXCHANGE_DIFF", "return_orders", "ReturnOrder",
-                ret.ReturnOrderId, $"Thanh toan tien mat doi chenh {ret.ReturnCode} - Completed - {delta:N0}d");
+                ret.ReturnOrderId, $"Thanh toán tiền mặt đổi chênh {ret.ReturnCode} - Completed - {delta:N0}đ");
             await NotifyExchangeDiffStockAsync(ret);
 
             return new PayExchangeResultDto
@@ -701,7 +754,13 @@ public class ReturnServiceImpl : IReturnService
                         cashReceived = req.CashReceived!.Value,
                         changeAmount = Math.Max(0m, req.CashReceived.Value - delta)
                     }
-                }
+                },
+                ReturnOrder = _mapper.Map<ReturnOrderDto>(ret),
+                Method = "CASH",
+                Amount = delta,
+                ReturnOrderId = ret.ReturnOrderId,
+                PaymentId = ret.PaymentId,
+                TransactionContent = null
             };
         }
 
@@ -720,7 +779,7 @@ public class ReturnServiceImpl : IReturnService
                     if (p != null && p.Method == "Transfer")
                     {
                         if (p.Status == "Confirmed")
-                            throw new BusinessException("MSG-78", "Don da thanh toan xong.");
+                            throw new BusinessException("MSG-78", "Đơn đã thanh toán xong.");
                         if (p.Status == "Pending")
                         {
                             p.VietQRString = transactionContent;
@@ -769,43 +828,50 @@ public class ReturnServiceImpl : IReturnService
         }
 
         await LogActionAsync(userId, "PAY_EXCHANGE_DIFF_QR", "return_orders", "ReturnOrder",
-            ret.ReturnOrderId, $"Tao QR chuyen khoan doi chenh {ret.ReturnCode} - {delta:N0}d");
+            ret.ReturnOrderId, $"Tạo QR chuyển khoản đổi chênh {ret.ReturnCode} - {delta:N0}đ");
 
         return new PayExchangeResultDto
         {
             VietQRString = transactionContent,
-            QRImageBase64 = qrBase64
+            QRImageBase64 = qrBase64,
+            ReturnOrder = null,
+            Method = "TRANSFER",
+            Amount = delta,
+            ReturnOrderId = ret.ReturnOrderId,
+            PaymentId = p.PaymentId,
+            TransactionContent = transactionContent
         };
     }
 
-    public async Task<ReturnOrderDto> ConfirmExchangeTransferAsync(Guid id, ConfirmTransferRequest? req, Guid userId)
+    public async Task<ReturnOrderDto> ConfirmExchangeTransferAsync(Guid id, ConfirmTransferRequest? req, Guid userId, Guid branchId)
     {
-        var (ret, err) = await LoadPendingExchangeDiffAsync(id, null);
+        var (ret, err) = await LoadPendingExchangeDiffAsync(id, branchId);
         if (err != null)
             throw new BusinessException("MSG-78", err!);
 
         if (!ret!.PaymentId.HasValue)
-            throw new BusinessException("MSG-78", "Chua co thanh toan chuyen khoan cho phieu nay.");
+            throw new BusinessException("MSG-78", "Chưa có thanh toán chuyển khoản cho phiếu này.");
 
         var p = await _context.Payments.FindAsync(ret.PaymentId.Value);
         if (p == null || p.Method != "Transfer")
-            throw new BusinessException("MSG-78", "Khong tim thay Payment chuyen khoan hop le.");
+            throw new BusinessException("MSG-78", "Không tìm thấy Payment chuyển khoản hợp lệ.");
         if (p.Status == "Confirmed")
-            throw new BusinessException("MSG-76", "Thanh toan da duoc xac nhan.");
+            throw new BusinessException("MSG-76", "Thanh toán đã được xác nhận.");
         if (req?.PaymentId != null && req.PaymentId != p.PaymentId)
-            throw new BusinessException("MSG-78", "Payment khong khop voi phieu doi tra.");
+            throw new BusinessException("MSG-78", "Payment không khớp với phiếu đổi trả.");
         if (p.QRExpiredAt.HasValue && p.QRExpiredAt.Value < DateTime.UtcNow)
-            throw new BusinessException("MSG-76", "Ma QR da het han. Vui long tao lai.");
+            throw new BusinessException("MSG-76", "Mã QR đã hết hạn. Vui lòng tạo lại.");
 
         using var tx = await _context.Database.BeginTransactionAsync();
         try
         {
             p.Status = "Confirmed";
             p.PaidAt = DateTime.UtcNow;
+            ret.PaymentMethod = "TRANSFER";
 
             var stockErr = await ApplyExchangeDiffStockAsync(ret, userId);
             if (stockErr != null)
-                throw new Exception(stockErr);
+                throw new BusinessException("MSG-81", stockErr);
 
             ret.Status = "Completed";
             await _context.SaveChangesAsync();
@@ -818,7 +884,7 @@ public class ReturnServiceImpl : IReturnService
         }
 
         await LogActionAsync(userId, "CONFIRM_EXCHANGE_TRANSFER", "return_orders", "ReturnOrder",
-            ret.ReturnOrderId, $"Xac nhan chuyen khoan doi chenh {ret.ReturnCode} - Completed");
+            ret.ReturnOrderId, $"Xác nhận chuyển khoản đổi chênh {ret.ReturnCode} - Completed");
         await NotifyExchangeDiffStockAsync(ret);
 
         return _mapper.Map<ReturnOrderDto>(ret);
@@ -881,7 +947,7 @@ public class ReturnServiceImpl : IReturnService
             .FirstOrDefaultAsync(i => i.InvoiceId == invoiceId && i.Order!.BranchId == branchId);
 
         if (invoice == null)
-            throw new KeyNotFoundException("Khong tim thay hoa don.");
+            throw new KeyNotFoundException("Không tìm thấy hóa đơn.");
 
         var policies = await GetCategoryPoliciesListAsync(branchId);
         var invoiceDate = invoice.CreatedAt ?? DateTime.UtcNow;
@@ -928,8 +994,8 @@ public class ReturnServiceImpl : IReturnService
                 eligibility.RefundAllowed = false;
                 eligibility.ExchangeAllowed = false;
                 eligibility.RestrictionReason = string.IsNullOrEmpty(categoryName)
-                    ? "San pham khong thuoc nhom hang nao."
-                    : $"Nhom hang \"{categoryName}\" chua duoc cau hinh chinh sach doi/tra.";
+                    ? "Sản phẩm không thuộc nhóm hàng nào."
+                    : $"Nhóm hàng \"{categoryName}\" chưa được cấu hình chính sách đổi/trả.";
             }
             else
             {
@@ -955,7 +1021,7 @@ public class ReturnServiceImpl : IReturnService
 
                 if (!eligibility.RefundAllowed && !eligibility.ExchangeAllowed)
                 {
-                    eligibility.RestrictionReason = $"Nhom hang \"{categoryName}\" khong duoc phep doi/tra hoac da qua han.";
+                    eligibility.RestrictionReason = $"Nhóm hàng \"{categoryName}\" không được phép đổi/trả hoặc đã quá hạn.";
                 }
             }
 
@@ -1216,7 +1282,7 @@ public class ReturnServiceImpl : IReturnService
             var sellable = bp.AvailableStock - bp.WarrantyQuantity;
             if (sellable < pg.TotalBase)
                 throw new BusinessException("MSG-81",
-                    $"San pham xuat doi hien khong du ton kho kha dung de thuc hien giao dich (Ton kha dung ban: {sellable}, can: {pg.TotalBase})");
+                    $"Sản phẩm xuất đổi hiện không đủ tồn kho khả dụng để thực hiện giao dịch (Tồn khả dụng bán: {sellable}, cần: {pg.TotalBase})");
         }
 
         // 1 ticket per ReturnItem
@@ -1260,7 +1326,7 @@ public class ReturnServiceImpl : IReturnService
             if (bp == null) continue;
             var available = bp.AvailableStock - bp.WarrantyQuantity - bp.ReservedStock;
             if (available < pg.TotalBase)
-                return $"San pham doi moi khong du ton kho kha dung de thuc hien giao dich (Ton ban: {available}, can: {pg.TotalBase})";
+                return $"Sản phẩm đổi mới không đủ tồn kho khả dụng để thực hiện giao dịch (Tồn bán: {available}, cần: {pg.TotalBase})";
         }
 
         // SP A: return to stock (CUSTOMER_RETURN)
@@ -1383,12 +1449,12 @@ public class ReturnServiceImpl : IReturnService
 
         var ret = await query.FirstOrDefaultAsync();
 
-        if (ret == null) return (ret!, "Khong tim thay phieu doi tra.");
-        if (ret.Status != "Pending") return (ret, "Phieu doi tra khong o trang thai cho xu ly.");
+        if (ret == null) return (ret!, "Không tìm thấy phiếu đổi trả.");
+        if (ret.Status != "Pending") return (ret, "Phiếu đổi trả không ở trạng thái chờ xử lý.");
         if (ret.ReturnType != "EXCHANGE" || !ret.ExchangeItems.Any())
-            return (ret, "Phieu khong phai doi chenh lech.");
+            return (ret, "Phiếu không phải đổi chênh lệch.");
         if ((ret.DeltaAmount ?? 0m) <= 0)
-            return (ret, "Phieu doi ngang gia - khong can thanh toan chenh lech.");
+            return (ret, "Phiếu đổi ngang giá — không cần thanh toán chênh lệch.");
         return (ret!, null);
     }
 
@@ -1465,60 +1531,60 @@ public class ReturnServiceImpl : IReturnService
             .FirstOrDefaultAsync(i => i.InvoiceId == invoiceId && i.Order!.BranchId == branchId);
 
         if (invoice == null)
-        { prep.RestrictionReason = "Khong tim thay hoa don."; prep.RuleBreak = "INVOICE"; return prep; }
+        { prep.RestrictionReason = "Không tìm thấy hóa đơn."; prep.RuleBreak = "INVOICE"; return prep; }
         if (invoice.Status != "Completed")
-        { prep.RestrictionReason = "Chi hoa don da hoan tat moi duoc doi."; prep.RuleBreak = "INVOICE"; return prep; }
+        { prep.RestrictionReason = "Chỉ hóa đơn đã hoàn tất mới được đổi."; prep.RuleBreak = "INVOICE"; return prep; }
         prep.Invoice = invoice;
 
         var policies = await GetCategoryPoliciesListAsync(branchId);
         if (policies == null || policies.Count == 0)
-        { prep.RestrictionReason = "Chua co chinh sach doi/tra theo nhom hang."; prep.RuleBreak = "POLICY"; return prep; }
+        { prep.RestrictionReason = "Chưa có chính sách đổi/trả theo nhóm hàng."; prep.RuleBreak = "POLICY"; return prep; }
 
         var branch = invoice.Order?.Branch;
         var branchExchangeDays = branch?.ExchangeDaysAllowed ?? 30;
         var invoiceDate = invoice.CreatedAt ?? DateTime.UtcNow;
 
-        var returnDiscountPercent = await GetReturnDiscountPercentAsync(branchId);
-        var discountRatio = returnDiscountPercent > 0m ? returnDiscountPercent / 100m : 0m;
-
+        // === QUY TẮC: Chiết khấu trả hàng (RETURN_DISCOUNT_PERCENT) KHÔNG áp dụng
+        //    cho luồng ĐỔI LỆCH GIÁ. Đổi trả chỉ tính giá trị ngang/giá gốc, không trừ %.
+        //    Chiết khấu này chỉ dùng cho luồng TRẢ HÀNG (REFUND) ở AddReturnItem.
         decimal oldValue = 0m;
 
         // SP A (returns)
         foreach (var ri in returnItems)
         {
             if (ri.Quantity <= 0)
-            { prep.RestrictionReason = "So luong doi phai lon hon 0."; prep.RuleBreak = "QTY"; return prep; }
+            { prep.RestrictionReason = "Số lượng đổi phải lớn hơn 0."; prep.RuleBreak = "QTY"; return prep; }
 
             var ii = invoice.InvoiceItems.FirstOrDefault(x => x.InvoiceItemId == ri.InvoiceItemId);
             if (ii == null)
-            { prep.RestrictionReason = $"Dong hoa don khong co trong hoa don goc."; prep.RuleBreak = "INVOICE_ITEM"; return prep; }
+            { prep.RestrictionReason = $"Dòng hóa đơn không có trong hóa đơn gốc."; prep.RuleBreak = "INVOICE_ITEM"; return prep; }
 
             var product = ii.BranchProduct?.Product;
             var policy = MatchPolicy(policies, product);
             if (policy == null)
-            { prep.RestrictionReason = $"San pham \"{product?.ProductName}\" chua co chinh sach doi/tra."; prep.RuleBreak = "POLICY"; return prep; }
+            { prep.RestrictionReason = $"Sản phẩm \"{product?.ProductName}\" chưa có chính sách đổi/trả."; prep.RuleBreak = "POLICY"; return prep; }
 
             var exDays = policy.ExchangeDays;
             if (!exDays.HasValue || exDays.Value <= 0)
-            { prep.RestrictionReason = $"Nhom hang \"{policy.CategoryName}\" khong duoc phep doi."; prep.RuleBreak = "EXCHANGE_DAYS"; return prep; }
+            { prep.RestrictionReason = $"Nhóm hàng \"{policy.CategoryName}\" không được phép đổi."; prep.RuleBreak = "EXCHANGE_DAYS"; return prep; }
 
             var allowedDays = Math.Min(exDays.Value, branchExchangeDays);
             if (invoiceDate.AddDays(allowedDays) < DateTime.UtcNow)
             {
                 var overDays = (int)(DateTime.UtcNow - invoiceDate.AddDays(allowedDays)).TotalDays;
-                prep.RestrictionReason = $"Da qua thoi han doi {overDays} ngay."; prep.RuleBreak = "EXCHANGE_DAYS"; return prep;
+                prep.RestrictionReason = $"Đã quá thời hạn đổi {overDays} ngày."; prep.RuleBreak = "EXCHANGE_DAYS"; return prep;
             }
 
             if (ri.Quantity + ii.ReturnedQuantity > ii.Quantity)
             {
                 var maxQty = ii.Quantity - ii.ReturnedQuantity;
-                prep.RestrictionReason = $"Da doi/tra du so luong cho dong \"{product?.ProductName}\". Toi da con {maxQty}."; prep.RuleBreak = "DUPLICATE"; return prep;
+                prep.RestrictionReason = $"Đã đổi/trả đủ số lượng cho dòng \"{product?.ProductName}\". Tối đa còn {maxQty}."; prep.RuleBreak = "DUPLICATE"; return prep;
             }
 
             var conversionRate = (ii.ConvertValue.HasValue && ii.ConvertValue.Value > 0) ? ii.ConvertValue.Value : 1m;
             var baseQty = ri.Quantity * conversionRate;
-            var gross = ri.Quantity * ii.SellPrice;
-            var refundLine = Math.Max(0, gross - gross * discountRatio);
+            // Giá trị hàng cũ = giá gốc (KHÔNG trừ chiết khấu trả hàng).
+            var refundLine = ri.Quantity * ii.SellPrice;
             oldValue += refundLine;
 
             prep.Returns.Add(new PreparedReturnItem
@@ -1537,13 +1603,13 @@ public class ReturnServiceImpl : IReturnService
         foreach (var ni in newItems)
         {
             if (ni.Quantity <= 0)
-            { prep.RestrictionReason = "So luong hang moi phai lon hon 0."; prep.RuleBreak = "QTY"; return prep; }
+            { prep.RestrictionReason = "Số lượng hàng mới phải lớn hơn 0."; prep.RuleBreak = "QTY"; return prep; }
 
             var bp = await _context.BranchProducts
                 .Include(b => b.Product)
                 .FirstOrDefaultAsync(b => b.BranchProductId == ni.BranchProductId && b.BranchId == branchId);
             if (bp == null)
-            { prep.RestrictionReason = "Khong tim thay san pham moi trong chi nhanh."; prep.RuleBreak = "NEW_ITEM"; return prep; }
+            { prep.RestrictionReason = "Không tìm thấy sản phẩm mới trong chi nhánh."; prep.RuleBreak = "NEW_ITEM"; return prep; }
 
             var conversionRate = (ni.ConversionRate.HasValue && ni.ConversionRate.Value > 0) ? ni.ConversionRate.Value : 1m;
             var baseQty = ni.Quantity * conversionRate;
@@ -1584,16 +1650,16 @@ public class ReturnServiceImpl : IReturnService
             });
         }
         if (!stockSufficient)
-        { prep.RestrictionReason = "San pham moi khong du ton kho kha dung de xuat doi."; prep.RuleBreak = "STOCK"; }
+        { prep.RestrictionReason = "Sản phẩm mới không đủ tồn kho khả dụng để xuất đổi."; prep.RuleBreak = "STOCK"; }
 
         prep.OldValue = oldValue;
         prep.NewValue = newValue;
         prep.Delta = newValue - oldValue;
-        prep.DeltaLabel = prep.Delta > 0 ? "Thu them" : prep.Delta < 0 ? "Hoan lai" : "Doi ngang gia";
+        prep.DeltaLabel = prep.Delta > 0 ? "Thu thêm" : prep.Delta < 0 ? "Hoàn lại" : "Đổi ngang giá";
 
         if (prep.Delta < 0)
         {
-            prep.RestrictionReason = "Chi duoc doi sang san pham cung gia hoac cao hon. Khong duoc doi sang hang re hon de hoan tien lai.";
+            prep.RestrictionReason = "Chỉ được đổi sang sản phẩm cùng giá hoặc cao hơn. Không được đổi sang hàng rẻ hơn để hoàn tiền lại.";
             prep.RuleBreak = "DELTA_NEGATIVE";
         }
 

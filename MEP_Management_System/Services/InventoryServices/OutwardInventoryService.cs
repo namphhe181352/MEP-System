@@ -152,6 +152,16 @@ public class OutwardInventoryService : IOutwardInventoryService
     {
         try
         {
+            if (!HasGlobalAccess(user) && !user.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_CREATE)
+                && !user.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_CONFIRM))
+            {
+                return new ApiResponse<PaginatedResponse<OutwardInventoryResponseDto>>
+                {
+                    Success = false,
+                    Message = "Bạn không có quyền xem phiếu xuất kho."
+                };
+            }
+
             if (branchId == null)
             {
                 return new ApiResponse<PaginatedResponse<OutwardInventoryResponseDto>>
@@ -256,6 +266,16 @@ public class OutwardInventoryService : IOutwardInventoryService
     {
         try
         {
+            if (!HasGlobalAccess(user) && !user.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_CREATE)
+                && !user.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_CONFIRM))
+            {
+                return new ApiResponse<OutwardInventoryResponseDto>
+                {
+                    Success = false,
+                    Message = "Bạn không có quyền xem chi tiết phiếu xuất kho."
+                };
+            }
+
             var stockTicketQuery = _context.StockTickets
                 .Include(st => st.User)
                 .Include(st => st.StockTicketItems)
@@ -679,7 +699,7 @@ public class OutwardInventoryService : IOutwardInventoryService
                 };
             }
 
-            bool hasConfirmPermission = user.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_UPDATE);
+            bool hasConfirmPermission = user.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_CONFIRM);
             bool canUpdate = hasGlobalAccess || hasConfirmPermission;
             if (!canUpdate && stockTicket.UserId != currentUserId)
             {
@@ -1072,7 +1092,7 @@ public class OutwardInventoryService : IOutwardInventoryService
 
             bool hasDeletePerm = hasGlobalAccess
                 || user.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_DELETE)
-                || user.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_UPDATE);
+                || user.HasClaim("permission", PermissionConstants.STOCK_OUTWARD_CONFIRM);
 
             bool isCreator = stockTicket.UserId == currentUserId.Value;
             bool isPending = stockTicket.Status?.ToUpperInvariant() == "PENDING";
@@ -1244,7 +1264,7 @@ th {{ background: #f0f0f0; }}
             bool isOwner = user.IsInRole(PermissionConstants.OWNER_ROLE);
             bool hasConfirmPermission = user.HasClaim(
                 c => c.Type == PermissionConstants.PERMISSION_CLAIM_TYPE
-                  && c.Value == PermissionConstants.STOCK_OUTWARD_UPDATE);
+                  && c.Value == PermissionConstants.STOCK_OUTWARD_CONFIRM);
 
             canConfirm = isOwner || hasConfirmPermission;
         }

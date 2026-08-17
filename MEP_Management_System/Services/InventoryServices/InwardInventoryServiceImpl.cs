@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
+using MEP_Management_System.Authorization;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
 using MEP_Management_System.Exceptions;
@@ -40,6 +41,12 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
 
     private bool IsOwner(ClaimsPrincipal user) => user.IsInRole("Owner");
 
+    private bool HasAnyPermission(ClaimsPrincipal user, params string[] permissions)
+        => permissions.Any(p => user.HasClaim("permission", p));
+
+    private bool CanViewInward(ClaimsPrincipal user)
+        => IsOwner(user) || HasAnyPermission(user, PermissionConstants.STOCK_INWARD_CREATE, PermissionConstants.STOCK_INWARD_UPDATE);
+
     private static DateTime UtcNow() => DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
     private static DateTime? ComputeWarrantyExpiry(DateTime baseDate, int period, string unit)
@@ -53,10 +60,81 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
         };
     }
 
+    private async Task TryWriteSystemLog(Guid userId, string action, string tableName,
+        string entityType, Guid entityId, string description)
+    {
+        try
+        {
+            var log = new SystemLog
+            {
+                LogId = Guid.NewGuid(),
+                UserId = userId,
+                Action = action,
+                TableName = tableName,
+                EntityType = entityType,
+                EntityId = entityId,
+                Description = description,
+                Level = "INFO",
+                Source = "InwardInventoryService",
+                Timestamp = DateTime.UtcNow
+            };
+            _context.SystemLogs.Add(log);
+            await _context.SaveChangesAsync();
+        }
+        catch
+        {
+            // Silent — khong lam fail request chinh
+        }
+    }
+
+    private async Task BroadcastAndSaveNotification(
+        NotificationType type,
+        Guid branchId,
+        string message,
+        Guid triggeredByUserId,
+        Guid? referenceId = null,
+        string? referenceType = null)
+    {
+        var notif = new Notification
+        {
+            NotificationId = Guid.NewGuid(),
+            Type = type,
+            RecipientUserId = null, // Broadcast
+            BranchId = branchId,
+            InventoryCheckId = null,
+            ReferenceId = referenceId,
+            ReferenceType = referenceType,
+            TriggeredByUserId = triggeredByUserId,
+            Message = message,
+            IsRead = false,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.Notifications.Add(notif);
+        await _context.SaveChangesAsync();
+
+        var groupName = $"Branch_{branchId}";
+        await _hub.Clients.Group(groupName).SendAsync("ReceiveInventoryNotification", new
+        {
+            notif.NotificationId,
+            notif.Type,
+            TypeDisplay = notif.Type.ToString(),
+            notif.Message,
+            notif.CreatedAt,
+            notif.IsRead,
+            notif.InventoryCheckId,
+            notif.ReferenceId,
+            notif.ReferenceType
+        });
+    }
+
     public async Task<ApiResponse<PaginatedResponse<InwardInventoryResponseDto>>> GetInwardInventoriesAsync(
         ClaimsPrincipal user, Guid? branchId, string? status, string? ticketType,
         DateTime? fromDate, DateTime? toDate, int pageNumber, int pageSize)
     {
+        if (!CanViewInward(user))
+            throw new BusinessException("Bạn không có quyền xem phiếu nhập kho.");
+
         var list = await _inwardQueryService.GetInwardInventoryAsync(status, user);
 
         if (!string.IsNullOrWhiteSpace(ticketType))
@@ -100,6 +178,9 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
 
     public async Task<ApiResponse<InwardInventoryResponseDto>> GetInwardInventoryByIdAsync(ClaimsPrincipal user, Guid id, Guid? branchId)
     {
+        if (!CanViewInward(user))
+            throw new BusinessException("Bạn không có quyền xem chi tiết phiếu nhập kho.");
+
         var stockTicketQuery = _context.StockTickets
             .Include(st => st.User)
             .Include(st => st.StockTicketItems).ThenInclude(item => item.BranchProduct).ThenInclude(bp => bp.Product)
@@ -116,7 +197,7 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
         var stockTicket = await stockTicketQuery.FirstOrDefaultAsync();
 
         if (stockTicket == null)
-            throw new KeyNotFoundException($"Khong tim thay phieu nhap kho voi ID: {id}");
+            throw new KeyNotFoundException($"Không tìm thấy phiếu nhập kho với ID: {id}");
 
         return new ApiResponse<InwardInventoryResponseDto>
         {
@@ -130,17 +211,25 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
     {
         var currentUserId = GetCurrentUserId(user);
         if (currentUserId == null)
-            throw new UnauthorizedAccessException("Khong xac dinh duoc dinh danh nguoi dung tu Token.");
+            throw new UnauthorizedAccessException("Không xác định được định danh người dùng từ Token.");
 
+        // ============================================================
+        // FIX: Uu tien DefaultBranchId tu users table
+        // Neu khong co thi moi fallback sang logic cu
+        // ============================================================
         var userEntity = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == currentUserId.Value);
         Guid? resolvedBranchId = null;
 
+        // Uu tien 1: DefaultBranchId tu user
         if (userEntity?.DefaultBranchId != null && userEntity.DefaultBranchId != Guid.Empty)
             resolvedBranchId = userEntity.DefaultBranchId;
-        else if (branchIdOverride.HasValue)
+        // Uu tien 2: branchId tu query param (Owner/Admin)
+        else if (IsOwner(user) && branchIdOverride.HasValue)
             resolvedBranchId = branchIdOverride.Value;
+        // Uu tien 3: BranchId tu JWT token
         else if (_currentBranch.GetBranchId().HasValue)
             resolvedBranchId = _currentBranch.GetBranchId();
+        // Uu tien 4: Lay chi nhanh active DUY NHAT trong he thong
         else
         {
             var activeBranch = await _context.Branches.AsNoTracking().Where(b => b.IsActive == 1).FirstOrDefaultAsync();
@@ -148,21 +237,22 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
         }
 
         if (resolvedBranchId == null)
-            throw new BusinessException("Khong tim thay chi nhanh hop le.");
+            throw new BusinessException("Không tìm thấy chi nhánh hợp lệ.");
 
         if (dto.Items == null || dto.Items.Count == 0)
-            throw new BusinessException("Validation failed", "Phai co it nhat 1 san pham.");
+            throw new BusinessException("Validation failed", "Phải có ít nhất 1 sản phẩm.");
 
         if (dto.InwardType == InwardInventoryType.Purchase && (!dto.SupplierId.HasValue || dto.SupplierId == Guid.Empty))
-            throw new BusinessException("Validation failed", "Nha cung cap la bat buoc doi voi phieu nhap mua.");
+            throw new BusinessException("Validation failed", "Nhà cung cấp là bắt buộc đối với phiếu nhập mua.");
 
+        // Validate NCC phai dang Active (Status = 1) moi cho tao phieu nhap mua.
         if (dto.InwardType == InwardInventoryType.Purchase && dto.SupplierId.HasValue && dto.SupplierId != Guid.Empty)
         {
             var supplier = await _context.Suppliers.AsNoTracking().FirstOrDefaultAsync(s => s.SupplierId == dto.SupplierId.Value);
             if (supplier == null)
-                throw new BusinessException("Khong tim thay nha cung cap.");
+                throw new BusinessException("Không tìm thấy nhà cung cấp.");
             if (supplier.Status != 1)
-                throw new BusinessException("Supplier is inactive", $"Nha cung cap '{supplier.SupplierName}' hien dang ngung hoat dong (inactive).");
+                throw new BusinessException("Supplier is inactive", $"Nhà cung cấp '{supplier.SupplierName}' hiện đang ngừng hoạt động (inactive). Vui lòng chọn NCC khác đang hoạt động hoặc kích hoạt lại NCC trước khi tạo phiếu nhập.");
         }
 
         var itemValidationErrors = new List<string>();
@@ -173,9 +263,9 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
             var hasNewProduct = item.NewProduct != null && !string.IsNullOrWhiteSpace(item.NewProduct.ProductName);
             var hasFlatNewProduct = !string.IsNullOrWhiteSpace(item.ProductCode) && !string.IsNullOrWhiteSpace(item.ProductName);
             if (!hasId && !hasNewProduct && !hasFlatNewProduct)
-                itemValidationErrors.Add($"Dong {i + 1}: Can Id (ma san pham) hoac thong tin san pham moi.");
+                itemValidationErrors.Add($"Dòng {i + 1}: Cần Id (mã sản phẩm) hoặc thông tin sản phẩm mới (productCode + productName).");
             if (item.Quantity <= 0)
-                itemValidationErrors.Add($"Dong {i + 1}: So luong phai lon hon 0.");
+                itemValidationErrors.Add($"Dòng {i + 1}: Số lượng phải lớn hơn 0.");
         }
 
         if (itemValidationErrors.Any())
@@ -187,6 +277,10 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
         using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
+            // ============================================================
+            // QUY TAC MOI: Tao phieu voi Status = PENDING
+            // KHONG cap nhat ton kho tai day
+            // ============================================================
             var stockTicket = new StockTicket
             {
                 StockTicketId = Guid.NewGuid(),
@@ -206,6 +300,14 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
             {
                 Guid parsedId;
                 bool isGuid = Guid.TryParse(item.Id, out parsedId);
+
+                // FE (dac biet Excel import) co the gui flat productCode/productName thay vi id
+                // Chuẩn hoa: thieu id thi dung productCode lam id de resolve BranchProduct/Product theo ma
+                if (string.IsNullOrWhiteSpace(item.Id) && !string.IsNullOrWhiteSpace(item.ProductCode))
+                {
+                    item.Id = item.ProductCode;
+                    isGuid = Guid.TryParse(item.Id, out parsedId);
+                }
 
                 var branchProduct = await _context.BranchProducts
                     .Include(bp => bp.Product)
@@ -231,6 +333,7 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
                         var existing = await _context.Products.FirstOrDefaultAsync(p => p.ProductCode == newCode);
                         if (existing != null)
                         {
+                            // San pham cu da bi xoa (Status = -1) -> doi ma cu thanh rac, giai phong ma goc
                             if (existing.Status == -1)
                             {
                                 existing.ProductCode = $"_DEL_{Guid.NewGuid():N}"[..20];
@@ -238,7 +341,7 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
                             }
                             else
                             {
-                                throw new InvalidOperationException($"Ma san pham '{newCode}' da ton tai va dang hoat dong.");
+                                throw new InvalidOperationException($"Mã sản phẩm '{newCode}' đã tồn tại và đang hoạt động. Vui lòng dùng mã khác.");
                             }
                         }
 
@@ -259,7 +362,15 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
                             BranchId = resolvedBranchId
                         };
                         _context.Products.Add(product);
-                        await _context.SaveChangesAsync();
+                        try
+                        {
+                            await _context.SaveChangesAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            throw new InvalidOperationException(
+                                $"Không thể tạo sản phẩm mới '{item.NewProduct.ProductCode}': {ex.InnerException?.Message ?? ex.Message}", ex);
+                        }
                     }
 
                     if (product == null && !string.IsNullOrWhiteSpace(item.ProductCode) && !string.IsNullOrWhiteSpace(item.ProductName))
@@ -268,6 +379,7 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
                         var existing = await _context.Products.FirstOrDefaultAsync(p => p.ProductCode == newCode);
                         if (existing != null)
                         {
+                            // San pham cu da bi xoa (Status = -1) -> doi ma cu thanh rac, giai phong ma goc
                             if (existing.Status == -1)
                             {
                                 existing.ProductCode = $"_DEL_{Guid.NewGuid():N}"[..20];
@@ -275,7 +387,7 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
                             }
                             else
                             {
-                                throw new InvalidOperationException($"Ma san pham '{newCode}' da ton tai va dang hoat dong.");
+                                throw new InvalidOperationException($"Mã sản phẩm '{newCode}' đã tồn tại và đang hoạt động. Vui lòng dùng mã khác.");
                             }
                         }
 
@@ -284,7 +396,7 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
                             ProductId = Guid.NewGuid(),
                             ProductCode = item.ProductCode,
                             ProductName = item.ProductName,
-                            BaseUnit = item.Unit ?? "Cai",
+                            BaseUnit = item.Unit ?? "Cái",
                             BrandName = item.BrandName,
                             CategoryName = item.CategoryName,
                             Barcode = item.Barcode,
@@ -295,11 +407,19 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
                             BranchId = resolvedBranchId
                         };
                         _context.Products.Add(product);
-                        await _context.SaveChangesAsync();
+                        try
+                        {
+                            await _context.SaveChangesAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            throw new InvalidOperationException(
+                                $"Không thể tạo sản phẩm mới '{item.ProductCode}': {ex.InnerException?.Message ?? ex.Message}", ex);
+                        }
                     }
 
                     if (product == null)
-                        throw new KeyNotFoundException($"Product/BranchProduct with ID/Code '{item.Id}' was not found in system.");
+                        throw new InvalidOperationException($"Product/BranchProduct with ID/Code '{item.Id}' was not found in system.");
 
                     branchProduct = new BranchProduct
                     {
@@ -311,7 +431,7 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
                         ActualStock = 0,
                         ReservedStock = 0,
                         AvailableStock = 0,
-                        IsActive = -1,
+                        IsActive = -1, // An khoi danh sach SP cho den khi xac nhan nhap kho
                         DirectSale = 0
                     };
 
@@ -322,10 +442,12 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
                 else
                 {
                     actualBranchProductId = branchProduct.BranchProductId;
+                    // Chi set CostPrice lan dau cho SP moi (CostPrice <= 0), khong ghi de gia von hien tai
                     if (branchProduct.CostPrice <= 0)
                         branchProduct.CostPrice = effectiveCostPrice;
                 }
 
+                // Snapshot don gia tai thoi diem tao phieu - giu nguyen ven
                 var ticketItem = new StockTicketItem
                 {
                     TicketItemId = Guid.NewGuid(),
@@ -348,6 +470,23 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
 
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
+
+            await TryWriteSystemLog(
+                currentUserId.Value,
+                "CREATE_INWARD_INVENTORY",
+                "stock_tickets",
+                "InwardInventory",
+                stockTicket.StockTicketId,
+                $"Tạo phiếu nhập kho {stockTicket.TicketCode}");
+
+            var userName = user.FindFirst("name")?.Value ?? user.FindFirst(ClaimTypes.Name)?.Value ?? "Người dùng";
+            await BroadcastAndSaveNotification(
+                NotificationType.Created,
+                resolvedBranchId.Value,
+                $"{userName} vừa tạo phiếu nhập kho {stockTicket.TicketCode}.",
+                currentUserId.Value,
+                stockTicket.StockTicketId,
+                "InwardInventory");
 
             return new ApiResponse<object>
             {
@@ -381,10 +520,15 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
         var stockTicket = await stockTicketQuery.FirstOrDefaultAsync();
 
         if (stockTicket == null)
-            throw new KeyNotFoundException($"Khong tim thay phieu nhap kho voi ID: {id}");
+            throw new KeyNotFoundException($"Không tìm thấy phiếu nhập kho với ID: {id}");
+
+        // Kiem tra quyen: nguoi tao PENDING hoac co UPDATE hoac Owner
+        bool canUpdate = IsOwner(user) || user.HasClaim("permission", PermissionConstants.STOCK_INWARD_UPDATE);
+        if (!canUpdate && currentUserId.HasValue && stockTicket.UserId != currentUserId.Value)
+            throw new BusinessException("Bạn không có quyền chỉnh sửa phiếu này.");
 
         if (stockTicket.Status == "CANCELLED")
-            throw new BusinessException("Cannot update cancelled ticket", "Phieu da bi huy. Khong the chinh sua.");
+            throw new BusinessException("Cannot update cancelled ticket", "Phiếu đã bị hủy. Không thể chỉnh sửa.");
 
         if (stockTicket.Status == "COMPLETED")
         {
@@ -394,17 +538,31 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
             return new ApiResponse<InwardInventoryResponseDto> { Success = true, Message = "Inward inventory updated (notes only for completed tickets)", Data = MapToInwardInventoryResponse(stockTicket) };
         }
 
+        // PENDING: Cho phep sua tat ca (Items, Note, Reason, Status)
         if (dto.Note != null) stockTicket.Notes = dto.Note;
         if (dto.Reason != null) stockTicket.Reason = dto.Reason;
 
         if (!string.IsNullOrWhiteSpace(dto.Status))
         {
             var normalized = dto.Status.Trim().ToUpperInvariant();
+            // Block "COMPLETED" - bat buoc phai di qua /confirm de cong kho
             if (normalized is "PENDING" or "CANCELLED")
                 stockTicket.Status = normalized;
         }
 
         await _context.SaveChangesAsync();
+
+        if (currentUserId.HasValue)
+        {
+            await TryWriteSystemLog(
+                currentUserId.Value,
+                "UPDATE_INWARD_INVENTORY",
+                "stock_tickets",
+                "InwardInventory",
+                stockTicket.StockTicketId,
+                $"Cập nhật phiếu nhập kho {stockTicket.TicketCode}");
+        }
+
         return new ApiResponse<InwardInventoryResponseDto> { Success = true, Message = "Inward inventory updated successfully", Data = MapToInwardInventoryResponse(stockTicket) };
     }
 
@@ -430,19 +588,20 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
             var stockTicket = await stockTicketQuery.FirstOrDefaultAsync();
 
             if (stockTicket == null)
-                throw new KeyNotFoundException($"Khong tim thay phieu nhap kho voi ID: {id}");
+                throw new KeyNotFoundException($"Không tìm thấy phiếu nhập kho với ID: {id}");
 
             if (stockTicket.Status == "COMPLETED")
-                throw new BusinessException("Ticket already confirmed", "Phieu da duoc xac nhan truoc do.");
+                throw new BusinessException("Ticket already confirmed", "Phiếu đã được xác nhận trước đó.");
 
             if (stockTicket.Status == "CANCELLED")
-                throw new BusinessException("Cannot confirm cancelled ticket", "Phieu da bi huy. Khong the xac nhan.");
+                throw new BusinessException("Cannot confirm cancelled ticket", "Phiếu đã bị hủy. Không thể xác nhận.");
 
             if (stockTicket.StockTicketItems == null || !stockTicket.StockTicketItems.Any())
-                throw new BusinessException("Cannot confirm ticket without items", "Phieu khong co san pham nao.");
+                throw new BusinessException("Cannot confirm ticket without items", "Phiếu không có sản phẩm nào. Vui lòng thêm sản phẩm trước khi xác nhận.");
 
             foreach (var item in stockTicket.StockTicketItems)
             {
+                // Snapshot don gia nhap neu chua co (tuong thich nguoc voi phieu cu)
                 var unitPrice = item.UnitPrice > 0 ? item.UnitPrice.Value : 0m;
                 if (unitPrice == 0)
                 {
@@ -451,17 +610,19 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
                     item.UnitPrice = unitPrice;
                 }
 
+                // Atomic UPDATE: cong ton kho truc tiep trong DB, tranh xung dot
                 try
                 {
+                    // CUSTOMER_RETURN: khong tinh lai cost_price de tranh lam loang gia von binh quan
                     if (stockTicket.TicketType == "CUSTOMER_RETURN")
                     {
                         await _context.Database.ExecuteSqlInterpolatedAsync($@"
                             UPDATE branch_products
                             SET actual_stock = actual_stock + {item.Discrepancy},
                                 available_stock = available_stock + {item.Discrepancy},
-                                is_active = CASE WHEN is_active = -1 THEN 1 ELSE is_active END,
-                                direct_sale = CASE WHEN is_active = -1 THEN 1 ELSE direct_sale END
-                            WHERE branch_product_id = {item.BranchProductId}");
+                                is_active = CASE WHEN is_active = -1 THEN 1 ELSE is_active END
+                            WHERE branch_product_id = {item.BranchProductId}
+                        ");
                     }
                     else
                     {
@@ -470,21 +631,22 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
                             SET actual_stock = actual_stock + {item.Discrepancy},
                                 available_stock = available_stock + {item.Discrepancy},
                                 is_active = CASE WHEN is_active = -1 THEN 1 ELSE is_active END,
-                                direct_sale = CASE WHEN is_active = -1 THEN 1 ELSE direct_sale END,
                                 cost_price = CASE
                                     WHEN (actual_stock + {item.Discrepancy}) > 0
                                     THEN ROUND(((actual_stock * cost_price) + ({item.Discrepancy} * {unitPrice})) / (actual_stock + {item.Discrepancy}), 2)
                                     ELSE {unitPrice}
                                 END
-                            WHERE branch_product_id = {item.BranchProductId}");
+                            WHERE branch_product_id = {item.BranchProductId}
+                        ");
                     }
                 }
                 catch (Exception ex) when (ex is DbUpdateConcurrencyException || ex is DbUpdateException)
                 {
                     await transaction.RollbackAsync();
-                    throw new BusinessException("He thong dang xu ly mot giao dich kho khac cho san pham nay.", "Vui long thu lai sau giay lat.");
+                    throw new BusinessException("Hệ thống đang xử lý một giao dịch kho khác cho sản phẩm này. Vui lòng thử lại sau giây lát.");
                 }
 
+                // Doc lai ton kho sau khi cap nhat de ghi nhan vao ticket item
                 var updatedBp = await _context.BranchProducts.FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
                 if (updatedBp != null)
                 {
@@ -499,6 +661,7 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
                     }
                 }
 
+                // Ghi inventory_ledger
                 var ledger = new InventoryLedger
                 {
                     LedgerId = Guid.NewGuid(),
@@ -518,6 +681,7 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
                 _context.InventoryLedgers.Add(ledger);
             }
 
+            // Chuyen trang thai sang COMPLETED
             stockTicket.Status = "COMPLETED";
             stockTicket.CompletedAt = DateTime.UtcNow;
             stockTicket.ConfirmedBy = currentUserId;
@@ -527,10 +691,21 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
+            if (currentUserId.HasValue)
+            {
+                await TryWriteSystemLog(
+                    currentUserId.Value,
+                    "CONFIRM_INWARD_INVENTORY",
+                    "stock_tickets",
+                    "InwardInventory",
+                    stockTicket.StockTicketId,
+                    $"Xác nhận phiếu nhập kho {stockTicket.TicketCode}");
+            }
+
             return new ApiResponse<object>
             {
                 Success = true,
-                Message = "Xac nhan phieu nhap kho thanh cong. Ton kho da duoc cap nhat.",
+                Message = "Xác nhận phiếu nhập kho thành công. Tồn kho đã được cập nhật.",
                 Data = new { TicketId = stockTicket.StockTicketId, TicketCode = stockTicket.TicketCode, Status = stockTicket.Status }
             };
         }
@@ -540,7 +715,7 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
         catch (Exception ex) when (ex is not DbUpdateConcurrencyException && ex is not DbUpdateException)
         {
             await transaction.RollbackAsync();
-            throw new BusinessException("Loi he thong khi xac nhan phieu nhap kho. Vui long thu lai sau.", ex.Message);
+            throw new BusinessException("Lỗi hệ thống khi xác nhận phiếu nhập kho. Vui lòng thử lại sau.", ex.Message);
         }
     }
 
@@ -548,7 +723,7 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
     {
         var currentUserId = GetCurrentUserId(user);
         if (!currentUserId.HasValue)
-            throw new UnauthorizedAccessException("Khong the xac dinh nguoi dung tu token.");
+            throw new UnauthorizedAccessException("Không thể xác định người dùng từ token.");
 
         using var transaction = await _context.Database.BeginTransactionAsync();
         try
@@ -568,14 +743,31 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
             var stockTicket = await stockTicketQuery.FirstOrDefaultAsync();
 
             if (stockTicket == null)
-                throw new KeyNotFoundException($"Khong tim thay phieu nhap kho voi ID: {id}");
+                throw new KeyNotFoundException($"Không tìm thấy phiếu nhập kho với ID: {id}");
+
+            // Kiem tra quyen huy
+            bool hasDeletePerm = IsOwner(user) || user.HasClaim("permission", PermissionConstants.STOCK_INWARD_DELETE)
+                || user.HasClaim("permission", PermissionConstants.STOCK_INWARD_UPDATE);
+            bool isCreator = stockTicket.UserId == currentUserId.Value;
+            bool isPending = stockTicket.Status?.ToUpperInvariant() == "PENDING";
+
+            if (isPending && !isCreator && !hasDeletePerm)
+                throw new BusinessException("Bạn không có quyền hủy phiếu này. Chỉ người tạo phiếu hoặc người có quyền hủy mới được thực hiện.");
+            if (!isPending && !hasDeletePerm)
+                throw new BusinessException("Bạn không có quyền hủy phiếu này. Chỉ Owner hoặc người có quyền hủy mới được thực hiện.");
 
             if (stockTicket.Status?.ToUpperInvariant() == "CANCELLED")
-                throw new BusinessException("Ticket already cancelled", "Phieu da duoc huy truoc do.");
+                throw new BusinessException("Ticket already cancelled", "Phiếu đã được hủy trước đó.");
 
+            // ============================================================
+            // QUY TAC MOI: Xu ly theo trang thai hien tai
+            // ============================================================
             if (stockTicket.Status == "COMPLETED")
             {
+                // COMPLETED: Can rollback ton kho (tru lai)
+                // Nhung phai kiem tra an toan: khong cho phep ActualStock < 0
                 var unsafeItems = new List<string>();
+
                 foreach (var item in stockTicket.StockTicketItems)
                 {
                     var branchProduct = await _context.BranchProducts.FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
@@ -589,9 +781,10 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
                 if (unsafeItems.Any())
                 {
                     await transaction.RollbackAsync();
-                    throw new BusinessException("Khong the huy vi hang da duoc xuat khoi kho.", $"San pham bi anh huong: {string.Join(", ", unsafeItems)}");
+                    throw new BusinessException("Không thể hủy vì hàng đã được xuất khỏi kho.", $"Sản phẩm bị ảnh hưởng: {string.Join(", ", unsafeItems)}");
                 }
 
+                // Du dieu kien - Thuc hien rollback
                 foreach (var item in stockTicket.StockTicketItems)
                 {
                     var branchProduct = await _context.BranchProducts.FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
@@ -603,7 +796,9 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
                 }
             }
 
+            // Luu trang thai TRUOC KHI doi de response message chinh xac
             var wasCompleted = stockTicket.Status == "COMPLETED";
+
             stockTicket.Status = "CANCELLED";
             stockTicket.CancelledAt = DateTime.UtcNow;
             stockTicket.CancelledBy = currentUserId;
@@ -611,6 +806,14 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
 
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
+
+            await TryWriteSystemLog(
+                currentUserId.Value,
+                "CANCEL_INWARD_INVENTORY",
+                "stock_tickets",
+                "InwardInventory",
+                stockTicket.StockTicketId,
+                $"Hủy phiếu nhập kho {stockTicket.TicketCode} - Lý do: {dto?.CancelReason ?? "—"}");
 
             return new ApiResponse<object>
             {
@@ -633,6 +836,9 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
 
     public async Task<string> GetPrintHtmlAsync(ClaimsPrincipal user, Guid id, Guid? branchId)
     {
+        if (branchId == null)
+            throw new UnauthorizedAccessException("JWT token is missing or invalid");
+
         var ticket = await _context.StockTickets
             .Include(t => t.Branch)
             .Include(t => t.StockTicketItems).ThenInclude(i => i.BranchProduct).ThenInclude(bp => bp.Product)
@@ -698,11 +904,17 @@ th {{ background: #f0f0f0; }}
 
     public async Task<ApiResponse<List<InwardTicketForReturnDto>>> GetBySupplierAsync(ClaimsPrincipal user, Guid supplierId, Guid? branchId)
     {
-        if (branchId == null || branchId == Guid.Empty)
-            throw new BusinessException("Khong xac dinh duoc chi nhanh.");
+        if (!IsOwner(user) && !HasAnyPermission(user,
+                PermissionConstants.STOCK_INWARD_CREATE, PermissionConstants.STOCK_INWARD_UPDATE, PermissionConstants.STOCK_OUTWARD_CREATE))
+            throw new BusinessException("Bạn không có quyền lấy danh sách phiếu nhập.");
+
+        var jwtBranchId = _currentBranch.GetBranchId();
+        var targetBranchId = (IsOwner(user) ? branchId : null) ?? jwtBranchId;
+        if (targetBranchId == null || targetBranchId == Guid.Empty)
+            throw new BusinessException("Không xác định được chi nhánh.");
 
         var tickets = await _context.StockTickets
-            .Where(st => st.SupplierId == supplierId && st.Status == "COMPLETED" && st.TicketType == "PURCHASE" && st.BranchId == branchId.Value)
+            .Where(st => st.SupplierId == supplierId && st.Status == "COMPLETED" && st.TicketType == "PURCHASE" && st.BranchId == targetBranchId.Value)
             .OrderByDescending(st => st.CreatedAt)
             .Select(st => new InwardTicketForReturnDto
             {
@@ -714,17 +926,21 @@ th {{ background: #f0f0f0; }}
             })
             .ToListAsync();
 
-        return new ApiResponse<List<InwardTicketForReturnDto>> { Success = true, Message = "Lay danh sach phieu nhap thanh cong.", Data = tickets };
+        return new ApiResponse<List<InwardTicketForReturnDto>> { Success = true, Message = "Lấy danh sách phiếu nhập thành công.", Data = tickets };
     }
 
     public async Task<ApiResponse<List<ReturnableItemDto>>> GetReturnableItemsAsync(ClaimsPrincipal user, Guid id)
     {
+        if (!IsOwner(user) && !HasAnyPermission(user,
+                PermissionConstants.STOCK_INWARD_CREATE, PermissionConstants.STOCK_INWARD_UPDATE, PermissionConstants.STOCK_OUTWARD_CREATE))
+            throw new BusinessException("Bạn không có quyền lấy danh sách sản phẩm.");
+
         var inwardTicket = await _context.StockTickets
             .Include(st => st.StockTicketItems).ThenInclude(si => si.BranchProduct).ThenInclude(bp => bp.Product)
             .FirstOrDefaultAsync(st => st.StockTicketId == id && st.Status == "COMPLETED" && st.TicketType == "PURCHASE");
 
         if (inwardTicket == null)
-            throw new KeyNotFoundException("Khong tim thay phieu nhap hoac phieu chua hoan thanh.");
+            throw new KeyNotFoundException("Không tìm thấy phiếu nhập hoặc phiếu chưa hoàn thành.");
 
         var inwardItemIds = inwardTicket.StockTicketItems.Select(si => si.TicketItemId).ToList();
 
@@ -757,7 +973,7 @@ th {{ background: #f0f0f0; }}
         .Where(i => i.MaxReturnableQuantity > 0)
         .ToList();
 
-        return new ApiResponse<List<ReturnableItemDto>> { Success = true, Message = "Lay danh sach san pham co the tra thanh cong.", Data = items };
+        return new ApiResponse<List<ReturnableItemDto>> { Success = true, Message = "Lấy danh sách sản phẩm có thể trả thành công.", Data = items };
     }
 
     // ===== Private helpers =====
