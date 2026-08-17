@@ -432,6 +432,27 @@ WHERE NOT EXISTS (SELECT 1 FROM system_configs WHERE config_key = 'SALE_NET_PRIC
 }
 
 
+// Đảm bảo cột notes và unit_name tồn tại trong stock_ticket_items
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<MEPDatabaseContext>();
+    try
+    {
+        await context.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE stock_ticket_items ADD COLUMN IF NOT EXISTS notes TEXT;"
+        );
+        await context.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE stock_ticket_items ADD COLUMN IF NOT EXISTS unit_name VARCHAR(50);"
+        );
+        Console.WriteLine("[Startup] stock_ticket_items.notes -> added OK");
+        Console.WriteLine("[Startup] stock_ticket_items.unit_name -> added OK");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Startup] Alter stock_ticket_items columns thất bại: {ex.Message}");
+    }
+}
+
 app.Run();
 
 public class UtcDateTimeConverter : System.Text.Json.Serialization.JsonConverter<DateTime>
