@@ -1,5 +1,3 @@
-using System;
-
 namespace MEP_Management_System.DTOs.AuthenticationDTOs;
 
 public class ValidateResetTokenResponse

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
@@ -7,6 +8,7 @@ using MEP_Management_System.DTOs.SaleDTOs;
 using MEP_Management_System.Models;
 using Microsoft.EntityFrameworkCore;
 using AutoMapper;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace MEP_Management_System.Services
 {
@@ -221,6 +223,25 @@ namespace MEP_Management_System.Services
             };
 
             return dto;
+        }
+
+        // Static overloads that resolve context via HttpContext if not provided
+        public static async Task<ProductPriceDto?> GetProductPriceAsync(Guid productId, ClaimsPrincipal currentUser, ICurrentBranchAccessor currentBranch)
+        {
+            var httpContext = new HttpContextAccessor().HttpContext;
+            if (httpContext?.RequestServices == null) return null;
+            var context = httpContext.RequestServices.GetService<MEPDatabaseContext>();
+            if (context == null) return null;
+            return await GetProductPriceAsync(productId, currentUser, context, currentBranch);
+        }
+
+        public static async Task<ProductStockDto?> GetProductStockAsync(Guid productId, ClaimsPrincipal currentUser)
+        {
+            var httpContext = new HttpContextAccessor().HttpContext;
+            if (httpContext?.RequestServices == null) return null;
+            var context = httpContext.RequestServices.GetService<MEPDatabaseContext>();
+            if (context == null) return null;
+            return await GetProductStockAsync(productId, currentUser, context);
         }
 
         public async Task<ProductUpsertDto?> GetProductByCodeAsync(string productCode, ClaimsPrincipal currentUser)

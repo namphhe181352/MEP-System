@@ -4,6 +4,75 @@ using System.ComponentModel.DataAnnotations;
 
 namespace MEP_Management_System.DTOs.InventoryDTOs;
 
+// DTOs expected by IInventoryCheckService interface
+
+/// <summary>
+/// DTO for creating inventory check - expects Items with Id (string), Note, Reason
+/// </summary>
+public class InventoryCheckCreateDto
+{
+    [Required]
+    public List<CreateInventoryCheckItemDto> Items { get; set; } = new();
+    public string? Note { get; set; }
+    public string? Reason { get; set; }
+}
+
+public class CreateInventoryCheckItemDto
+{
+    public string Id { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// DTO for updating inventory check
+/// </summary>
+public class InventoryCheckUpdateDto
+{
+    public string? Note { get; set; }
+    public string? Reason { get; set; }
+}
+
+/// <summary>
+/// DTO for filling actual quantities
+/// </summary>
+public class FillActualQuantitiesDto
+{
+    [Required]
+    public List<FillActualQuantityItemDto> Quantities { get; set; } = new();
+}
+
+public class FillActualQuantityItemDto
+{
+    public Guid TicketItemId { get; set; }
+    public decimal ActualQuantity { get; set; }
+    public string? DiscrepancyReason { get; set; }
+}
+
+/// <summary>
+/// DTO for reject or request recount
+/// </summary>
+public class RejectOrRecountDto
+{
+    public bool IsRecount { get; set; }
+    public string? Note { get; set; }
+}
+
+/// <summary>
+/// DTO for updating discrepancy reasons
+/// </summary>
+public class UpdateDiscrepancyReasonsDto
+{
+    [Required]
+    public List<UpdateDiscrepancyReasonItemDto> DiscrepancyReasons { get; set; } = new();
+}
+
+public class UpdateDiscrepancyReasonItemDto
+{
+    public Guid TicketItemId { get; set; }
+    public string? Reason { get; set; }
+}
+
+// Keep original DTOs for backward compatibility
+
 public class CreateInventoryCheckDto
 {
     [Required]
@@ -66,12 +135,13 @@ public class InventoryCheckDetailDto
     public Guid ProductId { get; set; }
     public string? ProductCode { get; set; }
     public string? ProductName { get; set; }
-    public int SystemQuantity { get; set; }
-    public int CurrentActualStock { get; set; }
-    public int ActualQuantity { get; set; }
-    public int Discrepancy { get; set; }
+    public decimal SystemQuantity { get; set; }
+    public decimal CurrentActualStock { get; set; }
+    public decimal ActualQuantity { get; set; }
+    public decimal Discrepancy { get; set; }
     public bool IsCounted { get; set; }
     public string? ReasonNote { get; set; }
+    public string? UnitName { get; set; }
     public Guid? CountedByUserId { get; set; }
     public DateTime? CountedAt { get; set; }
 }
@@ -80,7 +150,7 @@ public class InventoryCheckResponseDto
 {
     public Guid TicketId { get; set; }
     public string TicketCode { get; set; } = null!;
-    public DateTime CreatedAt { get; set; }
+    public DateTime? CreatedAt { get; set; }
     public string Status { get; set; } = null!;
     public Guid BranchId { get; set; }
     public Guid CreatedByUserId { get; set; }
@@ -140,6 +210,7 @@ public class InventoryCheckListItemDto
 public class CancelInventoryCheckDto
 {
     public string? Reason { get; set; }
+    public string? CancelReason { get; set; }
 }
 
 // Request Recount DTO - bắt buộc có lý do

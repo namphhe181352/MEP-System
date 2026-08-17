@@ -104,9 +104,6 @@ namespace MEP_Management_System.Services
                     SystemQuantity = i.SystemQuantity,
                     Quantity = i.Discrepancy,
                     ActualQuantity = i.ActualQuantity,
-                    CostPrice = st.TicketType == "CUSTOMER_RETURN"
-                        ? 0
-                        : (i.UnitPrice ?? 0),
                     UnitPrice = i.UnitPrice,
                     UnitName = i.UnitName ?? i.BranchProduct?.Product?.BaseUnit
                 }).ToList() ?? new List<InwardInventoryItemResponseDto>()

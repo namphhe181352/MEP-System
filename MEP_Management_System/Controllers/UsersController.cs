@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using MEP_Management_System.Models;
+using MEP_Management_System.Services.UserServices;
 using System;
 using System.Security.Claims;
 using System.Threading.Tasks;
@@ -14,11 +13,11 @@ namespace MEP_Management_System.Controllers
     [Tags("User Management")]
     public class UsersController : ControllerBase
     {
-        private readonly MEPDatabaseContext _context;
+        private readonly IUserService _userService;
 
-        public UsersController(MEPDatabaseContext context)
+        public UsersController(IUserService userService)
         {
-            _context = context;
+            _userService = userService;
         }
 
         private Guid? GetCurrentUserId()
@@ -38,21 +37,9 @@ namespace MEP_Management_System.Controllers
             if (userId == null)
                 return Unauthorized(new { message = "User not authenticated" });
 
-            var user = await _context.Users.FindAsync(userId.Value);
-            if (user == null)
-                return NotFound(new { message = "Không tìm thấy người dùng" });
+            var result = await _userService.ChangeDefaultBranchAsync(userId.Value, branchId);
 
-            // Verify user has access to this branch
-            var hasAccess = await _context.StaffAssignments
-                .AnyAsync(sa => sa.UserId == userId.Value && sa.BranchId == branchId);
-
-            if (!hasAccess)
-                return StatusCode(403, new { message = "You don't have access to this branch" });
-
-            user.DefaultBranchId = branchId;
-            await _context.SaveChangesAsync();
-
-            return Ok(new { success = true, message = "Default branch changed", defaultBranchId = branchId });
+            return Ok(new { success = result.Success, message = result.Message, defaultBranchId = result.DefaultBranchId });
         }
 
         /// <summary>
@@ -70,30 +57,9 @@ namespace MEP_Management_System.Controllers
             var isOwner = roles.Contains("OWNER");
             var isStaff = roles.Contains("STAFF") || roles.Contains("SALESSTAFF") || roles.Contains("INVENTORYSTAFF");
 
-            var validTargets = new List<string> { "ALL" };
-            if (isOwner) validTargets.Add("OWNER");
-            if (isStaff) validTargets.Add("STAFF");
-
-            var cutoff = DateTime.UtcNow.AddDays(-days);
-
-            var notifications = await _context.SystemNotifications
-                .Where(n => n.Status == "SENT" && n.SentAt != null && n.SentAt >= cutoff)
-                .Where(n => validTargets.Contains(n.Target.ToUpper()))
-                .OrderByDescending(n => n.SentAt)
-                .Select(n => new
-                {
-                    notificationId = n.NotificationId,
-                    title = n.Title,
-                    content = n.Content,
-                    isUrgent = n.IsUrgent,
-                    target = n.Target,
-                    sentAt = n.SentAt,
-                    type = "System"
-                })
-                .ToListAsync();
+            var notifications = await _userService.GetSystemNotificationsAsync(userId.Value, isOwner, isStaff, days);
 
             return Ok(new { success = true, data = notifications });
         }
     }
 }
-

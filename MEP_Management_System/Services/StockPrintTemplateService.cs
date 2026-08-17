@@ -1,12 +1,14 @@
 using System;
 using System.Text;
 using System.Threading.Tasks;
+using MEP_Management_System.Exceptions;
 using MEP_Management_System.Models;
+using MEP_Management_System.Services.InventoryService;
 using Microsoft.EntityFrameworkCore;
 
 namespace MEP_Management_System.Services;
 
-public class StockPrintTemplateService
+public class StockPrintTemplateService : IStockPrintTemplateService
 {
     private readonly MEPDatabaseContext _context;
 
@@ -15,9 +17,6 @@ public class StockPrintTemplateService
         _context = context;
     }
 
-    /// <summary>
-    /// Resolve template: branch row first, fallback to global (BranchId = null).
-    /// </summary>
     public async Task<StockPrintTemplate?> ResolveTemplateAsync(Guid branchId, string ticketType)
     {
         var template = await _context.StockPrintTemplates
@@ -28,7 +27,6 @@ public class StockPrintTemplateService
 
         if (template != null) return template;
 
-        // Fallback to global
         return await _context.StockPrintTemplates
             .FirstOrDefaultAsync(t =>
                 t.BranchId == null &&
@@ -36,9 +34,6 @@ public class StockPrintTemplateService
                 t.IsActive);
     }
 
-    /// <summary>
-    /// Build HTML for a stock ticket using the resolved template.
-    /// </summary>
     public async Task<string> BuildTicketHtmlAsync(StockTicket ticket, Branch branch, StockPrintTemplate tpl)
     {
         var items = await _context.StockTicketItems
@@ -59,11 +54,9 @@ public class StockPrintTemplateService
         sb.AppendLine($".signature{{margin-top:40px;display:flex;justify-content:space-around}}");
         sb.AppendLine($"</style></head><body>");
 
-        // Header
         if (!string.IsNullOrEmpty(tpl.HeaderText))
             sb.AppendLine($"<div class='header'><h2>{tpl.HeaderText}</h2></div>");
 
-        // Branch info
         if (tpl.ShowBranchInfo)
         {
             var displayName = !string.IsNullOrEmpty(tpl.BranchName) ? tpl.BranchName : branch.BranchName;
@@ -77,18 +70,15 @@ public class StockPrintTemplateService
             if (extraLine.Count > 0) sb.AppendLine($"<p>{string.Join(" • ", extraLine)}</p>");
         }
 
-        // Ticket info
         sb.AppendLine($"<p><strong>Mã phiếu:</strong> {ticket.TicketCode}</p>");
         sb.AppendLine($"<p><strong>Loại:</strong> {ticket.TicketType}</p>");
         sb.AppendLine($"<p><strong>Ngày:</strong> {ticket.CreatedAt:dd/MM/yyyy HH:mm}</p>");
 
-        // Supplier
         if (tpl.ShowSupplier && ticket.Supplier != null)
         {
             sb.AppendLine($"<p><strong>Nhà cung cấp:</strong> {ticket.Supplier.SupplierName}</p>");
         }
 
-        // Items table
         sb.AppendLine("<table>");
         sb.AppendLine("<thead><tr><th>STT</th><th>Tên sản phẩm</th><th>Mã SP</th><th>SL hệ thống</th><th>SL thực tế</th><th>Chênh lệch</th></tr></thead>");
         sb.AppendLine("<tbody>");
@@ -101,18 +91,14 @@ public class StockPrintTemplateService
         }
         sb.AppendLine("</tbody></table>");
 
-        // Total
         sb.AppendLine($"<p style='margin-top:10px'><strong>Tổng tiền:</strong> {ticket.TotalAmount:N0} VNĐ</p>");
 
-        // Notes
         if (!string.IsNullOrEmpty(ticket.Notes))
             sb.AppendLine($"<p><strong>Ghi chú:</strong> {ticket.Notes}</p>");
 
-        // Footer
         if (!string.IsNullOrEmpty(tpl.FooterText))
             sb.AppendLine($"<div class='footer'><p>{tpl.FooterText}</p></div>");
 
-        // Signature
         if (tpl.ShowSignature)
         {
             sb.AppendLine("<div class='signature'>");
@@ -124,5 +110,72 @@ public class StockPrintTemplateService
 
         sb.AppendLine("</body></html>");
         return sb.ToString();
+    }
+
+    public async Task UpsertTemplateAsync(Guid branchId, UpsertStockPrintTemplateRequest req)
+    {
+        var existing = await _context.StockPrintTemplates
+            .FirstOrDefaultAsync(t => t.BranchId == branchId && t.TicketType == req.TicketType);
+
+        if (existing != null)
+        {
+            existing.HeaderText = req.HeaderText;
+            existing.FooterText = req.FooterText;
+            existing.ShowLogo = req.ShowLogo;
+            existing.LogoUrl = req.LogoUrl;
+            existing.BranchName = req.BranchName;
+            existing.BranchAddress = req.BranchAddress;
+            existing.Phone = req.Phone;
+            existing.TaxCode = req.TaxCode;
+            existing.PaperSize = req.PaperSize ?? "A5";
+            existing.FontSize = req.FontSize > 0 ? req.FontSize : 12;
+            existing.FontFamily = req.FontFamily ?? "monospace";
+            existing.ShowSupplier = req.ShowSupplier;
+            existing.ShowBranchInfo = req.ShowBranchInfo;
+            existing.ShowSignature = req.ShowSignature;
+            existing.CustomFieldsJson = req.CustomFieldsJson ?? "{}";
+            existing.IsActive = req.IsActive;
+            existing.UpdatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            _context.StockPrintTemplates.Add(new StockPrintTemplate
+            {
+                TemplateId = Guid.NewGuid(),
+                BranchId = branchId,
+                TicketType = req.TicketType,
+                HeaderText = req.HeaderText,
+                FooterText = req.FooterText,
+                ShowLogo = req.ShowLogo,
+                LogoUrl = req.LogoUrl,
+                BranchName = req.BranchName,
+                BranchAddress = req.BranchAddress,
+                Phone = req.Phone,
+                TaxCode = req.TaxCode,
+                PaperSize = req.PaperSize ?? "A5",
+                FontSize = req.FontSize > 0 ? req.FontSize : 12,
+                FontFamily = req.FontFamily ?? "monospace",
+                ShowSupplier = req.ShowSupplier,
+                ShowBranchInfo = req.ShowBranchInfo,
+                ShowSignature = req.ShowSignature,
+                CustomFieldsJson = req.CustomFieldsJson ?? "{}",
+                IsActive = req.IsActive,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            });
+        }
+
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task<bool> DeleteTemplateAsync(Guid id)
+    {
+        var template = await _context.StockPrintTemplates.FindAsync(id);
+        if (template == null)
+            throw new KeyNotFoundException("Template not found");
+
+        _context.StockPrintTemplates.Remove(template);
+        await _context.SaveChangesAsync();
+        return true;
     }
 }

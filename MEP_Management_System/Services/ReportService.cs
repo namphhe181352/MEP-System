@@ -5,6 +5,7 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.DTOs.InventoryDTOs;
+using MEP_Management_System.Exceptions;
 using MEP_Management_System.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,9 +14,8 @@ namespace MEP_Management_System.Services;
 /// <summary>
 /// Report Service - chứa logic tính toán báo cáo.
 /// Logic tính toán được tách rời từ Controller để dùng chung cho Web UI và Chatbot.
-/// Refactored từ ReportsController - KHÔNG thay đổi logic, chỉ DI CHUYỂN code.
 /// </summary>
-public class ReportService
+public class ReportService : IReportService
 {
     private readonly MEPDatabaseContext _context;
     private readonly ICurrentBranchAccessor _currentBranch;
@@ -46,7 +46,6 @@ public class ReportService
     /// <summary>
     /// Helper: Lấy branchId từ DefaultBranchId của user hiện tại (ưu tiên cao nhất).
     /// Nếu không có thì lấy từ JWT token.
-    /// COPY từ ReportsController.ResolveBranchIdAsync() - GIỮ NGUYÊN LOGIC 100%.
     /// </summary>
     private async Task<Guid?> ResolveBranchIdAsync(ClaimsPrincipal user)
     {
@@ -81,7 +80,6 @@ public class ReportService
 
     /// <summary>
     /// Lấy báo cáo cuối ngày: tổng doanh thu, đơn hàng, breakdown thanh toán, phiếu kho.
-    /// COPY từ ReportsController.GetDailyEndReport() - GIỮ NGUYÊN LOGIC 100%, chỉ THAY ĐỔI CÁCH LẤY USER.
     /// </summary>
     public async Task<DailyEndReportDto> GetDailyEndReportAsync(DailyEndReportRequestDto request, ClaimsPrincipal currentUser)
     {
@@ -288,7 +286,6 @@ public class ReportService
             adjustValue = adjData.ToDictionary(x => x.BranchProductId, x => x.Value);
 
             // Tong bien dong SAU ngay ket thuc (toDate -> hien tai)
-            // Dung de tinh nguoc ton cuoi ky chinh xac (ko bi anh huong boi giao dich sau ky)
             var afterData = await _context.InventoryLedgers
                 .Where(l => l.BranchId == branchId.Value && l.TransactionTime > toDate)
                 .GroupBy(l => l.BranchProductId)
@@ -312,16 +309,12 @@ public class ReportService
 
                 var isDeleted = bp.IsActive == -1 || bp.Product?.Status == -1;
 
-                // Ton cuoi ky = ton kho hien tai - bien dong SAU ngay ket thuc
-                // San pham da xoa: coi ton kho = 0 vi khong con kinh doanh
                 var effectiveStock = isDeleted ? 0 : bp.ActualStock;
                 var closingQ = effectiveStock - afterQty.GetValueOrDefault(bpid, 0);
                 var closingV = Math.Round(closingQ * bp.CostPrice, 2);
-                // Ton dau ky = ton cuoi ky - nhap + xuat - dieu chinh (tinh nguoc)
                 var openQ = closingQ - inQ + outQ - adjQ;
                 var openV = closingV - inV + outV - adjV;
 
-                // Bỏ qua sản phẩm không có phát sinh gì trong kỳ (không tồn kho, không giao dịch)
                 if (openQ == 0 && inQ == 0 && outQ == 0 && adjQ == 0 && closingQ == 0)
                     continue;
 
@@ -360,19 +353,12 @@ public class ReportService
     private async Task<StockMovementReportDto> GetStockMovementReportLegacyAsync(
         StockMovementReportRequestDto request, Guid branchId, Branch? branch, DateTime fromDate, DateTime toDate, List<BranchProduct> products)
     {
-        // Copy logic cũ nhưng fix các lỗi:
-        // 1. CUSTOMER_RETURN có giá trị (dùng unit_price snapshot)
-        // 2. Sales dùng invoice_items cho cả SL + Giá trị
-        // 3. BALANCE_ADJUST dùng TicketType, không dùng Notes LIKE
-        // 4. closingValue = closingStock × CostPrice
-
         // Pre-period queries
         var inwardPurchaseBefore = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && st.TicketType == "PURCHASE" && st.CreatedAt < fromDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
         var inwardReturnBefore = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && st.TicketType == "CUSTOMER_RETURN" && st.CreatedAt < fromDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
         var outwardTicketsBefore = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER") && !(st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT")) && st.CreatedAt < fromDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
         var adjustmentBefore = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && (st.TicketType == "BALANCE_ADJUST" || (st.TicketType == "WRITE_OFF" && st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT"))) && st.CreatedAt < fromDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.StockTicket != null && s.StockTicket.TicketType == "WRITE_OFF" ? -s.Discrepancy : s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
 
-        // Sales trước kỳ - dùng invoice_items cho cả SL và giá trị
         var salesBefore = await _context.InvoiceItems.Where(ii => ii.Invoice.Order.BranchId == branchId && ii.Invoice.Status == "Completed" && ii.Invoice.CreatedAt < fromDate).GroupBy(ii => ii.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(ii => ii.Quantity * (ii.ConvertValue ?? 1m)), Value = g.Sum(ii => (ii.Quantity * (ii.ConvertValue ?? 1m)) * (ii.CostPrice > 0 ? ii.CostPrice : ii.BranchProduct.CostPrice)) }).ToDictionaryAsync(x => x.Key, x => new { x.Qty, x.Value });
 
         // In-period queries
@@ -381,20 +367,16 @@ public class ReportService
         var outwardTicketsIn = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF" || st.TicketType == "TRANSFER") && !(st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT")) && st.CreatedAt >= fromDate && st.CreatedAt <= toDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
         var adjustmentIn = await _context.StockTickets.Where(st => st.BranchId == branchId && st.Status == "COMPLETED" && (st.TicketType == "BALANCE_ADJUST" || (st.TicketType == "WRITE_OFF" && st.Notes != null && st.Notes.Contains("INVENTORY_ADJUSTMENT"))) && st.CreatedAt >= fromDate && st.CreatedAt <= toDate).SelectMany(st => st.StockTicketItems).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(s => s.StockTicket != null && s.StockTicket.TicketType == "WRITE_OFF" ? -s.Discrepancy : s.Discrepancy) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
 
-        // Sales trong kỳ - dùng invoice_items
         var salesIn = await _context.InvoiceItems.Where(ii => ii.Invoice.Order.BranchId == branchId && ii.Invoice.Status == "Completed" && ii.Invoice.CreatedAt >= fromDate && ii.Invoice.CreatedAt <= toDate).GroupBy(ii => ii.BranchProductId).Select(g => new { g.Key, Qty = g.Sum(ii => ii.Quantity * (ii.ConvertValue ?? 1m)), Value = g.Sum(ii => (ii.Quantity * (ii.ConvertValue ?? 1m)) * (ii.CostPrice > 0 ? ii.CostPrice : ii.BranchProduct.CostPrice)) }).ToDictionaryAsync(x => x.Key, x => new { x.Qty, x.Value });
 
-        // Giá trị nhập - PURCHASE + CUSTOMER_RETURN
         var purchaseValueIn = await _context.StockTicketItems.Where(sti => sti.StockTicket.BranchId == branchId && sti.StockTicket.Status == "COMPLETED" && sti.StockTicket.TicketType == "PURCHASE" && sti.StockTicket.CreatedAt >= fromDate && sti.StockTicket.CreatedAt <= toDate).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Value = g.Sum(s => s.Discrepancy * (s.UnitPrice ?? s.BranchProduct.CostPrice)) }).ToDictionaryAsync(x => x.Key, x => x.Value);
         var returnValueIn = await _context.StockTicketItems.Where(sti => sti.StockTicket.BranchId == branchId && sti.StockTicket.Status == "COMPLETED" && sti.StockTicket.TicketType == "CUSTOMER_RETURN" && sti.StockTicket.CreatedAt >= fromDate && sti.StockTicket.CreatedAt <= toDate).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Value = g.Sum(s => s.Discrepancy * (s.UnitPrice ?? s.BranchProduct.CostPrice)) }).ToDictionaryAsync(x => x.Key, x => x.Value);
         var outwardValueIn = await _context.StockTicketItems.Where(sti => sti.StockTicket.BranchId == branchId && sti.StockTicket.Status == "COMPLETED" && (sti.StockTicket.TicketType == "RETURN_SUPPLIER" || sti.StockTicket.TicketType == "WRITE_OFF" || sti.StockTicket.TicketType == "TRANSFER") && sti.StockTicket.CreatedAt >= fromDate && sti.StockTicket.CreatedAt <= toDate).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Value = g.Sum(s => s.Discrepancy * (s.UnitPrice ?? s.BranchProduct.CostPrice)) }).ToDictionaryAsync(x => x.Key, x => x.Value);
 
-        // Giá trị trước kỳ
         var purchaseValueBefore = await _context.StockTicketItems.Where(sti => sti.StockTicket.BranchId == branchId && sti.StockTicket.Status == "COMPLETED" && sti.StockTicket.TicketType == "PURCHASE" && sti.StockTicket.CreatedAt < fromDate).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Value = g.Sum(s => s.Discrepancy * (s.UnitPrice ?? s.BranchProduct.CostPrice)) }).ToDictionaryAsync(x => x.Key, x => x.Value);
         var returnValueBefore = await _context.StockTicketItems.Where(sti => sti.StockTicket.BranchId == branchId && sti.StockTicket.Status == "COMPLETED" && sti.StockTicket.TicketType == "CUSTOMER_RETURN" && sti.StockTicket.CreatedAt < fromDate).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Value = g.Sum(s => s.Discrepancy * (s.UnitPrice ?? s.BranchProduct.CostPrice)) }).ToDictionaryAsync(x => x.Key, x => x.Value);
         var outwardValueBefore = await _context.StockTicketItems.Where(sti => sti.StockTicket.BranchId == branchId && sti.StockTicket.Status == "COMPLETED" && (sti.StockTicket.TicketType == "RETURN_SUPPLIER" || sti.StockTicket.TicketType == "WRITE_OFF" || sti.StockTicket.TicketType == "TRANSFER") && sti.StockTicket.CreatedAt < fromDate).GroupBy(sti => sti.BranchProductId).Select(g => new { g.Key, Value = g.Sum(s => s.Discrepancy * (s.UnitPrice ?? s.BranchProduct.CostPrice)) }).ToDictionaryAsync(x => x.Key, x => x.Value);
 
-        // Build result
         var items = new List<StockMovementItemDto>();
         decimal tOpenV = 0, tInV = 0, tOutV = 0, tAdjV = 0, tCloseV = 0;
 
@@ -412,17 +394,14 @@ public class ReportService
             var adjV = adjustmentIn.GetValueOrDefault(bpid, 0) * bp.CostPrice;
 
             var closeQ = openQ + inQ - outQ + adjQ;
-            var closeV = Math.Round(closeQ * bp.CostPrice, 2); // GT_Cuoi = SL_Cuoi x CostPrice hien tai
+            var closeV = Math.Round(closeQ * bp.CostPrice, 2);
 
             var isDeletedLegacy = bp.IsActive == -1 || bp.Product?.Status == -1;
 
-            // San pham da xoa: coi ton kho = 0
             var displayCloseQ = isDeletedLegacy ? 0 : closeQ;
             var displayCloseV = isDeletedLegacy ? 0 : closeV;
 
-            // Bo qua san pham khong co phat sinh gi trong ky (khong ton kho, khong giao dich)
             if (openQ == 0 && inQ == 0 && outQ == 0 && adjQ == 0 && displayCloseQ == 0)
-                if (openQ == 0 && inQ == 0 && outQ == 0 && adjQ == 0 && displayCloseQ == 0)
                 continue;
 
             items.Add(new StockMovementItemDto
@@ -452,7 +431,6 @@ public class ReportService
 
     /// <summary>
     /// Lấy báo cáo xuất nhập tồn: opening/inward/outward/closing với giá trị tồn kho.
-    /// COPY từ ReportsController.GetStockMovementReport() - GIỮ NGUYÊN LOGIC 100%.
     /// </summary>
     public async Task<StockMovementReportDto> GetStockMovementReportAsync(StockMovementReportRequestDto request, ClaimsPrincipal currentUser)
     {
@@ -462,7 +440,6 @@ public class ReportService
             throw new UnauthorizedAccessException("Không xác định được chi nhánh từ user hiện tại.");
         }
 
-        // Validate date range: fromDate must be <= toDate
         if (request.FromDate > request.ToDate)
         {
             throw new ArgumentException("Ngày bắt đầu không thể lớn hơn ngày kết thúc.");
@@ -473,18 +450,13 @@ public class ReportService
         var fromDate = request.FromDate.Date;
         var toDate = request.ToDate.Date.AddDays(1).AddTicks(-1);
 
-        // Lấy danh sách sản phẩm trong kho (có filter category/product)
-        // Filter IsActive != -1 và Status != -1 để loại sản phẩm bị xóa mềm (không hiển thị mã _DEL_xxx)
-        // Enforce SaaS tenant isolation (BranchId == null cho sản phẩm cũ, BranchId == branchId cho sp mới)
         var productsQuery = _context.BranchProducts
             .Include(bp => bp.Product)
             .Where(bp => bp.BranchId == branchId.Value &&
                          (bp.Product.BranchId == null || bp.Product.BranchId == branchId.Value));
 
-        // Ưu tiên filter theo CategoryId (Guid) - chính xác hơn
         if (request.CategoryId.HasValue && request.CategoryId != Guid.Empty)
         {
-            // lấy tên taxonomy để match với Product.CategoryName
             var categoryName = await _context.ProductTaxonomies
                 .AsNoTracking()
                 .Where(t => t.TaxonomyId == request.CategoryId.Value && t.Type == "Category")
@@ -496,7 +468,6 @@ public class ReportService
                     && bp.Product.CategoryName == categoryName);
             }
         }
-        // Fallback: filter theo CategoryName (string) cho backward compat
         else
         {
             var requestedCategoryName = request.CategoryName?.Trim();
@@ -508,7 +479,6 @@ public class ReportService
             }
         }
 
-        // Lọc theo sản phẩm nếu có
         if (request.ProductId.HasValue)
         {
             productsQuery = productsQuery.Where(bp => bp.ProductId == request.ProductId.Value);
@@ -516,10 +486,6 @@ public class ReportService
 
         var products = await productsQuery.ToListAsync();
 
-        // ===== TÍNH TỒN ĐẦU KỲ ĐÚNG CÁCH =====
-        // Tồn đầu kỳ = Tổng nhập TRƯỚC kỳ - Tổng xuất TRƯỚC kỳ
-
-        // Nhập mua TRƯỚC fromDate (PURCHASE + BALANCE_ADJUST, không bao gồm CUSTOMER_RETURN để tính giá trị)
         var inwardPurchaseBeforePeriod = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
                 && (st.Status == "COMPLETED" || st.Status == "Completed")
@@ -531,7 +497,6 @@ public class ReportService
             .Select(g => new { BranchProductId = g.Key, TotalInward = g.Sum(sti => sti.Discrepancy) })
             .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalInward);
 
-        // Nhập CUSTOMER_RETURN TRƯỚC fromDate (tăng tồn kho vật lý nhưng không tính vào giá trị nhập)
         var inwardReturnBeforePeriod = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
                 && (st.Status == "COMPLETED" || st.Status == "Completed")
@@ -542,7 +507,6 @@ public class ReportService
             .Select(g => new { BranchProductId = g.Key, TotalInward = g.Sum(sti => sti.Discrepancy) })
             .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalInward);
 
-        // Xuất (bán hàng) TRƯỚC fromDate
         var salesBeforePeriod = await _context.OrderItems
             .Include(oi => oi.Order)
             .Where(oi => oi.Order.BranchId == branchId.Value
@@ -552,7 +516,6 @@ public class ReportService
             .Select(g => new { BranchProductId = g.Key, TotalOutward = g.Sum(oi => oi.Quantity) })
             .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalOutward);
 
-        // Xuất kho (phiếu xuất) TRƯỚC fromDate
         var outwardTicketsBeforePeriod = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
                 && (st.Status == "COMPLETED" || st.Status == "Completed")
@@ -563,7 +526,6 @@ public class ReportService
             .Select(g => new { BranchProductId = g.Key, TotalOutward = g.Sum(sti => sti.Discrepancy) })
             .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalOutward);
 
-        // Điều chỉnh kiểm kê TRƯỚC fromDate (để tính tồn đầu kỳ theo đúng ERP)
         var adjustmentBeforePeriod = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
                 && (st.Status == "COMPLETED" || st.Status == "Completed")
@@ -584,8 +546,6 @@ public class ReportService
             })
             .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalAdjustment);
 
-        // ===== TÍNH NHẬP/XUẤT TRONG KỲ =====
-        // Nhập mua trong kỳ (PURCHASE only; KHÔNG tính điều chỉnh kiểm kê vào cột NHẬP)
         var inwardPurchaseInPeriod = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
                 && (st.Status == "COMPLETED" || st.Status == "Completed")
@@ -598,7 +558,6 @@ public class ReportService
             .Select(g => new { BranchProductId = g.Key, TotalInward = g.Sum(sti => sti.Discrepancy) })
             .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalInward);
 
-        // Nhập CUSTOMER_RETURN trong kỳ (tăng tồn kho vật lý nhưng không tính vào giá trị nhập)
         var inwardReturnInPeriod = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
                 && (st.Status == "COMPLETED" || st.Status == "Completed")
@@ -610,7 +569,6 @@ public class ReportService
             .Select(g => new { BranchProductId = g.Key, TotalInward = g.Sum(sti => sti.Discrepancy) })
             .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalInward);
 
-        // Xuất (bán hàng) trong kỳ
         var salesInPeriod = await _context.OrderItems
             .Include(oi => oi.Order)
             .Where(oi => oi.Order.BranchId == branchId.Value
@@ -621,7 +579,6 @@ public class ReportService
             .Select(g => new { BranchProductId = g.Key, TotalOutward = g.Sum(oi => oi.Quantity) })
             .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalOutward);
 
-        // Xuất kho trong kỳ (phân loại khỏi phiếu điều chỉnh kiểm kê)
         var outwardTicketsInPeriod = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
                 && (st.Status == "COMPLETED" || st.Status == "Completed")
@@ -634,7 +591,6 @@ public class ReportService
             .Select(g => new { BranchProductId = g.Key, TotalOutward = g.Sum(sti => sti.Discrepancy) })
             .ToDictionaryAsync(x => x.BranchProductId, x => x.TotalOutward);
 
-        // Điều chỉnh kiểm kê trong kỳ (chỉ cộng vào cột riêng, không đẩy vào NHẬP/XUẤT thương mại)
         var adjustmentInPeriod = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
                 && (st.Status == "COMPLETED" || st.Status == "Completed")
@@ -664,7 +620,6 @@ public class ReportService
             })
             .ToDictionaryAsync(x => x.BranchProductId, x => new { x.TotalAdjustment, x.TotalAdjustmentValue });
 
-        // Giá trị xuất kho thực tế theo giá vốn (CostPrice) với fallback an toàn nếu UnitPrice cũ = 0/null.
         var outwardValueMap = await _context.StockTickets
             .Where(st => st.BranchId == branchId.Value
                 && (st.Status == "COMPLETED" || st.Status == "Completed")
@@ -686,7 +641,6 @@ public class ReportService
             })
             .ToDictionaryAsync(x => x.BranchProductId, x => x.Value);
 
-        // === Giá trị nhập mua thực tế (từ unit_price đã snapshot) ===
         var inwardPurchaseValueInPeriod = await _context.StockTicketItems
             .Where(sti => sti.StockTicket.BranchId == branchId.Value
                 && sti.StockTicket.Status == "COMPLETED"
@@ -706,7 +660,6 @@ public class ReportService
             .Select(g => new { BranchProductId = g.Key, Value = g.Sum(sti => sti.Discrepancy * (sti.UnitPrice ?? sti.BranchProduct.CostPrice)) })
             .ToDictionaryAsync(x => x.BranchProductId, x => x.Value);
 
-        // === Giá trị bán hàng (từ invoice_items.cost_price đã snapshot) ===
         var salesValueInPeriod = await _context.InvoiceItems
             .Where(ii => ii.Invoice.Order.BranchId == branchId.Value
                 && ii.Invoice.Status == "Completed"
@@ -724,7 +677,6 @@ public class ReportService
             .Select(g => new { BranchProductId = g.Key, Value = g.Sum(ii => ii.Quantity * (ii.CostPrice > 0 ? ii.CostPrice : ii.BranchProduct.CostPrice)) })
             .ToDictionaryAsync(x => x.BranchProductId, x => x.Value);
 
-        // === Giá trị xuất kho trước kỳ (từ unit_price đã snapshot) ===
         var outwardValueBeforePeriod2 = await _context.StockTicketItems
             .Where(sti => sti.StockTicket.BranchId == branchId.Value
                 && sti.StockTicket.Status == "COMPLETED"
@@ -742,7 +694,6 @@ public class ReportService
         {
             var branchProductId = bp.BranchProductId;
 
-            // Tính tồn đầu kỳ đúng cách (số lượng vật lý bao gồm cả CUSTOMER_RETURN)
             var inwardPurchaseBefore = inwardPurchaseBeforePeriod.GetValueOrDefault(branchProductId, 0);
             var inwardReturnBefore = inwardReturnBeforePeriod.GetValueOrDefault(branchProductId, 0);
             var inwardBefore = inwardPurchaseBefore + inwardReturnBefore;
@@ -750,7 +701,6 @@ public class ReportService
             var outwardBefore = outwardTicketsBeforePeriod.GetValueOrDefault(branchProductId, 0);
             var openingStock = inwardBefore - (salesBefore + outwardBefore);
 
-            // Tính nhập/xuất trong kỳ
             var inwardPurchaseIn = inwardPurchaseInPeriod.GetValueOrDefault(branchProductId, 0);
             var inwardReturnIn = inwardReturnInPeriod.GetValueOrDefault(branchProductId, 0);
             var inwardIn = inwardPurchaseIn + inwardReturnIn;
@@ -762,22 +712,16 @@ public class ReportService
             var adjustmentIn = adjustmentInPeriod.GetValueOrDefault(branchProductId, new { TotalAdjustment = 0m, TotalAdjustmentValue = 0m }).TotalAdjustment;
             var adjustmentValue = adjustmentInPeriod.GetValueOrDefault(branchProductId, new { TotalAdjustment = 0m, TotalAdjustmentValue = 0m }).TotalAdjustmentValue;
 
-            // Tồn đầu kỳ = dư lượng trước kỳ + điều chỉnh kiểm kê trước kỳ
             openingStock = openingStock + adjustmentBefore;
 
-            // Tồn cuối = Đầu kỳ + Nhập - Xuất + Điều chỉnh kiểm kê trong kỳ
             var closingStock = openingStock + inwardInPeriod2 - outwardInPeriod2 + adjustmentIn;
 
-            // Giá trị: dùng giá đã snapshot (unit_price / cost_price) thay vì bp.CostPrice hiện tại
-            // Inward value từ stock_ticket_items.unit_price (giá nhập thực tế)
             var inwardPurchaseValueIn = inwardPurchaseValueInPeriod.GetValueOrDefault(branchProductId, 0);
             var inwardValue = inwardPurchaseValueIn;
 
-            // Outward value: sales từ invoice_items.cost_price (đã snapshot) + outward tickets từ unit_price
             var salesValueIn = salesValueInPeriod.GetValueOrDefault(branchProductId, 0);
             var outwardValue = salesValueIn + outwardValueMap.GetValueOrDefault(branchProductId, 0);
 
-            // Opening value = Giá trị nhập trước kỳ (thực tế) - Giá trị xuất trước kỳ (thực tế)
             var inwardPurchaseValueBefore = inwardPurchaseValueBeforePeriod.GetValueOrDefault(branchProductId, 0);
             var salesValueBefore = salesValueBeforePeriod2.GetValueOrDefault(branchProductId, 0);
             var outwardValueBefore = outwardValueBeforePeriod2.GetValueOrDefault(branchProductId, 0);
@@ -787,11 +731,9 @@ public class ReportService
 
             var isDeletedCopy = bp.IsActive == -1 || bp.Product?.Status == -1;
 
-            // Sản phẩm đã xóa: coi tồn kho = 0
             var displayClosingStock = isDeletedCopy ? 0 : closingStock;
             var displayClosingValue = isDeletedCopy ? 0 : closingValue;
 
-            // Bỏ qua sản phẩm không có phát sinh gì trong kỳ (không tồn kho, không giao dịch)
             if (openingStock == 0 && inwardInPeriod2 == 0 && outwardInPeriod2 == 0 && adjustmentIn == 0 && displayClosingStock == 0)
                 continue;
 
@@ -842,7 +784,6 @@ public class ReportService
 
     /// <summary>
     /// Lấy báo cáo doanh thu theo thời gian (day/week/month) - biểu đồ + bảng.
-    /// COPY từ ReportsController.GetRevenueByTimeReport() - GIỮ NGUYÊN LOGIC 100%.
     /// </summary>
     public async Task<RevenueByTimeReportDto> GetRevenueByTimeReportAsync(RevenueByTimeRequestDto request, ClaimsPrincipal currentUser)
     {
@@ -906,7 +847,6 @@ public class ReportService
 
         if (normalizedGrouping == "day")
         {
-            // Group by ngày
             var dailyData = orders
                 .GroupBy(o => o.CreatedAt.Date)
                 .OrderBy(g => g.Key)
@@ -945,7 +885,6 @@ public class ReportService
         }
         else if (normalizedGrouping == "week")
         {
-            // Group by tuần
             var weeklyData = orders
                 .GroupBy(o => GetWeekNumber(o.CreatedAt))
                 .OrderBy(g => g.Key)
@@ -988,7 +927,6 @@ public class ReportService
         }
         else if (normalizedGrouping == "month")
         {
-            // Group by tháng
             var monthlyData = orders
                 .GroupBy(o => new { o.CreatedAt.Year, o.CreatedAt.Month })
                 .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
@@ -1057,10 +995,6 @@ public class ReportService
         return result;
     }
 
-    /// <summary>
-    /// Helper: Tính số tuần của năm từ DateTime.
-    /// Copy từ ReportsController.GetWeekNumber().
-    /// </summary>
     private int GetWeekNumber(DateTime date)
     {
         var cal = System.Globalization.CultureInfo.CurrentCulture.Calendar;
@@ -1069,7 +1003,6 @@ public class ReportService
 
     /// <summary>
     /// Lấy báo cáo tồn kho sắp hết - sản phẩm dưới MinStock với mức độ tốc (Critical/Warning/Low).
-    /// COPY từ ReportsController.GetLowStockReport() - GIỮ NGUYÊN LOGIC 100%.
     /// </summary>
     public async Task<LowStockReportDto> GetLowStockReportAsync(LowStockReportRequestDto request, ClaimsPrincipal currentUser)
     {
@@ -1115,7 +1048,7 @@ public class ReportService
                 Shortage = p.ActualStock - (p.MinimumStock ?? 0m),
                 Severity = GetSeverity(p.ActualStock, p.MinimumStock ?? 0m)
             })
-            .OrderBy(x => x.Shortage) // Ưu tiên thiếu nhiều nhất
+            .OrderBy(x => x.Shortage)
             .ToList();
 
         return new LowStockReportDto
@@ -1127,10 +1060,6 @@ public class ReportService
         };
     }
 
-    /// <summary>
-    /// Helper: Tính mức độ tốc của tồn kho (Critical/Warning/Low).
-    /// Copy từ ReportsController.GetSeverity().
-    /// </summary>
     private string GetSeverity(decimal currentStock, decimal minimumStock)
     {
         if (currentStock == 0)
@@ -1144,7 +1073,6 @@ public class ReportService
 
     /// <summary>
     /// Lấy báo cáo doanh thu/lợi nhuận theo sản phẩm.
-    /// COPY từ ReportsController.GetProductProfitReport() - GIỮ NGUYÊN LOGIC 100%.
     /// </summary>
     public async Task<ProductProfitReportDto> GetProductProfitReportAsync(ProductProfitReportRequestDto request, ClaimsPrincipal currentUser)
     {
@@ -1159,7 +1087,6 @@ public class ReportService
         var fromDate = request.FromDate.Date;
         var toDate = request.ToDate.Date.AddDays(1).AddTicks(-1);
 
-        // Lấy chi tiết từ InvoiceItems (dữ liệu bán hàng thực tế)
         var invoiceItems = await _context.InvoiceItems
             .Include(ii => ii.Invoice)
             .Include(ii => ii.BranchProduct)
@@ -1173,10 +1100,8 @@ public class ReportService
                 && ii.Invoice.CreatedAt.Value <= toDate)
             .ToListAsync();
 
-        // Lọc theo nhóm sản phẩm nếu có
         var filteredItems = invoiceItems;
 
-        // Ưu tiên filter theo CategoryId (Guid)
         if (request.CategoryId.HasValue && request.CategoryId != Guid.Empty)
         {
             var categoryName = await _context.ProductTaxonomies
@@ -1208,7 +1133,6 @@ public class ReportService
             }
         }
 
-        // Group by ProductId
         var productData = filteredItems
             .GroupBy(ii => new
             {
@@ -1244,16 +1168,14 @@ public class ReportService
             })
             .ToList();
 
-        // Sort theo yêu cầu
         var sortBy = string.IsNullOrWhiteSpace(request.SortBy) ? "revenue" : request.SortBy.Trim().ToLowerInvariant();
         items = sortBy switch
         {
             "profit" => items.OrderByDescending(x => x.Profit).ToList(),
             "quantity" => items.OrderByDescending(x => x.QuantitySold).ToList(),
-            _ => items.OrderByDescending(x => x.Revenue).ToList() // default: revenue
+            _ => items.OrderByDescending(x => x.Revenue).ToList()
         };
 
-        // Phân trang
         var pageNumber = request.PageNumber <= 0 ? 1 : request.PageNumber;
         var pageSize = request.PageSize <= 0 ? 50 : request.PageSize;
         var totalCount = items.Count;
@@ -1282,7 +1204,6 @@ public class ReportService
 
     /// <summary>
     /// Lấy trang chi tiết nhà cung cấp - tổng hợp công nợ, mua hàng, thanh toán
-    /// COPY nguyên logic từ ReportsController.GetSupplierDetailReport()
     /// </summary>
     public async Task<SupplierDetailReportDto> GetSupplierDetailReportAsync(SupplierDetailRequestDto request, ClaimsPrincipal currentUser)
     {
@@ -1298,7 +1219,6 @@ public class ReportService
             throw new KeyNotFoundException($"Không tìm thấy NCC với ID: {request.SupplierId}");
         }
 
-        // Lay du lieu purchase orders
         var poQuery = _context.PurchaseOrders.Where(po => po.SupplierId == request.SupplierId);
         if (request.PurchaseFromDate.HasValue)
             poQuery = poQuery.Where(po => po.CreatedAt >= request.PurchaseFromDate.Value);
@@ -1308,7 +1228,6 @@ public class ReportService
             .Select(po => new { po.PurchaseOrderId, po.OrderCode, po.TotalAmount, po.Status, po.CreatedAt })
             .ToListAsync();
 
-        // Lay du lieu stock tickets
         var stQuery0 = _context.StockTickets
             .Where(st => st.SupplierId == request.SupplierId && st.BranchId == branchId && st.TicketType == "PURCHASE");
         if (request.PurchaseFromDate.HasValue)
@@ -1319,23 +1238,17 @@ public class ReportService
             .Select(st => new { st.StockTicketId, st.TicketCode, TotalAmount = (decimal?)st.TotalAmount, st.Status, CreatedAt = (DateTime?)(st.CompletedAt ?? st.CreatedAt) })
             .ToListAsync();
 
-        // FIX: Dùng StockTicket COMPLETED làm source of truth cho "đã mua"
-        // (PO khi confirm sẽ tạo StockTicket nên cộng cả 2 sẽ double-count)
         var stDebt = stockTickets.Where(st => st.Status == "COMPLETED").Sum(st => st.TotalAmount ?? 0m);
-        // PO APPROVED chưa được confirm thành StockTicket → vẫn tính nợ
         var poUnconfirmedDebt = purchaseOrders.Where(po => po.Status == "APPROVED" || po.Status == "PENDING")
             .Sum(po => po.TotalAmount ?? 0m);
         var totalDebt = stDebt + poUnconfirmedDebt;
 
-        // Tong mua hang = chỉ StockTicket COMPLETED (đã confirmed)
         var totalPurchaseAllTime = stockTickets.Where(st => st.Status == "COMPLETED").Sum(st => st.TotalAmount ?? 0m);
 
-        // So don hang cho = PO chưa confirm + StockTicket PENDING
         var poPending = purchaseOrders.Count(po => po.Status == "PENDING" || po.Status == "APPROVED");
         var stPending = stockTickets.Count(st => st.Status == "PENDING");
         int pendingOrders = poPending + stPending;
 
-        // Tat ca thanh toan (áp dụng date filter cho PaymentFromDate/PaymentToDate)
         var paymentsQuery = _context.SupplierPayments.Where(sp => sp.SupplierId == request.SupplierId);
         if (request.PaymentFromDate.HasValue)
             paymentsQuery = paymentsQuery.Where(sp => sp.CreatedAt >= request.PaymentFromDate.Value);
@@ -1344,7 +1257,6 @@ public class ReportService
         var allPayments = await paymentsQuery.ToListAsync();
         var totalPaidAllTime = allPayments.Sum(sp => sp.Amount);
 
-        // Tinh cong no theo thang
         var monthlyDebts = new List<MonthlyDebtInfoDto>();
         var culture = new System.Globalization.CultureInfo("vi-VN");
 
@@ -1353,27 +1265,23 @@ public class ReportService
             var year = request.Year.Value;
             var month = request.Month;
 
-            // Loc purchase orders theo nam/thang
             var filteredPO = purchaseOrders
                 .Where(po => po.CreatedAt.HasValue && po.CreatedAt.Value.Year == year)
                 .ToList();
             if (month.HasValue)
                 filteredPO = filteredPO.Where(po => po.CreatedAt.Value.Month == month.Value).ToList();
 
-            // Loc stock tickets theo nam/thang
             var filteredST = stockTickets
                 .Where(st => st.CreatedAt.HasValue && st.CreatedAt.Value.Year == year)
                 .ToList();
             if (month.HasValue)
                 filteredST = filteredST.Where(st => st.CreatedAt.Value.Month == month.Value).ToList();
 
-            // Gop lai
             var allPurchases = filteredPO.Select(po => new { TotalAmount = po.TotalAmount ?? 0m, CreatedAt = po.CreatedAt })
                 .Concat(filteredST.Select(st => new { TotalAmount = st.TotalAmount ?? 0m, CreatedAt = st.CreatedAt }))
                 .Where(x => x.CreatedAt.HasValue)
                 .ToList();
 
-            // Group theo thang
             var purchasesByMonth = allPurchases
                 .Where(x => x.CreatedAt.HasValue)
                 .GroupBy(x => new { Year = x.CreatedAt!.Value.Year, Month = x.CreatedAt.Value.Month })
@@ -1402,7 +1310,6 @@ public class ReportService
             }
         }
 
-        // Ngay loc
         DateTime? fromDate = null;
         DateTime? toDate = null;
         if (request.Year.HasValue)
@@ -1419,7 +1326,6 @@ public class ReportService
             }
         }
 
-        // Lay lich su mua hang
         var poHistory = await _context.PurchaseOrders
             .Where(po => po.SupplierId == request.SupplierId)
             .Where(po => !fromDate.HasValue || po.CreatedAt >= fromDate.Value)
@@ -1460,7 +1366,6 @@ public class ReportService
         var totalPurchaseAmount = purchaseHistory.Sum(x => x.TotalAmount);
         int totalPurchaseOrders = purchaseHistory.Count;
 
-        // Lay lich su thanh toan
         var paymentHistory = await _context.SupplierPayments
             .Where(sp => sp.SupplierId == request.SupplierId)
             .Where(sp => !fromDate.HasValue || sp.CreatedAt >= fromDate.Value)
@@ -1505,6 +1410,7 @@ public class ReportService
 
         return result;
     }
+
     /// <summary>
     /// Báo cáo Thẻ kho chi tiết cho một sản phẩm (Stock Ledger)
     /// </summary>
@@ -1524,7 +1430,6 @@ public class ReportService
 
         var allEntries = new List<StockLedgerEntryDto>();
 
-        // 1. Stock Tickets
         var tickets = await _context.StockTicketItems
             .Include(sti => sti.StockTicket)
             .Where(sti => sti.BranchProductId == bp.BranchProductId
@@ -1559,7 +1464,6 @@ public class ReportService
             });
         }
 
-        // 2. Orders (Sales)
         var orders = await _context.OrderItems
             .Include(oi => oi.Order)
             .Where(oi => oi.BranchProductId == bp.BranchProductId
@@ -1586,7 +1490,6 @@ public class ReportService
             });
         }
 
-        // Sort ASC
         allEntries = allEntries.OrderBy(x => x.TransactionTime).ToList();
 
         decimal currentRunningStock = 0;
@@ -1621,5 +1524,162 @@ public class ReportService
             TotalOutQty = totalOutQty,
             Entries = periodEntries.OrderBy(x => x.TransactionTime).Take(request.PageSize).ToList()
         };
+    }
+
+    /// <summary>
+    /// Lấy thẻ kho chi tiết với đầy đủ thông tin sản phẩm.
+    /// </summary>
+    public async Task<object> GetStockLedgerDetailAsync(Guid branchProductId, DateTime? fromDate, DateTime? toDate, ClaimsPrincipal currentUser)
+    {
+        var branchId = await ResolveBranchIdAsync(currentUser);
+        if (branchId == null)
+            throw new BusinessException("Không xác định được chi nhánh.");
+
+        var from = fromDate?.Date ?? DateTime.UtcNow.AddDays(-30).Date;
+        var to = (toDate?.Date ?? DateTime.UtcNow.Date).AddDays(1).AddTicks(-1);
+
+        var bp = await _context.BranchProducts
+            .Include(x => x.Product)
+            .FirstOrDefaultAsync(x => x.BranchProductId == branchProductId && x.BranchId == branchId);
+
+        if (bp == null)
+            throw new KeyNotFoundException("Không tìm thấy sản phẩm trong kho.");
+
+        decimal openingStock = 0;
+        var ledgerBefore = await _context.InventoryLedgers
+            .Where(l => l.BranchProductId == branchProductId && l.BranchId == branchId && l.TransactionTime < from)
+            .SumAsync(l => (decimal?)l.QtyChange) ?? 0;
+
+        var ledgerIn = await _context.InventoryLedgers
+            .Where(l => l.BranchProductId == branchProductId && l.BranchId == branchId
+                && l.TransactionTime >= from && l.TransactionTime <= to)
+            .OrderBy(l => l.TransactionTime)
+            .Select(l => new { l.TransactionTime, l.DocCode, l.DocType, l.UnitCostPrice, l.QtyChange })
+            .ToListAsync();
+
+        var entries = new List<(DateTime Time, string Doc, string Type, decimal Price, decimal Qty)>();
+        DateTime safeDt(DateTime? d) => d ?? DateTime.UtcNow;
+
+        if (ledgerIn.Count > 0)
+        {
+            foreach (var e in ledgerIn)
+                entries.Add((e.TransactionTime, e.DocCode ?? "", e.DocType, e.UnitCostPrice, e.QtyChange));
+
+            var qtyAfterToDate = await _context.InventoryLedgers
+                .Where(l => l.BranchProductId == branchProductId && l.BranchId == branchId && l.TransactionTime > to)
+                .SumAsync(l => (decimal?)l.QtyChange) ?? 0;
+
+            var stockAtToDate = bp.ActualStock - qtyAfterToDate;
+            var inPeriodTotal = entries.Sum(e => e.Qty);
+            openingStock = stockAtToDate - inPeriodTotal;
+        }
+        else
+        {
+            openingStock = ledgerBefore;
+
+            if (ledgerBefore == 0 && await _context.InventoryLedgers.CountAsync() == 0)
+            {
+                var stBefore = await _context.StockTicketItems
+                    .Where(sti => sti.BranchProductId == branchProductId && sti.StockTicket.BranchId == branchId
+                        && sti.StockTicket.Status == "COMPLETED" && sti.StockTicket.CreatedAt < from)
+                    .SumAsync(sti => (decimal?)(sti.StockTicket.TicketType == "PURCHASE" || sti.StockTicket.TicketType == "CUSTOMER_RETURN" ? sti.Discrepancy : -sti.Discrepancy)) ?? 0;
+
+                var invBefore = await _context.InvoiceItems
+                    .Where(ii => ii.BranchProductId == branchProductId && ii.Invoice.Order.BranchId == branchId
+                        && ii.Invoice.Status == "Completed" && ii.Invoice.CreatedAt < from)
+                    .SumAsync(ii => (decimal?)(-(ii.Quantity * (ii.ConvertValue ?? 1m)))) ?? 0;
+
+                openingStock = stBefore + invBefore;
+            }
+
+            var stIn = await _context.StockTicketItems
+                .Where(sti => sti.BranchProductId == branchProductId && sti.StockTicket.BranchId == branchId
+                    && sti.StockTicket.Status == "COMPLETED"
+                    && sti.StockTicket.CreatedAt >= from && sti.StockTicket.CreatedAt <= to)
+                .OrderBy(sti => sti.StockTicket.CreatedAt)
+                .Select(sti => new { Time = sti.StockTicket.CreatedAt, Doc = sti.StockTicket.TicketCode ?? "", Type = sti.StockTicket.TicketType ?? "", Price = sti.UnitPrice ?? sti.BranchProduct.CostPrice, Qty = sti.StockTicket.TicketType == "PURCHASE" || sti.StockTicket.TicketType == "CUSTOMER_RETURN" ? sti.Discrepancy : -sti.Discrepancy })
+                .ToListAsync();
+            foreach (var e in stIn) entries.Add((safeDt(e.Time), e.Doc, e.Type, e.Price, e.Qty));
+
+            var invIn = await _context.InvoiceItems
+                .Where(ii => ii.BranchProductId == branchProductId && ii.Invoice.Order.BranchId == branchId
+                    && ii.Invoice.Status == "Completed"
+                    && ii.Invoice.CreatedAt >= from && ii.Invoice.CreatedAt <= to)
+                .OrderBy(ii => ii.Invoice.CreatedAt)
+                .Select(ii => new { Time = ii.Invoice.CreatedAt, Doc = ii.Invoice.InvoiceCode ?? "", Price = ii.CostPrice > 0 ? ii.CostPrice : ii.BranchProduct.CostPrice, Qty = -(ii.Quantity * (ii.ConvertValue ?? 1m)) })
+                .ToListAsync();
+            foreach (var e in invIn) entries.Add((safeDt(e.Time), e.Doc, "SALE", e.Price, e.Qty));
+
+            entries = entries.OrderBy(e => e.Time).ToList();
+        }
+
+        var running = openingStock;
+        var resultEntries = entries.Select(e =>
+        {
+            running += e.Qty;
+            return new
+            {
+                TransactionTime = e.Time,
+                DocCode = e.Doc,
+                DocType = e.Type,
+                UnitCostPrice = e.Price,
+                QtyIn = e.Qty > 0 ? e.Qty : 0m,
+                QtyOut = e.Qty < 0 ? -e.Qty : 0m,
+                StockAfter = running
+            };
+        }).ToList();
+
+        return new
+        {
+            productCode = bp.Product?.ProductCode ?? "",
+            productName = bp.Product?.ProductName ?? "",
+            unit = bp.Product?.BaseUnit ?? "",
+            fromDate = from,
+            toDate = to,
+            openingStock,
+            entries = resultEntries,
+            totalInQty = resultEntries.Sum(e => e.QtyIn),
+            totalOutQty = resultEntries.Sum(e => e.QtyOut),
+            closingStock = running
+        };
+    }
+
+    /// <summary>
+    /// Chốt tồn kho cuối ngày - lưu closing_quantity, cost_price, closing_value cho toàn bộ sản phẩm.
+    /// </summary>
+    public async Task<object> CreateDailySnapshotAsync(Guid? branchIdOverride, ClaimsPrincipal currentUser)
+    {
+        var branchId = (IsOwner(currentUser) ? branchIdOverride : null) ?? await ResolveBranchIdAsync(currentUser);
+        if (branchId == null)
+            throw new BusinessException("Không xác định được chi nhánh.");
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        // Xóa snapshot cũ nếu có (cùng ngày + branch)
+        var existing = await _context.DailyStockSnapshots
+            .Where(s => s.SnapshotDate == today && s.BranchId == branchId.Value)
+            .ToListAsync();
+        _context.DailyStockSnapshots.RemoveRange(existing);
+
+        var branchProducts = await _context.BranchProducts
+            .Where(bp => bp.BranchId == branchId.Value && bp.IsActive != 0)
+            .ToListAsync();
+
+        var snapshots = branchProducts.Select(bp => new DailyStockSnapshot
+        {
+            SnapshotId = Guid.NewGuid(),
+            SnapshotDate = today,
+            BranchId = branchId.Value,
+            BranchProductId = bp.BranchProductId,
+            ClosingQuantity = bp.ActualStock,
+            CostPrice = Math.Round(bp.CostPrice, 4),
+            ClosingValue = Math.Round(bp.ActualStock * bp.CostPrice, 4),
+            CreatedAt = DateTime.UtcNow
+        }).ToList();
+
+        _context.DailyStockSnapshots.AddRange(snapshots);
+        await _context.SaveChangesAsync();
+
+        return new { snapshotDate = today, totalProducts = snapshots.Count };
     }
 }
