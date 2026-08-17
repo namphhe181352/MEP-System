@@ -1,10 +1,7 @@
-using AutoMapper;
+using MEP_Management_System.Services;
 using MEP_Management_System.DTOs;
-using MEP_Management_System.DTOs.AdminDTOs;
-using MEP_Management_System.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using System.Text;
 using ClosedXML.Excel;
 
@@ -16,13 +13,11 @@ namespace MEP_Management_System.Controllers.AdminController;
 [Tags("Admin (Admin)")]
 public class SystemLogsController : ControllerBase
 {
-    private readonly MEPDatabaseContext _context;
-    private readonly IMapper _mapper;
+    private readonly ISystemLogService _logService;
 
-    public SystemLogsController(MEPDatabaseContext context, IMapper mapper)
+    public SystemLogsController(ISystemLogService logService)
     {
-        _context = context;
-        _mapper = mapper;
+        _logService = logService;
     }
 
     [HttpGet]
@@ -36,80 +31,14 @@ public class SystemLogsController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50)
     {
-        var query = _context.SystemLogs
-            .Include(l => l.User)
-                .ThenInclude(u => u.Roles)
-            .Include(l => l.User)
-                .ThenInclude(u => u.StaffAssignments)
-                    .ThenInclude(sa => sa.Branch)
-            .AsQueryable();
-
-        if (!string.IsNullOrEmpty(action))
-            query = query.Where(l => l.Action.Contains(action));
-
-        if (userId.HasValue)
-            query = query.Where(l => l.UserId == userId.Value);
-
-        if (!string.IsNullOrEmpty(level))
-            query = query.Where(l => l.Level == level.ToUpper());
-
-        if (!string.IsNullOrEmpty(source))
-            query = query.Where(l => l.Source != null && l.Source.Contains(source));
-
-        if (fromDate.HasValue)
-        {
-            var from = DateTime.SpecifyKind(fromDate.Value, DateTimeKind.Unspecified);
-            query = query.Where(l => l.Timestamp >= from);
-        }
-
-        if (toDate.HasValue)
-        {
-            var to = DateTime.SpecifyKind(toDate.Value, DateTimeKind.Unspecified);
-            query = query.Where(l => l.Timestamp <= to);
-        }
-
-        var totalCount = await query.CountAsync();
-        var logs = await query
-            .OrderByDescending(l => l.Timestamp)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(l => new SystemLogDto
-            {
-                LogId = l.LogId,
-                Action = l.Action,
-                Description = l.Description,
-                TableName = l.TableName,
-                EntityType = l.EntityType,
-                Level = l.Level,
-                Source = l.Source,
-                IpAddress = l.IpAddress,
-                UserAgent = l.UserAgent,
-                UserName = l.User != null ? l.User.FullName : null,
-                BranchName = l.User != null && !l.User.Roles.Any(r => r.RoleName == "Admin")
-                    ? l.User.StaffAssignments.Select(sa => sa.Branch.BranchName).FirstOrDefault()
-                    : null,
-                RoleName = l.User != null ? l.User.Roles.Select(r => r.RoleName).FirstOrDefault() : null,
-                Timestamp = l.Timestamp
-            })
-            .ToListAsync();
-
-        return Ok(new PageResultDto<SystemLogDto>
-        {
-            Items = logs,
-            TotalCount = totalCount,
-            PageNumber = page,
-            PageSize = pageSize
-        });
+        var result = await _logService.GetLogsAsync(action, userId, level, source, fromDate, toDate, page, pageSize);
+        return Ok(result);
     }
 
     [HttpGet("export")]
     public async Task<IActionResult> ExportLogs([FromQuery] string format = "txt")
     {
-        var logs = await _context.SystemLogs
-            .Include(l => l.User)
-            .OrderByDescending(l => l.Timestamp)
-            .Take(5000)
-            .ToListAsync();
+        var logs = await _logService.GetLogsForExportAsync(5000);
 
         if (format.ToLower() == "csv")
         {
@@ -119,19 +48,18 @@ public class SystemLogsController : ControllerBase
             {
                 csv.AppendLine($"\"{l.LogId}\",\"{l.Timestamp:yyyy-MM-dd HH:mm:ss}\",\"{l.Level}\",\"{l.Source}\",\"{l.Action}\",\"{l.Description?.Replace("\"", "\"\"")}\",\"{l.User?.Email}\",\"{l.IpAddress}\"");
             }
-            
+
             var contentBytes = Encoding.UTF8.GetBytes(csv.ToString());
             var bom = Encoding.UTF8.GetPreamble();
             var result = bom.Concat(contentBytes).ToArray();
-            
+
             return File(result, "text/csv", $"system-logs-{DateTime.UtcNow:yyyyMMdd}.csv");
         }
         else if (format.ToLower() == "excel")
         {
             using var workbook = new XLWorkbook();
             var worksheet = workbook.Worksheets.Add("System Logs");
-            
-            // Add Header
+
             var headers = new string[] { "LogId", "Timestamp", "Level", "Source", "Action", "Description", "UserEmail", "IpAddress" };
             for (int i = 0; i < headers.Length; i++)
             {
@@ -141,7 +69,6 @@ public class SystemLogsController : ControllerBase
             headerRow.Style.Font.Bold = true;
             headerRow.Style.Fill.BackgroundColor = XLColor.LightGray;
 
-            // Add Data
             for (int i = 0; i < logs.Count; i++)
             {
                 var l = logs[i];
@@ -156,7 +83,6 @@ public class SystemLogsController : ControllerBase
                 worksheet.Cell(row, 8).Value = l.IpAddress;
             }
 
-            // Auto-fit columns
             worksheet.Columns().AdjustToContents();
 
             using var stream = new MemoryStream();
@@ -175,33 +101,9 @@ public class SystemLogsController : ControllerBase
     [HttpGet("{id}")]
     public async Task<IActionResult> GetLog(Guid id)
     {
-        var log = await _context.SystemLogs
-            .Include(l => l.User)
-                .ThenInclude(u => u.Roles)
-            .Include(l => l.User)
-                .ThenInclude(u => u.StaffAssignments)
-                    .ThenInclude(sa => sa.Branch)
-            .Select(l => new SystemLogDto
-            {
-                LogId = l.LogId,
-                Action = l.Action,
-                Description = l.Description,
-                TableName = l.TableName,
-                EntityType = l.EntityType,
-                Level = l.Level,
-                Source = l.Source,
-                IpAddress = l.IpAddress,
-                UserAgent = l.UserAgent,
-                UserName = l.User != null ? l.User.FullName : null,
-                BranchName = l.User != null && !l.User.Roles.Any(r => r.RoleName == "Admin")
-                    ? l.User.StaffAssignments.Select(sa => sa.Branch.BranchName).FirstOrDefault()
-                    : null,
-                RoleName = l.User != null ? l.User.Roles.Select(r => r.RoleName).FirstOrDefault() : null,
-                Timestamp = l.Timestamp
-            })
-            .FirstOrDefaultAsync(l => l.LogId == id);
-
-        if (log == null) return NotFound(new { error = new { code = "MSG-404", message = "Không tìm thấy." } });
+        var log = await _logService.GetLogByIdAsync(id);
+        if (log == null)
+            return NotFound(new { error = new { code = "MSG-404", message = "Không tìm thấy." } });
 
         return Ok(log);
     }

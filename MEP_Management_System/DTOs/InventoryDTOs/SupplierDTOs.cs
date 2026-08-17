@@ -69,6 +69,20 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
     }
 
     // ============================================================
+    // REQUEST - TOGGLE STATUS
+    // ============================================================
+    public class StatusToggleRequest
+    {
+        public string? Status { get; set; }
+    }
+
+    public class SupplierStatusToggleResponse
+    {
+        public Guid Id { get; set; }
+        public string Status { get; set; } = null!;
+    }
+
+    // ============================================================
     // RESPONSE - MỘT DÒNG TRONG BẢNG
     // ============================================================
     public class SupplierListItemDto
@@ -92,11 +106,6 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public decimal OverpaidAmount { get; set; }
         /// <summary>"Còn nợ" | "Hết nợ" | "Trả thừa"</summary>
         public string DebtStatus { get; set; } = "Còn nợ";
-
-        // Đánh giá
-        //public decimal? AverageRating { get; set; }
-        //public int RatingCount { get; set; }
-        //public DateTime? LastRatedAt { get; set; }
     }
 
     public class SupplierDetailDto
@@ -116,9 +125,6 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public string? Notes { get; set; }
         public string Status { get; set; } = "active";
         public DateTime? CreatedAt { get; set; }
-        //public decimal? AverageRating { get; set; }
-        //public int RatingCount { get; set; }
-        //public DateTime? LastRatedAt { get; set; }
     }
 
     public class SupplierPagedResponse
