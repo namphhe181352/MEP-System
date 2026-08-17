@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using MEP_Management_System.DTOs.InventoryDTOs;
@@ -7,18 +8,25 @@ namespace MEP_Management_System.Services
 {
     public interface ISupplierDebtService
     {
+        /// <summary>
+        /// Gets paginated supplier debts with summary statistics.
+        /// </summary>
+        Task<SupplierDebtPagedResponse> GetSupplierDebtsAsync(SupplierDebtParameters @params, Guid? branchId, ClaimsPrincipal user);
+
+        /// <summary>
+        /// Gets supplier debt detail with PO and stock ticket history.
+        /// </summary>
         Task<SupplierDebtDetailResponse?> GetSupplierDebtDetailAsync(Guid supplierId, ClaimsPrincipal currentUser);
 
         /// <summary>
         /// Tính công nợ hiện tại của 1 NCC tại thời điểm asOfDate (mặc định UtcNow).
-        /// Formula: POs(APPROVED|COMPLETED) + StockTickets(PURCHASE, COMPLETED) - SupplierPayments(IsDeleted=0)
         /// </summary>
         Task<SupplierDebtSummary> CalculateCurrentDebtAsync(Guid supplierId, DateTime? asOfDate = null);
 
         /// <summary>
         /// Tính công nợ cho nhiều NCC, trả về dictionary Guid -> debt summary.
         /// </summary>
-        Task<System.Collections.Generic.Dictionary<Guid, SupplierDebtSummary>> CalculateCurrentDebtBatchAsync(System.Collections.Generic.IEnumerable<Guid> supplierIds, DateTime? asOfDate = null);
+        Task<Dictionary<Guid, SupplierDebtSummary>> CalculateCurrentDebtBatchAsync(IEnumerable<Guid> supplierIds, DateTime? asOfDate = null);
     }
 
     public class SupplierDebtSummary

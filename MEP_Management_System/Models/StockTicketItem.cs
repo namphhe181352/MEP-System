@@ -41,6 +41,9 @@ public partial class StockTicketItem
     /// </summary>
     public decimal ClaimedWarrantyQty { get; set; }
 
+    /// <summary>Ghi chú cho dòng phiếu kiểm kê (lý do chênh lệch).</summary>
+    public string? Notes { get; set; }
+
     public virtual BranchProduct BranchProduct { get; set; } = null!;
 
     public virtual StockTicket StockTicket { get; set; } = null!;
