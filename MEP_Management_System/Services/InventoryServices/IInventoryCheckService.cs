@@ -11,7 +11,7 @@ namespace MEP_Management_System.Services.InventoryServices;
 public interface IInventoryCheckService
 {
     Task<ApiResponse<PaginatedResponse<InventoryCheckResponseDto>>> GetInventoryChecksAsync(
-        ClaimsPrincipal user, Guid? branchId, string? status, DateTime? fromDate, DateTime? toDate,
+        ClaimsPrincipal user, Guid? branchId, string? ticketCode, string? status, DateTime? fromDate, DateTime? toDate,
         int pageNumber, int pageSize);
 
     Task<ApiResponse<InventoryCheckResponseDto>> GetInventoryCheckByIdAsync(ClaimsPrincipal user, Guid id, Guid? branchId);

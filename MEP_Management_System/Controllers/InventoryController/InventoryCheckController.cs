@@ -27,6 +27,7 @@ namespace MEP_Management_System.Controllers.InventoryController
 
         [HttpGet]
         public async Task<IActionResult> GetInventoryChecks(
+            [FromQuery] string? ticketCode,
             [FromQuery] string? status,
             [FromQuery] DateTime? fromDate,
             [FromQuery] DateTime? toDate,
@@ -34,7 +35,7 @@ namespace MEP_Management_System.Controllers.InventoryController
             [FromQuery] int pageSize = 10)
         {
             var result = await _inventoryCheckService.GetInventoryChecksAsync(
-                User, GetCurrentBranchId(), status, fromDate, toDate, pageNumber, pageSize);
+                User, GetCurrentBranchId(), ticketCode, status, fromDate, toDate, pageNumber, pageSize);
             return Ok(result);
         }
 
