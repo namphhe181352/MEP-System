@@ -19,6 +19,12 @@ public partial class MEPDatabaseContext : DbContext
 
     public virtual DbSet<BranchProduct> BranchProducts { get; set; }
 
+    public virtual DbSet<GoodsIssue> GoodsIssues { get; set; }
+
+    public virtual DbSet<GoodsIssueItem> GoodsIssueItems { get; set; }
+
+    public virtual DbSet<GoodsIssueAttachment> GoodsIssueAttachments { get; set; }
+
     public virtual DbSet<InventoryCheckTicket> InventoryCheckTickets { get; set; }
     public virtual DbSet<InventoryCheckDetail> InventoryCheckDetails { get; set; }
     public virtual DbSet<InventoryTransferTicket> InventoryTransferTickets { get; set; }
@@ -51,6 +57,7 @@ public virtual DbSet<Customer> Customers { get; set; }
 
     public virtual DbSet<ProductTaxonomy> ProductTaxonomies { get; set; }
     public virtual DbSet<ProductAttributeType> ProductAttributeTypes { get; set; }
+    public virtual DbSet<StoreApproval> StoreApprovals { get; set; }
 
     public virtual DbSet<ProductLocation> ProductLocations { get; set; }
 
@@ -2544,6 +2551,120 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP").HasColumnType("timestamp without time zone").HasColumnName("created_at");
 
             entity.HasIndex(e => new { e.SnapshotDate, e.BranchId, e.BranchProductId }).IsUnique().HasDatabaseName("uk_daily_snapshot");
+        });
+
+        // === Store Approvals (Yêu cầu đăng ký cửa hàng chờ Admin duyệt) ===
+        modelBuilder.Entity<StoreApproval>(entity =>
+        {
+            entity.HasKey(e => e.ApprovalId).HasName("store_approvals_pkey");
+            entity.ToTable("store_approvals");
+
+            entity.Property(e => e.ApprovalId).HasDefaultValueSql("uuid_generate_v4()").HasColumnName("approval_id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.StoreName).HasMaxLength(255).HasColumnName("store_name");
+            entity.Property(e => e.BusinessLicense).HasMaxLength(255).HasColumnName("business_license");
+            entity.Property(e => e.TaxCode).HasMaxLength(100).HasColumnName("tax_code");
+            entity.Property(e => e.StoreAddress).HasColumnName("store_address");
+            entity.Property(e => e.DocumentUrls).HasColumnName("document_urls");
+            entity.Property(e => e.Status).HasMaxLength(50).HasColumnName("status");
+            entity.Property(e => e.RejectReason).HasColumnName("reject_reason");
+            entity.Property(e => e.Notes).HasColumnName("notes");
+            entity.Property(e => e.ReviewedBy).HasColumnName("reviewed_by");
+            entity.Property(e => e.ReviewedAt).HasColumnType("timestamp without time zone").HasColumnName("reviewed_at");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP").HasColumnType("timestamp without time zone").HasColumnName("created_at");
+
+            entity.HasIndex(e => e.UserId).HasDatabaseName("ix_store_approvals_user");
+            entity.HasIndex(e => e.Status).HasDatabaseName("ix_store_approvals_status");
+        });
+
+        // === Goods Issues (Phiếu xuất kho nội bộ) ===
+        modelBuilder.Entity<GoodsIssue>(entity =>
+        {
+            entity.HasKey(e => e.GoodsIssueId).HasName("goods_issues_pkey");
+            entity.ToTable("goods_issues");
+
+            entity.Property(e => e.GoodsIssueId).HasDefaultValueSql("uuid_generate_v4()").HasColumnName("goods_issue_id");
+            entity.Property(e => e.IssueNumber).HasMaxLength(100).HasColumnName("issue_number");
+            entity.Property(e => e.IssueType).HasMaxLength(100).HasColumnName("issue_type");
+            entity.Property(e => e.CustomerId).HasMaxLength(100).HasColumnName("customer_id");
+            entity.Property(e => e.CustomerName).HasMaxLength(255).HasColumnName("customer_name");
+            entity.Property(e => e.Description).HasColumnName("description");
+            entity.Property(e => e.Reference).HasMaxLength(255).HasColumnName("reference");
+            entity.Property(e => e.IssueDate).HasColumnType("timestamp without time zone").HasColumnName("issue_date");
+            entity.Property(e => e.CreatedBy).HasMaxLength(255).HasColumnName("created_by");
+            entity.Property(e => e.CreatedByUserId).HasColumnName("created_by_user_id");
+            entity.Property(e => e.SyncStatus).HasMaxLength(50).HasColumnName("sync_status");
+            entity.Property(e => e.SyncNumber).HasMaxLength(100).HasColumnName("sync_number");
+            entity.Property(e => e.TotalAmount).HasPrecision(18, 2).HasColumnName("total_amount");
+            entity.Property(e => e.TotalPayment).HasPrecision(18, 2).HasColumnName("total_payment");
+            entity.Property(e => e.PaymentMethod).HasMaxLength(50).HasColumnName("payment_method");
+            entity.Property(e => e.BranchId).HasColumnName("branch_id");
+            entity.Property(e => e.Status).HasMaxLength(50).HasColumnName("status");
+            entity.Property(e => e.CreatedAt).HasColumnType("timestamp without time zone").HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt).HasColumnType("timestamp without time zone").HasColumnName("updated_at");
+
+            entity.HasOne(e => e.Branch)
+                .WithMany()
+                .HasForeignKey(e => e.BranchId)
+                .HasConstraintName("fk_goods_issues_branch");
+
+            entity.HasIndex(e => e.BranchId).HasDatabaseName("ix_goods_issues_branch");
+            entity.HasIndex(e => e.IssueNumber).HasDatabaseName("ix_goods_issues_number");
+        });
+
+        // === Goods Issue Items (Dòng hàng của phiếu xuất kho) ===
+        modelBuilder.Entity<GoodsIssueItem>(entity =>
+        {
+            entity.HasKey(e => e.GoodsIssueItemId).HasName("goods_issue_items_pkey");
+            entity.ToTable("goods_issue_items");
+
+            entity.Property(e => e.GoodsIssueItemId).HasDefaultValueSql("uuid_generate_v4()").HasColumnName("goods_issue_item_id");
+            entity.Property(e => e.GoodsIssueId).HasColumnName("goods_issue_id");
+            entity.Property(e => e.LineNumber).HasColumnName("line_number");
+            entity.Property(e => e.ProductId).HasMaxLength(100).HasColumnName("product_id");
+            entity.Property(e => e.ProductCode).HasMaxLength(100).HasColumnName("product_code");
+            entity.Property(e => e.ProductName).HasMaxLength(500).HasColumnName("product_name");
+            entity.Property(e => e.Unit).HasMaxLength(50).HasColumnName("unit");
+            entity.Property(e => e.LotNumber).HasMaxLength(100).HasColumnName("lot_number");
+            entity.Property(e => e.ExpiryDate).HasMaxLength(50).HasColumnName("expiry_date");
+            entity.Property(e => e.WarehouseId).HasMaxLength(100).HasColumnName("warehouse_id");
+            entity.Property(e => e.WarehouseName).HasMaxLength(255).HasColumnName("warehouse_name");
+            entity.Property(e => e.Location).HasMaxLength(255).HasColumnName("location");
+            entity.Property(e => e.Quantity).HasPrecision(18, 3).HasColumnName("quantity");
+            entity.Property(e => e.UnitPrice).HasPrecision(18, 2).HasColumnName("unit_price");
+            entity.Property(e => e.TotalAmount).HasPrecision(18, 2).HasColumnName("total_amount");
+
+            entity.HasOne(e => e.GoodsIssue)
+                .WithMany(e => e.Items)
+                .HasForeignKey(e => e.GoodsIssueId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("fk_goods_issue_items_issue");
+
+            entity.HasIndex(e => e.GoodsIssueId).HasDatabaseName("ix_goods_issue_items_issue");
+        });
+
+        // === Goods Issue Attachments (File đính kèm phiếu xuất kho) ===
+        modelBuilder.Entity<GoodsIssueAttachment>(entity =>
+        {
+            entity.HasKey(e => e.GoodsIssueAttachmentId).HasName("goods_issue_attachments_pkey");
+            entity.ToTable("goods_issue_attachments");
+
+            entity.Property(e => e.GoodsIssueAttachmentId).HasDefaultValueSql("uuid_generate_v4()").HasColumnName("goods_issue_attachment_id");
+            entity.Property(e => e.GoodsIssueId).HasColumnName("goods_issue_id");
+            entity.Property(e => e.FileName).HasMaxLength(500).HasColumnName("file_name");
+            entity.Property(e => e.ContentType).HasMaxLength(255).HasColumnName("content_type");
+            entity.Property(e => e.Size).HasColumnName("size");
+            entity.Property(e => e.MediaUrl).HasColumnName("media_url");
+            entity.Property(e => e.UploadedAt).HasColumnType("timestamp without time zone").HasColumnName("uploaded_at");
+            entity.Property(e => e.UploadedBy).HasColumnName("uploaded_by");
+
+            entity.HasOne(e => e.GoodsIssue)
+                .WithMany(e => e.Attachments)
+                .HasForeignKey(e => e.GoodsIssueId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("fk_goods_issue_attachments_issue");
+
+            entity.HasIndex(e => e.GoodsIssueId).HasDatabaseName("ix_goods_issue_attachments_issue");
         });
     }
 

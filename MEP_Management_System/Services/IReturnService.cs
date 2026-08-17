@@ -17,7 +17,7 @@ public interface IReturnService
     Task<ExchangeQuoteResponse> QuoteExchangeAsync(ExchangeQuoteRequest req, Guid branchId);
     Task<ReturnOrderDto> CreateExchangeAsync(CreateExchangeRequest req, Guid userId, Guid branchId);
     Task<PayExchangeResultDto> PayExchangeDiffAsync(Guid id, PayExchangeRequest? req, Guid userId, Guid branchId);
-    Task<ReturnOrderDto> ConfirmExchangeTransferAsync(Guid id, ConfirmTransferRequest? req, Guid userId);
+    Task<ReturnOrderDto> ConfirmExchangeTransferAsync(Guid id, ConfirmTransferRequest? req, Guid userId, Guid branchId);
     Task<bool> CancelExchangePaymentAsync(Guid id, Guid branchId);
     Task<List<CategoryPolicyDto>> GetReturnPoliciesAsync(Guid branchId);
     Task<List<CategoryPolicyDto>> GetCategoryPoliciesAsync(Guid branchId);
