@@ -402,6 +402,16 @@ public class AuthService : IAuthService
             .Distinct()
             .ToList();
 
+        // === Bảo đảm quyền "xem đơn hàng ở POS" (SALE_VIEW) cho user được phân quyền bán hàng. ===
+        // Nếu user có bất kỳ quyền SALE_/CUSTOMER_/PAYMENT_ thì LUÔN thêm SALE_VIEW vào token,
+        // bất kể cấu hình role/user-permission cũ có thiếu (do save trước khi có auto-include).
+        // Inventory "Đơn hàng" vẫn yêu cầu OWNER_MANAGE nên KHÔNG mở thêm ở inventory.
+        if (!allPermissions.Contains("SALE_VIEW") &&
+            allPermissions.Any(c => c.StartsWith("SALE_") || c.StartsWith("CUSTOMER_") || c.StartsWith("PAYMENT_")))
+        {
+            allPermissions.Add("SALE_VIEW");
+        }
+
         var jwtToken = _jwtHelper.GenerateToken(
             user.UserId,
             user.Username,
