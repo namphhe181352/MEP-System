@@ -1,6 +1,6 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
-namespace MEP_Management_System.DTOs
+namespace MEP_Management_System.DTOs.AuthenticationDTOs
 {
     public class LoginDto
     {

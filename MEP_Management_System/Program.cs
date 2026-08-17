@@ -6,6 +6,19 @@ using MEP_Management_System.Models;
 using MEP_Management_System.Services;
 using MEP_Management_System.Services.Email;
 using MEP_Management_System.Services.InventoryService;
+using MEP_Management_System.Services.InventoryServices;
+using InventoryServices = MEP_Management_System.Services.InventoryServices;
+using MEP_Management_System.Services.UserServices;
+using MEP_Management_System.Services.AccountSettingsServices;
+using MEP_Management_System.Services.SaleServices;
+using MEP_Management_System.Services.OwnerServices;
+using MEP_Management_System.Services.AdminAccountServices;
+using MEP_Management_System.Services.AdminDashboardServices;
+using MEP_Management_System.Services.AdminBranchServices;
+using MEP_Management_System.Services.AdminRoleServices;
+using MEP_Management_System.Services.AdminUserServices;
+using MEP_Management_System.Services.AuthServices;
+using MEP_Management_System.Services.ChatbotServices;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -35,21 +48,66 @@ builder.Services.AddScoped<INotificationSender, SignalRNotificationSender>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentBranchAccessor, CurrentBranchAccessor>();
 builder.Services.AddScoped<IOrderDiscountService, OrderDiscountService>();
+builder.Services.AddScoped<ISaleInvoiceService, SaleInvoiceService>();
 builder.Services.AddScoped<IInwardInventoryExcelService, InwardInventoryExcelService>();
-builder.Services.AddScoped<ReportService>();
+builder.Services.AddScoped<IReportService, ReportService>();
 //builder.Services.AddScoped<IProductService, ProductService>(); // Removed: using static ProductService methods directly
 //builder.Services.AddScoped<IInvoiceService, InvoiceService>(); // Removed: InvoiceService is now static
 builder.Services.AddScoped<ISupplierDebtService, SupplierDebtService>();
+builder.Services.AddScoped<ISupplierService, SupplierService>();
+builder.Services.AddScoped<ISupplierPaymentService, SupplierPaymentService>();
+builder.Services.AddScoped<ILocationService, LocationService>();
+builder.Services.AddScoped<IProductTaxonomyService, ProductTaxonomyService>();
 builder.Services.AddScoped<InventoryLedgerService>();
 builder.Services.AddScoped<CustomerDebtService>();
 builder.Services.AddScoped<InwardInventoryQueryService>();
-builder.Services.AddScoped<StockPrintTemplateService>();
-builder.Services.AddScoped<InvoicePrintTemplateService>();
+builder.Services.AddScoped<IProductService, ProductServiceImpl>();
+builder.Services.AddScoped<IInwardInventoryService, InwardInventoryServiceImpl>();
+builder.Services.AddScoped<IOutwardInventoryService, OutwardInventoryService>();
+builder.Services.AddScoped<IInventoryCheckService, InventoryCheckServiceImpl>();
+builder.Services.AddScoped<InventoryServices.IOutwardInventoryExcelService, InventoryServices.OutwardInventoryExcelServiceImpl>();
+builder.Services.AddScoped<IStockService, StockService>();
+builder.Services.AddScoped<IStockImportService, StockImportService>();
+builder.Services.AddScoped<IStoreApprovalService, StoreApprovalService>();
+builder.Services.AddScoped<IGoodsIssueService, GoodsIssueServiceImpl>();
+builder.Services.AddScoped<IStockPrintTemplateService, StockPrintTemplateService>();
+// builder.Services.AddScoped<InvoicePrintTemplateService>(); // Now using InvoicePrintTemplateServiceImpl via IInvoicePrintTemplateService
 //builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.ToolDispatcher>(); // Removed: ToolDispatcher not found
 builder.Services.AddScoped<MEP_Management_System.Services.Chatbot.SqlExecutor>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IAccountSettingsService, AccountSettingsService>();
+builder.Services.AddScoped<ICustomerService, CustomerService>();
+builder.Services.AddScoped<ICustomerPaymentService, CustomerPaymentService>();
+builder.Services.AddScoped<IPOSProductService, POSProductService>();
+builder.Services.AddScoped<IReturnService, ReturnServiceImpl>();
+builder.Services.AddScoped<IOrderDiscountTierService, OrderDiscountTierService>();
+builder.Services.AddScoped<IOwnerAccountService, OwnerAccountService>();
+builder.Services.AddScoped<IOwnerBranchService, OwnerBranchService>();
+builder.Services.AddScoped<IOwnerOrderDiscountTierService, OwnerOrderDiscountTierService>();
+builder.Services.AddScoped<IOwnerDashboardService, OwnerDashboardService>();
+builder.Services.AddScoped<IOwnerAuditLogService, OwnerAuditLogService>();
+builder.Services.AddScoped<IOwnerStaffService, OwnerStaffService>();
+builder.Services.AddScoped<IInvoicePrintTemplateService, InvoicePrintTemplateServiceImpl>();
+builder.Services.AddScoped<IBranchResolutionService, BranchResolutionService>();
+builder.Services.AddScoped<IExpenseService, ExpenseServiceImpl>();
+builder.Services.AddScoped<ISystemLogService, SystemLogService>();
+builder.Services.AddScoped<ISystemNotificationService, SystemNotificationService>();
+builder.Services.AddScoped<IShiftService, ShiftService>();
+builder.Services.AddScoped<IWarrantyService, WarrantyService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IPrintingService, PrintingService>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddSingleton<MEP_Management_System.Services.Chatbot.ChatbotRateLimiter>();
+builder.Services.AddScoped<IChatbotService, ChatbotService>();
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
 builder.Services.AddTransient<IEmailService, EmailService>();
+
+// Admin Services
+builder.Services.AddScoped<IAdminAccountService, AdminAccountService>();
+builder.Services.AddScoped<MEP_Management_System.Services.AdminDashboardServices.IAdminDashboardService, MEP_Management_System.Services.AdminDashboardServices.AdminDashboardService>();
+builder.Services.AddScoped<MEP_Management_System.Services.AdminBranchServices.IAdminBranchService, MEP_Management_System.Services.AdminBranchServices.AdminBranchService>();
+builder.Services.AddScoped<MEP_Management_System.Services.AdminRoleServices.IAdminRoleService, MEP_Management_System.Services.AdminRoleServices.AdminRoleService>();
+builder.Services.AddScoped<MEP_Management_System.Services.AdminUserServices.IAdminUserService, MEP_Management_System.Services.AdminUserServices.AdminUserService>();
 
 // Background Services
 builder.Services.AddHostedService<UserCleanupService>();
@@ -253,6 +311,7 @@ app.UseSwaggerUI(c =>
 app.UseCors("AllowFrontend");
 // app.UseHttpsRedirection(); // Bỏ comment khi deploy lên server thật có SSL/TLS
 app.UseAuthentication();
+app.UseGlobalExceptionHandler(); // Bắt tất cả exceptions, trả về ApiResponse chuẩn
 app.UseActiveUserCheck();
 app.UseAuthorization();
 
@@ -377,6 +436,129 @@ WHERE NOT EXISTS (SELECT 1 FROM system_configs WHERE config_key = 'SALE_NET_PRIC
     }
 }
 
+
+// Đảm bảo cột notes và unit_name tồn tại trong stock_ticket_items
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<MEPDatabaseContext>();
+    try
+    {
+        await context.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE stock_ticket_items ADD COLUMN IF NOT EXISTS notes TEXT;"
+        );
+        await context.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE stock_ticket_items ADD COLUMN IF NOT EXISTS unit_name VARCHAR(50);"
+        );
+        Console.WriteLine("[Startup] stock_ticket_items.notes -> added OK");
+        Console.WriteLine("[Startup] stock_ticket_items.unit_name -> added OK");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Startup] Alter stock_ticket_items columns thất bại: {ex.Message}");
+    }
+}
+
+// Đảm bảo các bảng mới tồn tại: store_approvals, goods_issues, goods_issue_items, goods_issue_attachments.
+// EF migration code-first chưa chạy được khi app đang lock bin -> tạo idempotent bằng raw SQL tại startup.
+// Tên bảng/cột khớp với Fluent API trong MEPDatabaseContext.OnModelCreating.
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<MEPDatabaseContext>();
+    try
+    {
+        await context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS store_approvals (
+                approval_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id UUID NOT NULL,
+                store_name VARCHAR(255) NOT NULL DEFAULT '',
+                business_license VARCHAR(255),
+                tax_code VARCHAR(100),
+                store_address TEXT,
+                document_urls TEXT,
+                status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+                reject_reason TEXT,
+                notes TEXT,
+                reviewed_by UUID,
+                reviewed_at TIMESTAMP WITHOUT TIME ZONE,
+                created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS ix_store_approvals_user ON store_approvals(user_id);
+            CREATE INDEX IF NOT EXISTS ix_store_approvals_status ON store_approvals(status);
+        ");
+        Console.WriteLine("[Startup] store_approvals -> ensured OK");
+
+        await context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS goods_issues (
+                goods_issue_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                issue_number VARCHAR(100) NOT NULL DEFAULT '',
+                issue_type VARCHAR(100) NOT NULL DEFAULT 'Xuất kho khác',
+                customer_id VARCHAR(100),
+                customer_name VARCHAR(255),
+                description TEXT,
+                reference VARCHAR(255),
+                issue_date TIMESTAMP WITHOUT TIME ZONE,
+                created_by VARCHAR(255),
+                created_by_user_id UUID,
+                sync_status VARCHAR(50) NOT NULL DEFAULT 'Chưa đồng bộ',
+                sync_number VARCHAR(100),
+                total_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+                total_payment NUMERIC(18,2),
+                payment_method VARCHAR(50),
+                branch_id UUID NOT NULL,
+                status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+                created_at TIMESTAMP WITHOUT TIME ZONE,
+                updated_at TIMESTAMP WITHOUT TIME ZONE,
+                CONSTRAINT fk_goods_issues_branch FOREIGN KEY (branch_id) REFERENCES branches(branch_id)
+            );
+            CREATE INDEX IF NOT EXISTS ix_goods_issues_branch ON goods_issues(branch_id);
+            CREATE INDEX IF NOT EXISTS ix_goods_issues_number ON goods_issues(issue_number);
+        ");
+        Console.WriteLine("[Startup] goods_issues -> ensured OK");
+
+        await context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS goods_issue_items (
+                goods_issue_item_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                goods_issue_id UUID NOT NULL,
+                line_number INT NOT NULL DEFAULT 1,
+                product_id VARCHAR(100),
+                product_code VARCHAR(100),
+                product_name VARCHAR(500),
+                unit VARCHAR(50),
+                lot_number VARCHAR(100),
+                expiry_date VARCHAR(50),
+                warehouse_id VARCHAR(100),
+                warehouse_name VARCHAR(255),
+                location VARCHAR(255),
+                quantity NUMERIC(18,3) NOT NULL DEFAULT 0,
+                unit_price NUMERIC(18,2),
+                total_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+                CONSTRAINT fk_goods_issue_items_issue FOREIGN KEY (goods_issue_id) REFERENCES goods_issues(goods_issue_id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS ix_goods_issue_items_issue ON goods_issue_items(goods_issue_id);
+        ");
+        Console.WriteLine("[Startup] goods_issue_items -> ensured OK");
+
+        await context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS goods_issue_attachments (
+                goods_issue_attachment_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                goods_issue_id UUID NOT NULL,
+                file_name VARCHAR(500) NOT NULL DEFAULT '',
+                content_type VARCHAR(255),
+                size BIGINT,
+                media_url TEXT NOT NULL DEFAULT '',
+                uploaded_at TIMESTAMP WITHOUT TIME ZONE,
+                uploaded_by UUID,
+                CONSTRAINT fk_goods_issue_attachments_issue FOREIGN KEY (goods_issue_id) REFERENCES goods_issues(goods_issue_id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS ix_goods_issue_attachments_issue ON goods_issue_attachments(goods_issue_id);
+        ");
+        Console.WriteLine("[Startup] goods_issue_attachments -> ensured OK");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Startup] Tạo bảng store_approvals/goods_issues thất bại: {ex.Message}");
+    }
+}
 
 app.Run();
 
