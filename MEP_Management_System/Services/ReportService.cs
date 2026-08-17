@@ -1255,7 +1255,8 @@ public class ReportService : IReportService
         if (request.PaymentToDate.HasValue)
             paymentsQuery = paymentsQuery.Where(sp => sp.CreatedAt <= request.PaymentToDate.Value);
         var allPayments = await paymentsQuery.ToListAsync();
-        var totalPaidAllTime = allPayments.Sum(sp => sp.Amount);
+        // Tổng đã thanh toán chỉ tính phiếu còn hiệu lực (loại phiếu chi đã hủy IsDeleted=1 -> khôi phục dư nợ).
+        var totalPaidAllTime = allPayments.Where(sp => sp.IsDeleted == 0).Sum(sp => sp.Amount);
 
         var monthlyDebts = new List<MonthlyDebtInfoDto>();
         var culture = new System.Globalization.CultureInfo("vi-VN");
@@ -1294,7 +1295,7 @@ public class ReportService : IReportService
                 var totalPurchase = group.Sum(x => x.TotalAmount);
 
                 var paymentsInMonth = allPayments
-                    .Where(sp => sp.CreatedAt.Year == group.Key.Year && sp.CreatedAt.Month == group.Key.Month)
+                    .Where(sp => sp.IsDeleted == 0 && sp.CreatedAt.Year == group.Key.Year && sp.CreatedAt.Month == group.Key.Month)
                     .Sum(sp => sp.Amount);
 
                 monthlyDebts.Add(new MonthlyDebtInfoDto
@@ -1371,7 +1372,7 @@ public class ReportService : IReportService
             .Where(sp => !fromDate.HasValue || sp.CreatedAt >= fromDate.Value)
             .Where(sp => !toDate.HasValue || sp.CreatedAt <= toDate.Value)
             .OrderByDescending(sp => sp.CreatedAt)
-            .Select(sp => new { sp.PaymentId, sp.CreatedAt, sp.Amount, sp.Note })
+            .Select(sp => new { sp.PaymentId, sp.CreatedAt, sp.Amount, sp.Note, sp.IsDeleted })
             .ToListAsync();
 
         var paymentHistoryDto = paymentHistory.Select(p => new SupplierPaymentHistoryItemDto
@@ -1379,11 +1380,13 @@ public class ReportService : IReportService
             PaymentId = p.PaymentId,
             CreatedAt = p.CreatedAt,
             Amount = p.Amount,
-            Note = p.Note
+            Note = p.Note,
+            Status = p.IsDeleted == 1 ? "CANCELLED" : "ACTIVE"
         }).ToList();
 
-        var totalPaid = paymentHistoryDto.Sum(x => x.Amount);
-        int totalPayments = paymentHistoryDto.Count;
+        // Tổng đã thanh toán (trong kỳ) chỉ tính phiếu còn hiệu lực.
+        var totalPaid = paymentHistoryDto.Where(x => x.Status != "CANCELLED").Sum(x => x.Amount);
+        int totalPayments = paymentHistoryDto.Count(x => x.Status != "CANCELLED");
 
         var result = new SupplierDetailReportDto
         {
@@ -1430,14 +1433,22 @@ public class ReportService : IReportService
 
         var allEntries = new List<StockLedgerEntryDto>();
 
+        // Bao gom ca phiếu CANCELLED de the kho hien thi dong giao dich goc (khi tung COMPLETED)
+        // + dong but toan dao (Huy) voi ly do. Phiếu CANCELLED ma chua tung CompletedAt (pending->huy)
+        // khong phat sinh dong nao (chua tinh ton kho).
         var tickets = await _context.StockTicketItems
             .Include(sti => sti.StockTicket)
             .Where(sti => sti.BranchProductId == bp.BranchProductId
-                && (sti.StockTicket.Status == "COMPLETED" || sti.StockTicket.Status == "Completed")
+                && (sti.StockTicket.Status == "COMPLETED" || sti.StockTicket.Status == "Completed"
+                    || sti.StockTicket.Status == "CANCELLED" || sti.StockTicket.Status == "Cancelled")
                 && sti.StockTicket.CreatedAt != null)
             .Select(sti => new
             {
                 CreatedAt = sti.StockTicket.CreatedAt!.Value,
+                CompletedAt = sti.StockTicket.CompletedAt,
+                CancelledAt = sti.StockTicket.CancelledAt,
+                CancelReason = sti.StockTicket.CancelReason,
+                Status = sti.StockTicket.Status,
                 TicketCode = sti.StockTicket.TicketCode,
                 TicketType = sti.StockTicket.TicketType,
                 UnitPrice = sti.UnitPrice,
@@ -1447,48 +1458,58 @@ public class ReportService : IReportService
 
         foreach (var t in tickets)
         {
-            var isOut = t.TicketType == "RETURN_SUPPLIER" || t.TicketType == "WRITE_OFF" || t.TicketType == "TRANSFER" || (t.TicketType == "BALANCE_ADJUST" && t.Discrepancy < 0);
+            var isOut = t.TicketType == "RETURN_SUPPLIER" || t.TicketType == "WRITE_OFF" || t.TicketType == "TRANSFER" || t.TicketType == "SALE" || (t.TicketType == "BALANCE_ADJUST" && t.Discrepancy < 0);
             var isIn = t.TicketType == "PURCHASE" || t.TicketType == "CUSTOMER_RETURN" || (t.TicketType == "BALANCE_ADJUST" && t.Discrepancy > 0);
 
-            decimal qtyIn = isIn ? Math.Abs(t.Discrepancy) : 0;
-            decimal qtyOut = isOut ? Math.Abs(t.Discrepancy) : 0;
+            var statusUpper = (t.Status ?? "").ToUpperInvariant();
+            var isCancelled = statusUpper == "CANCELLED";
 
-            allEntries.Add(new StockLedgerEntryDto
+            // SALE ticket item.UnitPrice = giá BÁN net (không phải giá vốn) -> cột "Đơn giá vốn"
+            // phải dùng bp.CostPrice. Các loại khác dùng UnitPrice của ticket item.
+            var unitCostForDisplay = (t.TicketType == "SALE") ? bp.CostPrice : t.UnitPrice;
+
+            // Entry 1: giao dich goc — luon hien thi khi phiếu tung COMPLETED (CompletedAt != null).
+            // Voi phiếu pending->huy (CompletedAt == null) thi bo qua (chua tinh ton kho).
+            if (!isCancelled || t.CompletedAt != null)
             {
-                TransactionTime = t.CreatedAt,
-                DocCode = t.TicketCode ?? "",
-                DocType = t.TicketType ?? "",
-                UnitCostPrice = t.UnitPrice,
-                QtyIn = qtyIn,
-                QtyOut = qtyOut
-            });
+                decimal qtyIn = isIn ? Math.Abs(t.Discrepancy) : 0;
+                decimal qtyOut = isOut ? Math.Abs(t.Discrepancy) : 0;
+                allEntries.Add(new StockLedgerEntryDto
+                {
+                    TransactionTime = t.CompletedAt ?? t.CreatedAt,
+                    DocCode = t.TicketCode ?? "",
+                    DocType = t.TicketType ?? "",
+                    UnitCostPrice = unitCostForDisplay,
+                    QtyIn = qtyIn,
+                    QtyOut = qtyOut
+                });
+            }
+
+            // Entry 2: but toan DAO khi HUY phiếu da COMPLETED — dao chieu qty (nhap huy -> xuat,
+            // xuat huy -> nhap) de ton chay dung trong suot giua CompletedAt va CancelledAt.
+            // Giu nguyen DocType goc + IsCancellation=true de FE to mau rieng (cam) va label
+            // "Hủy nhập NCC" / "Hủy xuất..." phan biet voi giao dich thuong.
+            if (isCancelled && t.CancelledAt != null)
+            {
+                decimal qtyIn = isOut ? Math.Abs(t.Discrepancy) : 0;
+                decimal qtyOut = isIn ? Math.Abs(t.Discrepancy) : 0;
+                allEntries.Add(new StockLedgerEntryDto
+                {
+                    TransactionTime = t.CancelledAt!.Value,
+                    DocCode = t.TicketCode ?? "",
+                    DocType = t.TicketType ?? "",
+                    UnitCostPrice = unitCostForDisplay,
+                    QtyIn = qtyIn,
+                    QtyOut = qtyOut,
+                    Note = string.IsNullOrWhiteSpace(t.CancelReason) ? "Hủy phiếu" : ("Hủy: " + t.CancelReason),
+                    IsCancellation = true
+                });
+            }
         }
 
-        var orders = await _context.OrderItems
-            .Include(oi => oi.Order)
-            .Where(oi => oi.BranchProductId == bp.BranchProductId
-                && (oi.Order.Status == "COMPLETED" || oi.Order.Status == "Completed")
-                && oi.Order.CreatedAt != null)
-            .Select(oi => new
-            {
-                CreatedAt = oi.Order.CreatedAt!.Value,
-                TicketCode = oi.Order.OrderCode,
-                Quantity = oi.Quantity
-            })
-            .ToListAsync();
-
-        foreach (var o in orders)
-        {
-            allEntries.Add(new StockLedgerEntryDto
-            {
-                TransactionTime = o.CreatedAt,
-                DocCode = o.TicketCode ?? "",
-                DocType = "SALE",
-                UnitCostPrice = bp.CostPrice,
-                QtyIn = 0,
-                QtyOut = o.Quantity
-            });
-        }
+        // SALE giờ đọc từ stock_ticket_items (TicketType=SALE, isOut) cùng logic Entry1/Entry2
+        // với lý do hủy (CancelReason) — loại bỏ nguồn OrderItems cũ để tránh trùng lặp & dùng
+        // đơn vị gốc (discrepancy = số lượng bán theo đơn vị cơ sở, khớp ledger).
 
         allEntries = allEntries.OrderBy(x => x.TransactionTime).ToList();
 

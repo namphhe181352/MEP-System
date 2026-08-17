@@ -25,6 +25,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OData;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OData.ModelBuilder;
 using Microsoft.OpenApi.Models;
@@ -201,6 +202,26 @@ builder.Services.AddAuthentication(options =>
                 context.Token = accessToken;
             }
             return Task.CompletedTask;
+        },
+        // === Chặn token của user (Staff/Manager/Owner) khi chi nhánh trong token đã bị xóa/xóa mềm. ===
+        // Token sống 365 ngày nên phải kiểm tra runtime, không chỉ lúc login.
+        // Admin bỏ qua (không có branchId trong token).
+        OnTokenValidated = async context =>
+        {
+            var principal = context.Principal;
+            if (principal == null) return;
+            if (principal.IsInRole("Admin")) return;
+
+            var branchIdClaim = principal.FindFirst("branchId")?.Value
+                ?? principal.FindFirst(System.Security.Claims.ClaimTypes.GroupSid)?.Value;
+            if (!Guid.TryParse(branchIdClaim, out Guid branchId) || branchId == Guid.Empty) return;
+
+            var db = context.HttpContext.RequestServices.GetRequiredService<MEPDatabaseContext>();
+            var stillActive = await db.Branches.AnyAsync(b => b.BranchId == branchId && b.IsActive == 1);
+            if (!stillActive)
+            {
+                context.Fail("Cửa hàng của bạn đã bị xóa/tạm ngưng. Vui lòng liên hệ quản trị viên và đăng nhập lại.");
+            }
         }
     };
 });
