@@ -81,6 +81,74 @@ public class AdminBranchService : IAdminBranchService
         return (false, string.Empty);
     }
 
+    /// <summary>
+    /// Khi xóa (nháp hoặc hẳn) một chi nhánh: khóa các user mà chi nhánh này là chi nhánh đang
+    /// hoạt động DUY NHẤT của họ (sau khi loại chi nhánh này ra, họ không còn chi nhánh nào
+    /// đang hoạt động). Đặt Status = "BRANCH_DELETED" + IsActive = 0 để login chặn kèm thông báo rõ.
+    /// User còn chi nhánh đang hoạt động khác → KHÔNG bị khóa (giữ quyền truy cập chi nhánh kia).
+    /// </summary>
+    private async Task LockUsersWithoutActiveBranchAsync(Guid branchId, Guid adminId)
+    {
+        // Tập ứng viên bị ảnh hưởng: ManagerUserId + user được phân công (StaffAssignment)
+        // + user có DefaultBranchId trỏ tới chi nhánh này.
+        var candidate = new HashSet<Guid>();
+
+        var managerId = await _context.Branches
+            .Where(b => b.BranchId == branchId)
+            .Select(b => (Guid?)b.ManagerUserId)
+            .FirstOrDefaultAsync();
+        if (managerId.HasValue && managerId.Value != Guid.Empty)
+            candidate.Add(managerId.Value);
+
+        var assignedUserIds = await _context.StaffAssignments
+            .Where(sa => sa.BranchId == branchId)
+            .Select(sa => sa.UserId)
+            .ToListAsync();
+        foreach (var uid in assignedUserIds)
+            candidate.Add(uid);
+
+        var defaultBranchUserIds = await _context.Users
+            .Where(u => u.DefaultBranchId == branchId)
+            .Select(u => u.UserId)
+            .ToListAsync();
+        foreach (var uid in defaultBranchUserIds)
+            candidate.Add(uid);
+
+        if (candidate.Count == 0)
+            return;
+
+        var candidateList = candidate.ToList();
+        var users = await _context.Users
+            .Where(u => candidateList.Contains(u.UserId))
+            .ToListAsync();
+
+        var now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+        var lockedIds = new List<Guid>();
+
+        foreach (var u in users)
+        {
+            // Bỏ qua user còn đang hoạt động ở chi nhánh KHÁC.
+            var hasOtherActiveBranch = await _context.StaffAssignments
+                .AnyAsync(sa => sa.UserId == u.UserId
+                             && sa.BranchId != branchId
+                             && sa.Branch.IsActive == 1);
+            if (hasOtherActiveBranch)
+                continue;
+
+            u.IsActive = 0;
+            u.Status = "BRANCH_DELETED";
+            u.DeletedAt = now;
+            lockedIds.Add(u.UserId);
+        }
+
+        if (lockedIds.Count > 0)
+        {
+            await LogActionWithUser(adminId, branchId, "LOCK_USERS_ON_BRANCH_DELETE", "users", "User",
+                $"Khoa {lockedIds.Count} user do chi nhanh bi xoa (khong con chi nhanh hoat dong).");
+            await _context.SaveChangesAsync();
+        }
+    }
+
     private static AdminBranchDto MapToDto(Branch branch)
     {
         return new AdminBranchDto
@@ -321,6 +389,9 @@ public class AdminBranchService : IAdminBranchService
 
         await _context.SaveChangesAsync();
 
+        // Khóa các user mà chi nhánh này là chi nhánh đang hoạt động duy nhất (sau khi đã lưu IsActive=0).
+        await LockUsersWithoutActiveBranchAsync(id, currentAdminId);
+
         await SafeNotifyBranchChangeAsync(managerId, branch.BranchId, branchName, "SOFT_DELETE_BRANCH",
             $"Cua hang \"{branchName}\" cua ban vua bi tam ngung hoat dong boi quan tri vien.");
 
@@ -340,6 +411,19 @@ public class AdminBranchService : IAdminBranchService
 
         branch.IsActive = 1;
         branch.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+
+        // Mở khóa lại các user đã bị khóa do chi nhánh này bị xóa (giờ chi nhánh đã hoạt động lại).
+        var restoreUsers = await _context.Users
+            .Where(u => u.Status == "BRANCH_DELETED"
+                     && (_context.StaffAssignments.Any(sa => sa.UserId == u.UserId && sa.BranchId == id)
+                         || u.DefaultBranchId == id))
+            .ToListAsync();
+        foreach (var u in restoreUsers)
+        {
+            u.IsActive = 1;
+            u.Status = "ACTIVE";
+            u.DeletedAt = null;
+        }
 
         await LogActionWithUser(currentAdminId, branch.BranchId, "RESTORE_BRANCH", "branches", "Branch",
             $"Khoi phuc chi nhanh: {branch.BranchName}");
@@ -371,6 +455,10 @@ public class AdminBranchService : IAdminBranchService
         var branchName = branch.BranchName;
 
         await using var transaction = await _context.Database.BeginTransactionAsync();
+
+        // Khóa các user mà chi nhánh này là chi nhánh hoạt động duy nhất TRƯỚC khi xóa hẳn
+        // (sau khi ExecuteDelete xóa StaffAssignments thì không còn truy vết được nữa).
+        await LockUsersWithoutActiveBranchAsync(id, currentAdminId);
 
         await _context.StaffAssignments.Where(sa => sa.BranchId == id).ExecuteDeleteAsync();
         await _context.Shifts.Where(s => s.BranchId == id).ExecuteDeleteAsync();
