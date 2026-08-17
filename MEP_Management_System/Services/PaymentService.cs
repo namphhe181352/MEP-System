@@ -200,7 +200,8 @@ public class PaymentService : IPaymentService
             return dto;
         }).ToList();
 
-        return paymentDtos.First();
+        var transferPayment = paymentDtos.FirstOrDefault(p => p.Method == PaymentMethod.Transfer);
+        return transferPayment ?? paymentDtos.First();
     }
 
     public async Task<QrCodeResultDto> GetQRCodeAsync(Guid paymentId)

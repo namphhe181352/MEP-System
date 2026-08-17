@@ -69,10 +69,16 @@ public class ShiftService : IShiftService
                         .Where(r => r.Status == "REFUNDED" && r.CreatedAt >= branchOpenShift.StartedAt && r.CreatedAt <= DateTime.UtcNow &&
                             (r.ShiftId == branchOpenShift.ShiftId || (r.ShiftId == null && r.UserId == branchOpenShift.UserId)))
                         .ToListAsync();
+
+                    var exchangeReturns = await _context.ReturnOrders
+                        .Where(r => r.ReturnType == "EXCHANGE" && r.Order != null && r.Order.Invoice != null && r.Order.Invoice.ShiftId == branchOpenShift.ShiftId)
+                        .ToListAsync();
+
                     var totalRefundAmount = shiftRefunds.Sum(r => r.RefundAmount);
                     var cashRefundAmount = shiftRefunds.Where(r => r.RefundMethod == "CASH").Sum(r => r.RefundAmount);
+                    var exchangeDeltaIn = exchangeReturns.Sum(r => r.DeltaAmount ?? 0m);
 
-                    branchOpenShift.TotalRevenue = completedInvoices.Sum(i => i.TotalAmount) - totalRefundAmount;
+                    branchOpenShift.TotalRevenue = completedInvoices.Sum(i => i.TotalAmount) - totalRefundAmount + exchangeDeltaIn;
                     branchOpenShift.TotalOrders = completedInvoices.Count;
                     var allPayments = completedInvoices.SelectMany(i => i.Payments).Where(p => p.Method == "Cash" && p.Status == "Confirmed").ToList();
                     var staleExchangeCashPayments = await _context.Payments
@@ -193,10 +199,15 @@ public class ShiftService : IShiftService
                 (r.ShiftId == shiftId || (r.ShiftId == null && r.UserId == shift.UserId)))
             .ToListAsync();
 
+        var exchangeReturns = await _context.ReturnOrders
+            .Where(r => r.ReturnType == "EXCHANGE" && r.Order != null && r.Order.Invoice != null && r.Order.Invoice.ShiftId == shiftId)
+            .ToListAsync();
+
         var totalRefundAmount = shiftRefunds.Sum(r => r.RefundAmount);
         var cashRefundAmount = shiftRefunds.Where(r => r.RefundMethod == "CASH").Sum(r => r.RefundAmount);
+        var exchangeDeltaIn = exchangeReturns.Sum(r => r.DeltaAmount ?? 0m);
 
-        shift.TotalRevenue = completedInvoices.Sum(i => i.TotalAmount) - totalRefundAmount;
+        shift.TotalRevenue = completedInvoices.Sum(i => i.TotalAmount) - totalRefundAmount + exchangeDeltaIn;
         shift.TotalOrders = completedInvoices.Count;
         var allPayments = completedInvoices.SelectMany(i => i.Payments).Where(p => p.Method == "Cash" && p.Status == "Confirmed").ToList();
         var exchangeCashPayments = await _context.Payments
@@ -311,15 +322,22 @@ public class ShiftService : IShiftService
         var realTimeCash = payments.Where(p => p.Method == "Cash" && p.Status == "Confirmed").Sum(p => p.Amount) - cashRefundAmount;
         var realTimeTransfer = payments.Where(p => p.Method == "Transfer" && p.Status == "Confirmed").Sum(p => p.Amount) - transferRefundAmount;
 
-        var allUserIds = completedInvoices.Select(i => i.UserId).Concat(shiftRefunds.Select(r => r.UserId)).Distinct().ToList();
+        var allUserIds = completedInvoices.Select(i => i.UserId)
+            .Concat(shiftRefunds.Select(r => r.UserId))
+            .Concat(exchangeReturns.Select(ex => ex.UserId))
+            .Distinct().ToList();
+
         var salesByUser = allUserIds.Select(uid => new ShiftSummaryDto.UserSalesSummary
         {
             UserId = uid,
             UserName = completedInvoices.FirstOrDefault(i => i.UserId == uid)?.User?.FullName
                       ?? shiftRefunds.FirstOrDefault(r => r.UserId == uid)?.User?.FullName
+                      ?? exchangeReturns.FirstOrDefault(ex => ex.UserId == uid)?.User?.FullName
                       ?? "Unknown",
             InvoiceCount = completedInvoices.Count(i => i.UserId == uid),
-            TotalAmount = completedInvoices.Where(i => i.UserId == uid).Sum(i => i.TotalAmount) - shiftRefunds.Where(r => r.UserId == uid).Sum(r => r.RefundAmount)
+            TotalAmount = completedInvoices.Where(i => i.UserId == uid).Sum(i => i.TotalAmount) 
+                        - shiftRefunds.Where(r => r.UserId == uid).Sum(r => r.RefundAmount)
+                        + exchangeReturns.Where(ex => ex.UserId == uid).Sum(ex => ex.DeltaAmount ?? 0m)
         }).OrderByDescending(s => s.TotalAmount).ToList();
 
         var activities = new List<ShiftSummaryDto.ShiftActivityDto>();

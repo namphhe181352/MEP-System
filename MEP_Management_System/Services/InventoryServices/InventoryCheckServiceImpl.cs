@@ -18,12 +18,12 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
 {
     private readonly MEPDatabaseContext _context;
     private readonly ICurrentBranchAccessor _currentBranch;
-    private readonly IHubContext<InventoryHub> _hub;
+    private readonly IHubContext<MepHub> _hub;
 
     public InventoryCheckServiceImpl(
         MEPDatabaseContext context,
         ICurrentBranchAccessor currentBranch,
-        IHubContext<InventoryHub> hub)
+        IHubContext<MepHub> hub)
     {
         _context = context;
         _currentBranch = currentBranch;
@@ -41,12 +41,13 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
     private static DateTime UtcNow() => DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
     public async Task<ApiResponse<PaginatedResponse<InventoryCheckResponseDto>>> GetInventoryChecksAsync(
-        ClaimsPrincipal user, Guid? branchId, string? status, DateTime? fromDate, DateTime? toDate,
+        ClaimsPrincipal user, Guid? branchId, string? ticketCode, string? status, DateTime? fromDate, DateTime? toDate,
         int pageNumber, int pageSize)
     {
         var list = _context.StockTickets
             .AsNoTracking()
             .Include(st => st.User)
+            .Include(st => st.StockTicketItems)
             .Where(st => st.TicketType == "INVENTORY_CHECK");
 
         if (!IsOwner(user))
@@ -58,6 +59,12 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
 
         if (!string.IsNullOrWhiteSpace(status))
             list = list.Where(st => st.Status == status);
+
+        if (!string.IsNullOrWhiteSpace(ticketCode))
+        {
+            var codeUpper = ticketCode.ToUpper();
+            list = list.Where(st => st.TicketCode != null && st.TicketCode.ToUpper().Contains(codeUpper));
+        }
 
         if (fromDate.HasValue)
         {
@@ -164,7 +171,7 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
                 BranchId = resolvedBranchId.Value,
                 UserId = currentUserId.Value,
                 TicketType = "INVENTORY_CHECK",
-                Status = "PENDING",
+                Status = "Draft",
                 Notes = dto.Note ?? dto.Reason,
                 Reason = dto.Reason,
                 CreatedAt = currentTime
@@ -205,6 +212,51 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             }
 
             await _context.SaveChangesAsync();
+            
+            // Create a notification for the created inventory check
+            // 1. Broadcast notification for everyone in the branch
+            var broadcastMsg = $"Phiếu kiểm kê mới {ticketCode} đã được tạo.";
+            var broadcastNotification = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                Type = NotificationType.Created,
+                RecipientUserId = null, // Broadcast to branch
+                BranchId = resolvedBranchId.Value,
+                ReferenceId = stockTicket.StockTicketId,
+                ReferenceType = "InventoryCheck",
+                TriggeredByUserId = currentUserId.Value,
+                Message = broadcastMsg,
+                IsRead = false,
+                CreatedAt = currentTime
+            };
+            
+            _context.Notifications.Add(broadcastNotification);
+
+            // 2. Assigned notification specifically for the assignee (if any and not the creator)
+            var recipient = dto.AssigneeUserId;
+            if (recipient.HasValue && recipient.Value != currentUserId.Value)
+            {
+                var assignedNotification = new Notification
+                {
+                    NotificationId = Guid.NewGuid(),
+                    Type = NotificationType.Assigned,
+                    RecipientUserId = recipient.Value,
+                    BranchId = resolvedBranchId.Value,
+                    ReferenceId = stockTicket.StockTicketId,
+                    ReferenceType = "InventoryCheck",
+                    TriggeredByUserId = currentUserId.Value,
+                    Message = $"Bạn được phân công phiếu kiểm kê {ticketCode}.",
+                    IsRead = false,
+                    CreatedAt = currentTime.AddSeconds(1) // slightly after to avoid sorting clashes
+                };
+                _context.Notifications.Add(assignedNotification);
+            }
+            
+            await _context.SaveChangesAsync();
+            
+            // Trigger a silent refresh on the frontend without a toast
+            await _hub.Clients.All.SendAsync("SilentNotification");
+            
             await transaction.CommitAsync();
 
             return new ApiResponse<object>
@@ -240,10 +292,10 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
         if (stockTicket == null)
             throw new KeyNotFoundException($"Khong tim thay phieu kiem ke voi ID: {id}");
 
-        if (stockTicket.Status == "CANCELLED")
+        if (stockTicket.Status == "Cancelled")
             throw new BusinessException("Cannot update cancelled ticket", "Phieu da bi huy. Khong the chinh sua.");
 
-        if (stockTicket.Status == "COMPLETED")
+        if (stockTicket.Status == "Completed")
             throw new BusinessException("Cannot update completed ticket", "Phieu da duyet. Khong the chinh sua.");
 
         if (dto.Note != null) stockTicket.Notes = dto.Note;
@@ -272,10 +324,10 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
         if (stockTicket == null)
             throw new KeyNotFoundException($"Khong tim thay phieu kiem ke voi ID: {id}");
 
-        if (stockTicket.Status == "CANCELLED")
+        if (stockTicket.Status == "Cancelled")
             throw new BusinessException("Cannot fill quantities for cancelled ticket", "Phieu da bi huy.");
 
-        if (stockTicket.Status == "COMPLETED")
+        if (stockTicket.Status == "Completed")
             throw new BusinessException("Cannot fill quantities for completed ticket", "Phieu da duyet.");
 
         if (dto.Quantities == null || dto.Quantities.Count == 0)
@@ -291,6 +343,8 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
                 // Notes is not a property of StockTicketItem - store in DiscrepancyNote via a separate mechanism if needed
             }
         }
+        
+        stockTicket.Status = "WaitingForApproval";
 
         await _context.SaveChangesAsync();
         return new ApiResponse<InventoryCheckResponseDto> { Success = true, Message = "Actual quantities filled successfully", Data = MapToInventoryCheckResponse(stockTicket) };
@@ -319,10 +373,10 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             if (stockTicket == null)
                 throw new KeyNotFoundException($"Khong tim thay phieu kiem ke voi ID: {id}");
 
-            if (stockTicket.Status == "COMPLETED")
+            if (stockTicket.Status == "Completed")
                 throw new BusinessException("Ticket already approved", "Phieu da duoc duyet.");
 
-            if (stockTicket.Status == "CANCELLED")
+            if (stockTicket.Status == "Cancelled")
                 throw new BusinessException("Cannot approve cancelled ticket", "Phieu da bi huy.");
 
             var missingActuals = stockTicket.StockTicketItems.Where(i => i.ActualQuantity == null).ToList();
@@ -360,7 +414,7 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
                 _context.InventoryLedgers.Add(ledger);
             }
 
-            stockTicket.Status = "COMPLETED";
+            stockTicket.Status = "Completed";
             stockTicket.CompletedAt = DateTime.UtcNow;
             stockTicket.ConfirmedBy = currentUserId;
 
@@ -408,10 +462,10 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             if (stockTicket == null)
                 throw new KeyNotFoundException($"Khong tim thay phieu kiem ke voi ID: {id}");
 
-            if (stockTicket.Status == "CANCELLED")
+            if (stockTicket.Status == "Cancelled")
                 throw new BusinessException("Cannot reject/recount cancelled ticket", "Phieu da bi huy.");
 
-            stockTicket.Status = dto.IsRecount ? "PENDING" : "REJECTED";
+            stockTicket.Status = dto.IsRecount ? "Draft" : "Cancelled";
             stockTicket.CompletedAt = DateTime.UtcNow;
             stockTicket.ConfirmedBy = currentUserId;
             stockTicket.Notes = dto.Note ?? stockTicket.Notes;
@@ -423,7 +477,7 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             {
                 Success = true,
                 Message = dto.IsRecount
-                    ? "Yeu cau kiem ke lai thanh cong. Phieu tra ve trang thai PENDING."
+                    ? "Yeu cau kiem ke lai thanh cong. Phieu tra ve trang thai Draft."
                     : "Tu choi phieu kiem ke thanh cong.",
                 Data = new { TicketId = stockTicket.StockTicketId, TicketCode = stockTicket.TicketCode, Status = stockTicket.Status }
             };
@@ -459,10 +513,10 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             if (stockTicket == null)
                 throw new KeyNotFoundException($"Khong tim thay phieu kiem ke voi ID: {id}");
 
-            if (stockTicket.Status?.ToUpperInvariant() == "CANCELLED")
+            if (stockTicket.Status?.Equals("Cancelled", StringComparison.OrdinalIgnoreCase) == true)
                 throw new BusinessException("Ticket already cancelled", "Phieu da duoc huy truoc do.");
 
-            stockTicket.Status = "CANCELLED";
+            stockTicket.Status = "Cancelled";
             stockTicket.CancelledAt = DateTime.UtcNow;
             stockTicket.CancelledBy = currentUserId;
             stockTicket.CancelReason = dto?.CancelReason;
@@ -502,13 +556,16 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
         if (stockTicket == null)
             throw new KeyNotFoundException($"Khong tim thay phieu kiem ke voi ID: {id}");
 
-        if (stockTicket.Status == "CANCELLED")
+        if (stockTicket.Status == "Cancelled")
             throw new BusinessException("Cannot update reasons for cancelled ticket", "Phieu da bi huy.");
 
         foreach (var reasonItem in dto.DiscrepancyReasons)
         {
             var ticketItem = stockTicket.StockTicketItems.FirstOrDefault(ti => ti.TicketItemId == reasonItem.TicketItemId);
-            // Notes field not available on StockTicketItem - reason is stored in the dto
+            if (ticketItem != null)
+            {
+                ticketItem.Notes = reasonItem.Reason;
+            }
         }
 
         await _context.SaveChangesAsync();
@@ -588,52 +645,93 @@ th {{ background: #f0f0f0; }}
         if (branchId.HasValue)
             query = query.Where(st => st.BranchId == branchId.Value);
 
-        var pending = await query.CountAsync(st => st.Status == "PENDING");
-        var completed = await query.CountAsync(st => st.Status == "COMPLETED");
-        var rejected = await query.CountAsync(st => st.Status == "REJECTED");
-        var cancelled = await query.CountAsync(st => st.Status == "CANCELLED");
+        var pending = await query.CountAsync(st => st.Status == "Draft");
+        var completed = await query.CountAsync(st => st.Status == "Completed");
+        var waiting = await query.CountAsync(st => st.Status == "WaitingForApproval");
+        var cancelled = await query.CountAsync(st => st.Status == "Cancelled");
 
         return new ApiResponse<object>
         {
             Success = true,
             Message = "Counters retrieved successfully",
-            Data = new { Pending = pending, Completed = completed, Rejected = rejected, Cancelled = cancelled, Total = pending + completed + rejected + cancelled }
+            Data = new { Pending = pending, Completed = completed, Waiting = waiting, Cancelled = cancelled, Total = pending + completed + waiting + cancelled }
         };
     }
 
     public async Task<ApiResponse<object>> GetNotificationsAsync(ClaimsPrincipal user, Guid? branchId)
     {
-        if (!branchId.HasValue)
-            throw new BusinessException("Khong xac dinh duoc chi nhanh.");
+        var currentUserId = GetCurrentUserId(user);
+        if (!currentUserId.HasValue)
+            throw new UnauthorizedAccessException("JWT token is missing or invalid");
 
-        var completedChecks = await _context.StockTickets
-            .Where(st => st.TicketType == "INVENTORY_CHECK" && st.Status == "COMPLETED")
-            .OrderByDescending(st => st.CompletedAt)
-            .Take(20)
-            .Select(st => new
-            {
-                st.StockTicketId,
-                st.TicketCode,
-                st.CompletedAt,
-                DiscrepancyCount = st.StockTicketItems.Count(i => i.Discrepancy != 0)
-            })
+        // Fetch notifications for the current user and their branch (if applicable)
+        var query = _context.Notifications
+            .AsNoTracking()
+            .Include(n => n.RecipientUser)
+            .Include(n => n.TriggeredByUser)
+            .Include(n => n.InventoryCheck)
+            .Where(n => n.RecipientUserId == currentUserId.Value || (n.RecipientUserId == null && (!branchId.HasValue || n.BranchId == branchId.Value)));
+
+        var items = await query
+            .OrderByDescending(n => n.CreatedAt)
+            .Take(50) // Adjust as needed
             .ToListAsync();
+
+        var dtoList = items.Select(n => new NotificationDto
+        {
+            NotificationId = n.NotificationId,
+            Type = n.Type.ToString(),
+            TypeDisplay = n.Type.ToString(),
+            RecipientUserId = n.RecipientUserId,
+            RecipientUserName = n.RecipientUser?.FullName ?? n.RecipientUser?.Username,
+            BranchId = n.BranchId,
+            InventoryCheckId = n.InventoryCheckId,
+            InventoryCheckCode = n.InventoryCheck?.TicketCode,
+            ReferenceId = n.ReferenceId,
+            ReferenceType = n.ReferenceType,
+            TriggeredByUserId = n.TriggeredByUserId,
+            TriggeredByUserName = n.TriggeredByUser?.FullName ?? n.TriggeredByUser?.Username,
+            Message = n.Message,
+            IsRead = n.IsRead,
+            CreatedAt = n.CreatedAt
+        }).ToList();
 
         return new ApiResponse<object>
         {
             Success = true,
             Message = "Notifications retrieved successfully",
-            Data = completedChecks
+            Data = new { items = dtoList, totalCount = dtoList.Count }
         };
     }
 
     public async Task<ApiResponse<object>> MarkNotificationsAsReadAsync(ClaimsPrincipal user, List<Guid> notificationIds, Guid? branchId)
     {
+        if (notificationIds == null || !notificationIds.Any())
+        {
+            return new ApiResponse<object> { Success = true, Message = "No notifications to mark as read." };
+        }
+
+        var currentUserId = GetCurrentUserId(user);
+        
+        var notificationsToUpdate = await _context.Notifications
+            .Where(n => notificationIds.Contains(n.NotificationId) && (n.RecipientUserId == currentUserId || n.RecipientUserId == null))
+            .ToListAsync();
+
+        foreach (var notif in notificationsToUpdate)
+        {
+            notif.IsRead = true;
+        }
+
+        if (notificationsToUpdate.Any())
+        {
+            await _context.SaveChangesAsync();
+        }
+
         return new ApiResponse<object>
         {
             Success = true,
-            Message = $"Marked {notificationIds?.Count ?? 0} notifications as read.",
-            Data = new { Count = notificationIds?.Count ?? 0 }
+            Message = $"Marked {notificationsToUpdate.Count} notifications as read.",
+            Data = new { Count = notificationsToUpdate.Count }
         };
     }
 
@@ -654,6 +752,10 @@ th {{ background: #f0f0f0; }}
             CancelledAt = stockTicket.CancelledAt,
             CancelledByUserId = stockTicket.CancelledBy,
             CancelledReason = stockTicket.CancelReason,
+            TotalDiscrepancy = (stockTicket.Status == "WaitingForApproval" || stockTicket.Status == "Completed")
+                                && stockTicket.StockTicketItems != null 
+                ? (int?)stockTicket.StockTicketItems.Sum(x => x.Discrepancy)
+                : null,
             Details = stockTicket.StockTicketItems?.Select(item => new InventoryCheckDetailDto
             {
                 DetailId = item.TicketItemId,
@@ -661,9 +763,11 @@ th {{ background: #f0f0f0; }}
                 ProductCode = item.BranchProduct?.Product?.ProductCode ?? string.Empty,
                 ProductName = item.BranchProduct?.Product?.ProductName ?? string.Empty,
                 SystemQuantity = (int)item.SystemQuantity,
+                CurrentActualStock = (int)(item.BranchProduct?.ActualStock ?? 0),
                 ActualQuantity = (int)item.ActualQuantity,
                 Discrepancy = (int)item.Discrepancy,
-                ReasonNote = null,
+                IsCounted = stockTicket.Status != "Draft",
+                ReasonNote = item.Notes,
                 UnitName = item.UnitName ?? item.BranchProduct?.Product?.BaseUnit
             }).ToList() ?? new()
         };

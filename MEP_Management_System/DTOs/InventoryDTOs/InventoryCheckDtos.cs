@@ -15,6 +15,7 @@ public class InventoryCheckCreateDto
     public List<CreateInventoryCheckItemDto> Items { get; set; } = new();
     public string? Note { get; set; }
     public string? Reason { get; set; }
+    public Guid? AssigneeUserId { get; set; }
 }
 
 public class CreateInventoryCheckItemDto
@@ -29,6 +30,7 @@ public class InventoryCheckUpdateDto
 {
     public string? Note { get; set; }
     public string? Reason { get; set; }
+    public Guid? AssigneeUserId { get; set; }
 }
 
 /// <summary>
@@ -182,6 +184,8 @@ public class InventoryCheckResponseDto
     public Guid? RecountRequestedByUserId { get; set; }
     public string? RecountRequestedByUserName { get; set; }
     public string? RecountReason { get; set; }
+    
+    public int? TotalDiscrepancy { get; set; }
 
     public List<InventoryCheckDetailDto> Details { get; set; } = new();
 }

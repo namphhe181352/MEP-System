@@ -432,6 +432,7 @@ public class ExpenseServiceImpl : IExpenseService
 
     private ExpenseVoucherResponseDto MapToExpenseVoucherResponse(ExpenseVoucher ev)
     {
+        var isPending = ev.Status == "PENDING";
         return new ExpenseVoucherResponseDto
         {
             VoucherId = ev.VoucherId,
@@ -455,7 +456,9 @@ public class ExpenseServiceImpl : IExpenseService
             CancelledBy = ev.CancelledBy,
             CancelledByName = ev.CancelledByUser?.FullName,
             CancelledAt = ev.CancelledAt,
-            CancelReason = ev.CancelReason
+            CancelReason = ev.CancelReason,
+            CanConfirm = isPending,
+            CanCancel = isPending
         };
     }
 

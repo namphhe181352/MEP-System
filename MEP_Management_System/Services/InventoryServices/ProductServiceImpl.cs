@@ -110,8 +110,7 @@ public class ProductServiceImpl : IProductService
             .Include(bp => bp.Product).ThenInclude(p => p.UpdatedByUser)
             .Where(bp => bp.BranchId == branchId)
             .Where(bp => bp.IsActive != -1 &&
-                         (bp.Product.Status == null || bp.Product.Status != -1) &&
-                         (bp.Product.BranchId == null || bp.Product.BranchId == branchId))
+                         (bp.Product.Status == null || bp.Product.Status != -1))
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(@params.SearchTerm))
