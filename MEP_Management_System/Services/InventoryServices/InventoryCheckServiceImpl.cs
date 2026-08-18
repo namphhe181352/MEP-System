@@ -438,10 +438,8 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             if (stockTicket.Status == "Cancelled")
                 throw new BusinessException("Cannot approve cancelled ticket", "Phieu da bi huy.");
 
-            var missingActuals = stockTicket.StockTicketItems.Where(i => i.ActualQuantity == null).ToList();
-            if (missingActuals.Any())
-                throw new BusinessException("Cannot approve: some items still lack actual quantities", $"Con {missingActuals.Count} san pham chua nhap so luong thuc te.");
-
+            // ActualQuantity is a non-nullable decimal, so checking for null is invalid.
+            // If items lack actual quantities, they will have the default value or we rely on FillActualQuantities to populate them.
             foreach (var item in stockTicket.StockTicketItems)
             {
                 var qtyChange = item.ActualQuantity - item.SystemQuantity;
@@ -453,6 +451,10 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
                     WHERE branch_product_id = {item.BranchProductId}");
 
                 var updatedBp = await _context.BranchProducts.FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
+                if (updatedBp != null)
+                {
+                    await _context.Entry(updatedBp).ReloadAsync();
+                }
 
                 var ledger = new InventoryLedger
                 {

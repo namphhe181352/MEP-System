@@ -81,7 +81,7 @@ public class OwnerStaffService : IOwnerStaffService
     private async Task<bool> IsEmailTakenAsync(string email, Guid? excludeUserId = null)
     {
         var normalized = email.Trim().ToLower();
-        var query = _context.Users.Where(u => u.Email.ToLower() == normalized);
+        var query = _context.Users.Where(u => u.Email.ToLower() == normalized && u.Status != "DELETED");
         if (excludeUserId.HasValue)
             query = query.Where(u => u.UserId != excludeUserId.Value);
         return await query.AnyAsync();
@@ -91,7 +91,7 @@ public class OwnerStaffService : IOwnerStaffService
     {
         if (string.IsNullOrWhiteSpace(phone)) return false;
         var normalized = phone.Trim();
-        var query = _context.Users.Where(u => u.PhoneNumber == normalized);
+        var query = _context.Users.Where(u => u.PhoneNumber == normalized && u.Status != "DELETED");
         if (excludeUserId.HasValue)
             query = query.Where(u => u.UserId != excludeUserId.Value);
         return await query.AnyAsync();
@@ -102,7 +102,8 @@ public class OwnerStaffService : IOwnerStaffService
         return await _context.StaffAssignments
             .Include(sa => sa.User)
             .AnyAsync(sa => sa.BranchId == branchId &&
-                sa.User.Username.ToLower() == username.Trim().ToLower());
+                sa.User.Username.ToLower() == username.Trim().ToLower() &&
+                sa.User.Status != "DELETED");
     }
 
     private async Task<(List<Permission> Permissions, List<string> MissingCodes)> ValidatePermissionsAsync(

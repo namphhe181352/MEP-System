@@ -473,7 +473,7 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
 
             if (dto.IsConfirm)
             {
-                var confirmResult = await CommitImportAsync(stockTicket.StockTicketId, currentUserId.Value);
+                var confirmResult = await ConfirmInwardInventoryAsync(user, stockTicket.StockTicketId, resolvedBranchId);
                 if (!confirmResult.Success)
                     throw new BusinessException("Lỗi khi cộng kho tự động: " + confirmResult.Message);
             }
@@ -657,6 +657,7 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
                 var updatedBp = await _context.BranchProducts.FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
                 if (updatedBp != null)
                 {
+                    await _context.Entry(updatedBp).ReloadAsync();
                     item.ActualQuantity = updatedBp.ActualStock;
                     item.SystemQuantity = updatedBp.ActualStock - item.Discrepancy;
 

@@ -398,6 +398,12 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
 
         public decimal TotalAmount { get; set; }
 
+        /// <summary>True khi đây là phiếu xuất đổi hàng (Notes chứa "Doi hang").</summary>
+        public bool IsExchangeTicket { get; set; }
+
+        /// <summary>Chênh lệch giá đổi hàng (delta = SP B - SP A). = 0 khi đổi ngang giá.</summary>
+        public decimal? ExchangeDeltaAmount { get; set; }
+
         public List<OutwardInventoryItemResponseDto> Items { get; set; } = new();
     }
 

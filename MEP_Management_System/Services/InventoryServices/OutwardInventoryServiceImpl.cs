@@ -82,7 +82,7 @@ public class OutwardInventoryServiceImpl : IOutwardInventoryService
             Message = "Outward inventory history retrieved successfully",
             Data = new PaginatedResponse<OutwardInventoryResponseDto>
             {
-                Items = items.Select(MapToOutwardInventoryResponse).ToList(),
+                Items = items.Select(st => MapToOutwardInventoryResponse(st)).ToList(),
                 TotalCount = totalCount,
                 PageNumber = pageNumber,
                 PageSize = pageSize,
@@ -114,11 +114,33 @@ public class OutwardInventoryServiceImpl : IOutwardInventoryService
         if (stockTicket == null)
             throw new KeyNotFoundException($"Khong tim thay phieu xuat kho voi ID: {id}");
 
+        // Nếu là phiếu đổi hàng, lookup DeltaAmount từ ReturnOrder để trả về đúng chênh lệch
+        decimal? exchangeDelta = null;
+        bool isExchange = (stockTicket.Notes ?? "").Contains("Doi hang", StringComparison.OrdinalIgnoreCase);
+        if (isExchange)
+        {
+            // Mặc định = 0 (đổi ngang giá), sẽ override nếu tìm thấy ReturnOrder
+            exchangeDelta = 0m;
+            // Notes format: "Doi hang (Xuat giao) RET-YYYYMMDD-XXXX"
+            var notes = stockTicket.Notes ?? "";
+            var retCode = notes.Split(' ').LastOrDefault(s => s.StartsWith("RET-"));
+            if (!string.IsNullOrWhiteSpace(retCode))
+            {
+                var returnOrder = await _context.ReturnOrders
+                    .AsNoTracking()
+                    .Where(r => r.ReturnCode == retCode)
+                    .Select(r => new { r.DeltaAmount })
+                    .FirstOrDefaultAsync();
+                if (returnOrder != null)
+                    exchangeDelta = returnOrder.DeltaAmount ?? 0m;
+            }
+        }
+
         return new ApiResponse<OutwardInventoryResponseDto>
         {
             Success = true,
             Message = "Outward inventory retrieved successfully",
-            Data = MapToOutwardInventoryResponse(stockTicket)
+            Data = MapToOutwardInventoryResponse(stockTicket, isExchange, exchangeDelta)
         };
     }
 
@@ -331,6 +353,7 @@ public class OutwardInventoryServiceImpl : IOutwardInventoryService
                 var updatedBp = await _context.BranchProducts.FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
                 if (updatedBp != null)
                 {
+                    await _context.Entry(updatedBp).ReloadAsync();
                     item.ActualQuantity = updatedBp.ActualStock;
                     item.SystemQuantity = updatedBp.ActualStock + qty;
                 }
@@ -357,7 +380,10 @@ public class OutwardInventoryServiceImpl : IOutwardInventoryService
             stockTicket.Status = "COMPLETED";
             stockTicket.CompletedAt = DateTime.UtcNow;
             stockTicket.ConfirmedBy = currentUserId;
-            if (stockTicket.TotalAmount == 0)
+            // Chỉ tự tính TotalAmount nếu = 0 VÀ không phải phiếu đổi hàng
+            // (Phiếu đổi hàng: TotalAmount được set = DeltaAmount bởi ReturnService, có thể = 0 hợp lệ)
+            bool isExchangeTicket = (stockTicket.Notes ?? "").Contains("Doi hang", StringComparison.OrdinalIgnoreCase);
+            if (stockTicket.TotalAmount == 0 && !isExchangeTicket)
                 stockTicket.TotalAmount = stockTicket.StockTicketItems.Sum(item => item.Discrepancy * (item.UnitPrice ?? 0));
 
             await _context.SaveChangesAsync();
@@ -524,7 +550,7 @@ th {{ background: #f0f0f0; }}
         };
     }
 
-    private OutwardInventoryResponseDto MapToOutwardInventoryResponse(StockTicket stockTicket)
+    private OutwardInventoryResponseDto MapToOutwardInventoryResponse(StockTicket stockTicket, bool isExchange = false, decimal? exchangeDelta = null)
     {
         return new OutwardInventoryResponseDto
         {
@@ -546,6 +572,8 @@ th {{ background: #f0f0f0; }}
             CancelledBy = stockTicket.CancelledBy,
             CancelReason = stockTicket.CancelReason,
             TotalAmount = stockTicket.TotalAmount,
+            IsExchangeTicket = isExchange,
+            ExchangeDeltaAmount = exchangeDelta,
             Items = stockTicket.StockTicketItems?.Select(item =>
             {
                 var effectivePrice = (item.UnitPrice ?? 0) > 0 ? (item.UnitPrice ?? 0) : (item.BranchProduct?.CostPrice ?? 0);
