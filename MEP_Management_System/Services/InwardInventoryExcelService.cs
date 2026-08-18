@@ -37,7 +37,7 @@ namespace MEP_Management_System.Services
         // Header Excel theo đúng thứ tự yêu cầu
         private static readonly string[] ExpectedHeaders = new[]
         {
-            "MaSanPham", "TenSanPham", "SoLuong", "DonGiaNhap", "GhiChu"
+            "MaSanPham", "TenSanPham", "DonViTinh", "SoLuong", "DonGiaNhap", "GhiChu"
         };
 
         public InwardInventoryExcelService(
@@ -121,9 +121,10 @@ namespace MEP_Management_System.Services
                     {
                         var maSanPham = row.Cell(1).GetString()?.Trim() ?? "";
                         var tenSanPham = row.Cell(2).GetString()?.Trim();
-                        var soLuongStr = row.Cell(3).GetString()?.Trim() ?? "";
-                        var donGiaNhapStr = row.Cell(4).GetString()?.Trim() ?? "";
-                        var ghiChu = row.Cell(5).GetString()?.Trim();
+                        var donViTinh = row.Cell(3).GetString()?.Trim();
+                        var soLuongStr = row.Cell(4).GetString()?.Trim() ?? "";
+                        var donGiaNhapStr = row.Cell(5).GetString()?.Trim() ?? "";
+                        var ghiChu = row.Cell(6).GetString()?.Trim();
 
                         // Validate required fields
                         if (string.IsNullOrEmpty(maSanPham))
@@ -193,6 +194,7 @@ namespace MEP_Management_System.Services
                                 RowNumber = rowNumber,
                                 MaSanPham = maSanPham,
                                 TenSanPham = tenSanPham,
+                                DonViTinh = donViTinh,
                                 SoLuong = soLuong,
                                 DonGiaNhap = donGiaNhap,
                                 GhiChu = ghiChu
@@ -315,7 +317,7 @@ namespace MEP_Management_System.Services
                             ProductId = newProductId,
                             ProductCode = item.MaSanPham,
                             ProductName = item.TenSanPham ?? item.MaSanPham,
-                            BaseUnit = "Cái",
+                            BaseUnit = !string.IsNullOrWhiteSpace(item.DonViTinh) ? item.DonViTinh.Trim() : "Cái",
                             Status = 1,
                             SalesChannelLinked = 0,
                             CreatedAt = DateTime.UtcNow,

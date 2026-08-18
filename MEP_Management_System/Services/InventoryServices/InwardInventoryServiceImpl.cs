@@ -471,6 +471,13 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
+            if (dto.IsConfirm)
+            {
+                var confirmResult = await CommitImportAsync(stockTicket.StockTicketId, currentUserId.Value);
+                if (!confirmResult.Success)
+                    throw new BusinessException("Lỗi khi cộng kho tự động: " + confirmResult.Message);
+            }
+
             await TryWriteSystemLog(
                 currentUserId.Value,
                 "CREATE_INWARD_INVENTORY",

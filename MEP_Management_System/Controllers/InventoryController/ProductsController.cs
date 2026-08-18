@@ -81,7 +81,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         public async Task<IActionResult> CreateProduct([FromBody] ProductUpsertDto dto)
         {
             var result = await _productService.CreateProductAsync(User, dto, GetCurrentBranchId());
-            return CreatedAtAction(nameof(GetProductById), new { id = dto.ProductId }, result);
+            return CreatedAtAction(nameof(GetProductById), new { id = result.Data?.ProductId }, result);
         }
 
         [HttpPost("bulk-import")]

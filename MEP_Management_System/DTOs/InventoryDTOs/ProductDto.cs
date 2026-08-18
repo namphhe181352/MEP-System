@@ -498,6 +498,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
 
         public string Reason { get; set; } = null!;
         public string? Note { get; set; }
+        public bool IsConfirm { get; set; }
         public List<InwardInventoryItemDto> Items { get; set; } = new();
     }
 
