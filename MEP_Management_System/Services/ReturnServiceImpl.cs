@@ -1404,7 +1404,7 @@ public class ReturnServiceImpl : IReturnService
             TicketType = "SALE",
             Status = "COMPLETED",
             Notes = "Doi hang (Xuat giao) " + ret.ReturnCode,
-            TotalAmount = ret.ExchangeItems.Sum(ei => ei.LineTotal),
+            TotalAmount = ret.DeltaAmount ?? 0,
             CreatedAt = DateTime.UtcNow,
             CompletedAt = DateTime.UtcNow
         };

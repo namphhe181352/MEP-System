@@ -11,6 +11,7 @@ namespace MEP_Management_System.Controllers.InventoryController
     [ApiController]
     [Route("api/[controller]")]
     [Tags("Kiem Ke Kho (Check Inventory)")]
+    [Microsoft.AspNetCore.Authorization.Authorize]
     public class InventoryCheckController : ControllerBase
     {
         private readonly IInventoryCheckService _inventoryCheckService;
@@ -26,6 +27,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         private Guid? GetCurrentBranchId() => _currentBranch.GetBranchId();
 
         [HttpGet]
+        [HasPermission(PermissionConstants.STOCK_CHECK_VIEW)]
         public async Task<IActionResult> GetInventoryChecks(
             [FromQuery] string? ticketCode,
             [FromQuery] string? status,
@@ -40,6 +42,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         [HttpGet("{id:guid}")]
+        [HasPermission(PermissionConstants.STOCK_CHECK_VIEW)]
         public async Task<IActionResult> GetInventoryCheckById(Guid id)
         {
             var result = await _inventoryCheckService.GetInventoryCheckByIdAsync(User, id, GetCurrentBranchId());
@@ -47,6 +50,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         [HttpPost]
+        [HasPermission(PermissionConstants.STOCK_CHECK_CREATE)]
         public async Task<IActionResult> CreateInventoryCheck([FromBody] InventoryCheckCreateDto dto)
         {
             var result = await _inventoryCheckService.CreateInventoryCheckAsync(User, dto, GetCurrentBranchId());
@@ -54,6 +58,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         [HttpPut("{id:guid}")]
+        [HasPermission(PermissionConstants.STOCK_CHECK_CREATE)]
         public async Task<IActionResult> UpdateInventoryCheck(Guid id, [FromBody] InventoryCheckUpdateDto dto)
         {
             var result = await _inventoryCheckService.UpdateInventoryCheckAsync(User, id, dto, GetCurrentBranchId());
@@ -61,6 +66,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         [HttpPost("{id:guid}/fill-actual")]
+        [HasPermission(PermissionConstants.STOCK_CHECK_COUNT)]
         public async Task<IActionResult> FillActualQuantities(Guid id, [FromBody] FillActualQuantitiesDto dto)
         {
             var result = await _inventoryCheckService.FillActualQuantitiesAsync(User, id, dto, GetCurrentBranchId());
@@ -68,6 +74,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         [HttpPost("{id:guid}/approve")]
+        [HasPermission(PermissionConstants.STOCK_CHECK_APPROVE)]
         public async Task<IActionResult> ApproveInventoryCheck(Guid id)
         {
             var result = await _inventoryCheckService.ApproveInventoryCheckAsync(User, id, GetCurrentBranchId());
@@ -75,6 +82,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         [HttpPost("{id:guid}/reject")]
+        [HasPermission(PermissionConstants.STOCK_CHECK_APPROVE)]
         public async Task<IActionResult> RejectOrRequestRecount(Guid id, [FromBody] RejectOrRecountDto dto)
         {
             var result = await _inventoryCheckService.RejectOrRequestRecountAsync(User, id, dto, GetCurrentBranchId());
@@ -82,6 +90,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         [HttpPost("{id:guid}/cancel")]
+        [HasPermission(PermissionConstants.STOCK_CHECK_CANCEL)]
         public async Task<IActionResult> CancelInventoryCheck(Guid id, [FromBody] CancelTicketDto dto)
         {
             var result = await _inventoryCheckService.CancelInventoryCheckAsync(User, id, dto, GetCurrentBranchId());
@@ -89,6 +98,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         [HttpPut("{id:guid}/discrepancy-reasons")]
+        [HasPermission(PermissionConstants.STOCK_CHECK_APPROVE)]
         public async Task<IActionResult> UpdateDiscrepancyReasons(Guid id, [FromBody] UpdateDiscrepancyReasonsDto dto)
         {
             var result = await _inventoryCheckService.UpdateDiscrepancyReasonsAsync(User, id, dto, GetCurrentBranchId());
@@ -96,6 +106,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         [HttpGet("{id:guid}/print")]
+        [HasPermission(PermissionConstants.STOCK_CHECK_VIEW)]
         public async Task<IActionResult> Print(Guid id)
         {
             var html = await _inventoryCheckService.GetPrintHtmlAsync(User, id, GetCurrentBranchId());
@@ -103,6 +114,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         [HttpGet("counters")]
+        [HasPermission(PermissionConstants.STOCK_CHECK_CREATE)]
         public async Task<IActionResult> GetCounters()
         {
             var result = await _inventoryCheckService.GetCountersAsync(User, GetCurrentBranchId());
@@ -110,6 +122,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         [HttpGet("notifications")]
+        [HasPermission(PermissionConstants.STOCK_CHECK_VIEW)]
         public async Task<IActionResult> GetNotifications()
         {
             var result = await _inventoryCheckService.GetNotificationsAsync(User, GetCurrentBranchId());
@@ -117,6 +130,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         [HttpPost("notifications/mark-read")]
+        [HasPermission(PermissionConstants.STOCK_CHECK_VIEW)]
         public async Task<IActionResult> MarkNotificationsAsRead([FromBody] List<Guid>? notificationIds)
         {
             var result = await _inventoryCheckService.MarkNotificationsAsReadAsync(User, notificationIds, GetCurrentBranchId());

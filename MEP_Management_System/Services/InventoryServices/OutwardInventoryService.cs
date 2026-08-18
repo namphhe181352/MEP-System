@@ -1331,7 +1331,15 @@ th {{ background: #f0f0f0; }}
             canConfirm = isOwner || hasConfirmPermission;
         }
 
-        var totalAmount = invoice != null ? invoice.TotalAmount : (returnOrder != null ? ((returnOrder.DeltaAmount ?? 0m) > 0 ? returnOrder.DeltaAmount.Value : returnOrder.ExchangeItems.Sum(ei => ei.Quantity * ei.UnitPrice)) : stockTicket.TotalAmount);
+        // Tổng tiền hiển thị: nếu là phiếu đổi hàng, tổng tiền = tổng SP xuất (để hiển thị trong bảng items)
+        // ExchangeDeltaAmount = delta thực (thu thêm/hoàn lại), dùng cho "Thu thêm (Đổi chênh)"
+        bool isExchangeTicket = returnOrder != null && returnOrder.ExchangeItems.Any();
+        var totalAmount = invoice != null
+            ? invoice.TotalAmount
+            : (returnOrder != null
+                ? returnOrder.ExchangeItems.Sum(ei => ei.Quantity * ei.UnitPrice)
+                : stockTicket.TotalAmount);
+        decimal? exchangeDeltaAmount = isExchangeTicket ? (returnOrder!.DeltaAmount ?? 0m) : null;
 
         return new OutwardInventoryResponseDto
         {
@@ -1355,6 +1363,8 @@ th {{ background: #f0f0f0; }}
             CancelReason = stockTicket.CancelReason,
             CanConfirm = canConfirm,
             TotalAmount = totalAmount,
+            IsExchangeTicket = isExchangeTicket,
+            ExchangeDeltaAmount = exchangeDeltaAmount,
             Items = stockTicket.StockTicketItems?.Select(item =>
             {
                 var invItem = invoice?.InvoiceItems?.FirstOrDefault(ii => ii.BranchProductId == item.BranchProductId);
