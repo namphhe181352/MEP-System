@@ -38,7 +38,7 @@ namespace MEP_Management_System.UnitTests.Controllers.OwnerController
 
         private OwnerDashboardController CreateController(MEPDatabaseContext context, Guid? userId = null, Guid? branchId = null)
         {
-            var controller = new OwnerDashboardController(context, _mockBranchAccessor.Object, _customerDebtService, _mockSupplierDebtService.Object);
+            var controller = new OwnerDashboardController(new MEP_Management_System.Services.OwnerServices.OwnerDashboardService(context, _customerDebtService, _mockSupplierDebtService.Object), _mockBranchAccessor.Object);
             
             _mockSupplierDebtService.Setup(s => s.CalculateCurrentDebtBatchAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<DateTime?>()))
                 .ReturnsAsync(new Dictionary<Guid, SupplierDebtSummary>());
@@ -165,5 +165,7 @@ namespace MEP_Management_System.UnitTests.Controllers.OwnerController
         }
     }
 }
+
+
 
 

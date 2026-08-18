@@ -1,9 +1,10 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using MEP_Management_System.Controllers.InventoryController;
+using MEP_Management_System.Services.InventoryService;
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
 using Microsoft.AspNetCore.Http;
