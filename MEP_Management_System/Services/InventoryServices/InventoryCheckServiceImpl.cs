@@ -40,6 +40,33 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
 
     private static DateTime UtcNow() => DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
+    private async Task TryWriteSystemLog(Guid userId, string action, string tableName,
+        string entityType, Guid entityId, string description)
+    {
+        try
+        {
+            var log = new SystemLog
+            {
+                LogId = Guid.NewGuid(),
+                UserId = userId,
+                Action = action,
+                TableName = tableName,
+                EntityType = entityType,
+                EntityId = entityId,
+                Description = description,
+                Level = "INFO",
+                Source = "InventoryCheckService",
+                Timestamp = DateTime.UtcNow
+            };
+            _context.SystemLogs.Add(log);
+            await _context.SaveChangesAsync();
+        }
+        catch
+        {
+            // Silent — khong lam fail request chinh
+        }
+    }
+
     public async Task<ApiResponse<PaginatedResponse<InventoryCheckResponseDto>>> GetInventoryChecksAsync(
         ClaimsPrincipal user, Guid? branchId, string? ticketCode, string? status, DateTime? fromDate, DateTime? toDate,
         int pageNumber, int pageSize)
@@ -259,6 +286,14 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             
             await transaction.CommitAsync();
 
+            await TryWriteSystemLog(
+                currentUserId.Value,
+                "CREATE_INVENTORY_CHECK",
+                "stock_tickets",
+                "InventoryCheck",
+                stockTicket.StockTicketId,
+                $"Tạo phiếu kiểm kê kho {stockTicket.TicketCode}");
+
             return new ApiResponse<object>
             {
                 Success = true,
@@ -302,6 +337,17 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
         if (dto.Reason != null) stockTicket.Reason = dto.Reason;
 
         await _context.SaveChangesAsync();
+
+        if (currentUserId.HasValue)
+        {
+            await TryWriteSystemLog(
+                currentUserId.Value,
+                "UPDATE_INVENTORY_CHECK",
+                "stock_tickets",
+                "InventoryCheck",
+                stockTicket.StockTicketId,
+                $"Cập nhật phiếu kiểm kê kho {stockTicket.TicketCode}");
+        }
         return new ApiResponse<InventoryCheckResponseDto> { Success = true, Message = "Inventory check updated successfully", Data = MapToInventoryCheckResponse(stockTicket) };
     }
 
@@ -347,6 +393,17 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
         stockTicket.Status = "WaitingForApproval";
 
         await _context.SaveChangesAsync();
+
+        if (currentUserId.HasValue)
+        {
+            await TryWriteSystemLog(
+                currentUserId.Value,
+                "FILL_INVENTORY_CHECK",
+                "stock_tickets",
+                "InventoryCheck",
+                stockTicket.StockTicketId,
+                $"Nhập số lượng kiểm đếm cho phiếu {stockTicket.TicketCode}");
+        }
         return new ApiResponse<InventoryCheckResponseDto> { Success = true, Message = "Actual quantities filled successfully", Data = MapToInventoryCheckResponse(stockTicket) };
     }
 
@@ -421,6 +478,14 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
+            await TryWriteSystemLog(
+                currentUserId.Value,
+                "APPROVE_INVENTORY_CHECK",
+                "stock_tickets",
+                "InventoryCheck",
+                stockTicket.StockTicketId,
+                $"Duyệt phiếu kiểm kê kho {stockTicket.TicketCode}");
+
             return new ApiResponse<object>
             {
                 Success = true,
@@ -473,6 +538,14 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
+            await TryWriteSystemLog(
+                currentUserId.Value,
+                "REJECT_INVENTORY_CHECK",
+                "stock_tickets",
+                "InventoryCheck",
+                stockTicket.StockTicketId,
+                $"Yêu cầu đếm lại phiếu kiểm kê {stockTicket.TicketCode}");
+
             return new ApiResponse<object>
             {
                 Success = true,
@@ -524,6 +597,14 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
+            await TryWriteSystemLog(
+                currentUserId.Value,
+                "CANCEL_INVENTORY_CHECK",
+                "stock_tickets",
+                "InventoryCheck",
+                stockTicket.StockTicketId,
+                $"Hủy phiếu kiểm kê {stockTicket.TicketCode}");
+
             return new ApiResponse<object>
             {
                 Success = true,
@@ -569,6 +650,18 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
         }
 
         await _context.SaveChangesAsync();
+
+        var currentUserId = GetCurrentUserId(user);
+        if (currentUserId.HasValue)
+        {
+            await TryWriteSystemLog(
+                currentUserId.Value,
+                "UPDATE_INVENTORY_CHECK_REASON",
+                "stock_tickets",
+                "InventoryCheck",
+                stockTicket.StockTicketId,
+                $"Cập nhật lý do chênh lệch phiếu kiểm kê {stockTicket.TicketCode}");
+        }
         return new ApiResponse<InventoryCheckResponseDto> { Success = true, Message = "Discrepancy reasons updated successfully", Data = MapToInventoryCheckResponse(stockTicket) };
     }
 
@@ -672,6 +765,8 @@ th {{ background: #f0f0f0; }}
             .Include(n => n.InventoryCheck)
             .Where(n => n.RecipientUserId == currentUserId.Value || (n.RecipientUserId == null && (!branchId.HasValue || n.BranchId == branchId.Value)));
 
+        var unreadCount = await query.CountAsync(n => !n.IsRead);
+
         var items = await query
             .OrderByDescending(n => n.CreatedAt)
             .Take(50) // Adjust as needed
@@ -700,7 +795,7 @@ th {{ background: #f0f0f0; }}
         {
             Success = true,
             Message = "Notifications retrieved successfully",
-            Data = new { items = dtoList, totalCount = dtoList.Count }
+            Data = new { items = dtoList, totalCount = dtoList.Count, unreadCount = unreadCount }
         };
     }
 
