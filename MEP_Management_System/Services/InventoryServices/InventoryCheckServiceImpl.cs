@@ -74,6 +74,7 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
         var list = _context.StockTickets
             .AsNoTracking()
             .Include(st => st.User)
+            .Include(st => st.RecountRequestedByUser)
             .Include(st => st.StockTicketItems)
             .Where(st => st.TicketType == "INVENTORY_CHECK");
 
@@ -135,6 +136,7 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
         var stockTicketQuery = _context.StockTickets
             .AsNoTracking()
             .Include(st => st.User)
+            .Include(st => st.RecountRequestedByUser)
             .Include(st => st.StockTicketItems).ThenInclude(item => item.BranchProduct).ThenInclude(bp => bp.Product)
             .Where(st => st.StockTicketId == id && st.TicketType == "INVENTORY_CHECK");
 
@@ -530,13 +532,49 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             if (stockTicket.Status == "Cancelled")
                 throw new BusinessException("Cannot reject/recount cancelled ticket", "Phieu da bi huy.");
 
-            stockTicket.Status = dto.IsRecount ? "Draft" : "Cancelled";
-            stockTicket.CompletedAt = DateTime.UtcNow;
-            stockTicket.ConfirmedBy = currentUserId;
-            stockTicket.Notes = dto.Note ?? stockTicket.Notes;
+            if (dto.IsRecount)
+            {
+                stockTicket.Status = "Draft";
+                stockTicket.RecountNumber += 1;
+                stockTicket.RecountRequestedAt = DateTime.UtcNow;
+                stockTicket.RecountRequestedByUserId = currentUserId;
+                stockTicket.RecountReason = dto.Note;
+                stockTicket.Notes = dto.Note ?? stockTicket.Notes;
+            }
+            else
+            {
+                stockTicket.Status = "Cancelled";
+                stockTicket.CancelledAt = DateTime.UtcNow;
+                stockTicket.CancelledBy = currentUserId;
+                stockTicket.CancelReason = dto.Note;
+                stockTicket.Notes = dto.Note ?? stockTicket.Notes;
+            }
+
+            if (dto.IsRecount)
+            {
+                var recountNotification = new Notification
+                {
+                    NotificationId = Guid.NewGuid(),
+                    Type = NotificationType.RecountRequested,
+                    RecipientUserId = stockTicket.UserId,
+                    BranchId = stockTicket.BranchId,
+                    ReferenceId = stockTicket.StockTicketId,
+                    ReferenceType = "InventoryCheck",
+                    TriggeredByUserId = currentUserId.Value,
+                    Message = $"Phiếu kiểm kê {stockTicket.TicketCode} đã bị yêu cầu đếm lại (Lần {stockTicket.RecountNumber}). Lý do: {dto.Note}",
+                    IsRead = false,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _context.Notifications.Add(recountNotification);
+            }
 
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
+
+            if (dto.IsRecount)
+            {
+                await _hub.Clients.All.SendAsync("SilentNotification");
+            }
 
             await TryWriteSystemLog(
                 currentUserId.Value,
@@ -544,15 +582,17 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
                 "stock_tickets",
                 "InventoryCheck",
                 stockTicket.StockTicketId,
-                $"Yêu cầu đếm lại phiếu kiểm kê {stockTicket.TicketCode}");
+                dto.IsRecount
+                    ? $"Yêu cầu đếm lại phiếu kiểm kê {stockTicket.TicketCode} (Lần {stockTicket.RecountNumber})"
+                    : $"Từ chối/hủy phiếu kiểm kê {stockTicket.TicketCode}");
 
             return new ApiResponse<object>
             {
                 Success = true,
                 Message = dto.IsRecount
-                    ? "Yeu cau kiem ke lai thanh cong. Phieu tra ve trang thai Draft."
-                    : "Tu choi phieu kiem ke thanh cong.",
-                Data = new { TicketId = stockTicket.StockTicketId, TicketCode = stockTicket.TicketCode, Status = stockTicket.Status }
+                    ? $"Yêu cầu kiểm kê lại thành công (Lần {stockTicket.RecountNumber}). Phiếu trả về trạng thái Draft."
+                    : "Từ chối phiếu kiểm kê thành công.",
+                Data = new { TicketId = stockTicket.StockTicketId, TicketCode = stockTicket.TicketCode, Status = stockTicket.Status, RecountNumber = stockTicket.RecountNumber }
             };
         }
         catch
@@ -847,6 +887,11 @@ th {{ background: #f0f0f0; }}
             CancelledAt = stockTicket.CancelledAt,
             CancelledByUserId = stockTicket.CancelledBy,
             CancelledReason = stockTicket.CancelReason,
+            RecountNumber = stockTicket.RecountNumber,
+            RecountRequestedAt = stockTicket.RecountRequestedAt,
+            RecountRequestedByUserId = stockTicket.RecountRequestedByUserId,
+            RecountRequestedByUserName = stockTicket.RecountRequestedByUser?.FullName ?? stockTicket.RecountRequestedByUser?.Username,
+            RecountReason = stockTicket.RecountReason,
             TotalDiscrepancy = (stockTicket.Status == "WaitingForApproval" || stockTicket.Status == "Completed")
                                 && stockTicket.StockTicketItems != null 
                 ? (int?)stockTicket.StockTicketItems.Sum(x => x.Discrepancy)

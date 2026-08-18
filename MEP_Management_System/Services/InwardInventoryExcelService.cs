@@ -432,6 +432,7 @@ namespace MEP_Management_System.Services
                     TicketCode = ticketCode,
                     BranchId = preview.BranchId,
                     UserId = userId,
+                    SupplierId = preview.SupplierId,
                     TicketType = GetTicketTypeName(preview.InwardType),
                     Status = "COMPLETED", // Nhập kho trực tiếp, không qua PENDING
                     Notes = preview.Note,

@@ -37,9 +37,15 @@ public partial class StockTicket
     public DateTime? CancelledAt { get; set; }
     public Guid? CancelledBy { get; set; }
     public string? CancelReason { get; set; }
+    // === Recount fields (cho phiếu kiểm kê) ===
+    public int RecountNumber { get; set; } = 0;
+    public DateTime? RecountRequestedAt { get; set; }
+    public Guid? RecountRequestedByUserId { get; set; }
+    public string? RecountReason { get; set; }
 
     public virtual User? ConfirmedByUser { get; set; }
     public virtual User? CancelledByUser { get; set; }
+    public virtual User? RecountRequestedByUser { get; set; }
 
     public DateTime? CreatedAt { get; set; }
 
