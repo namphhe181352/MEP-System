@@ -311,11 +311,19 @@ public class OutwardInventoryService : IOutwardInventoryService
                 };
             }
 
+            Invoice? invoice = null;
+            if (stockTicket.TicketType == "SALE")
+            {
+                invoice = await _context.Invoices
+                    .Include(i => i.InvoiceItems)
+                    .FirstOrDefaultAsync(i => i.InvoiceCode == stockTicket.TicketCode);
+            }
+
             return new ApiResponse<OutwardInventoryResponseDto>
             {
                 Success = true,
                 Message = "Lấy chi tiết phiếu xuất kho thành công.",
-                Data = MapToResponse(stockTicket, user)
+                Data = MapToResponse(stockTicket, user, invoice)
             };
         }
         catch (Exception ex)
@@ -1296,7 +1304,7 @@ th {{ background: #f0f0f0; }}
 
     // ========== PRIVATE HELPERS ==========
 
-    private static OutwardInventoryResponseDto MapToResponse(StockTicket stockTicket, ClaimsPrincipal user)
+    private static OutwardInventoryResponseDto MapToResponse(StockTicket stockTicket, ClaimsPrincipal user, Invoice? invoice = null)
     {
         bool canConfirm = false;
         if (stockTicket.Status == "PENDING")
@@ -1330,20 +1338,37 @@ th {{ background: #f0f0f0; }}
             CancelledBy = stockTicket.CancelledBy,
             CancelReason = stockTicket.CancelReason,
             CanConfirm = canConfirm,
-            TotalAmount = stockTicket.TotalAmount,
-            Items = stockTicket.StockTicketItems?.Select(item => new OutwardInventoryItemResponseDto
+            TotalAmount = invoice != null ? invoice.TotalAmount : stockTicket.TotalAmount,
+            Items = stockTicket.StockTicketItems?.Select(item =>
             {
-                TicketItemId = item.TicketItemId,
-                BranchProductId = item.BranchProductId,
-                ProductId = item.BranchProduct?.ProductId ?? Guid.Empty,
-                ProductCode = item.BranchProduct?.Product?.ProductCode ?? string.Empty,
-                ProductName = item.BranchProduct?.Product?.ProductName ?? string.Empty,
-                SystemQuantity = item.SystemQuantity,
-                Quantity = item.Discrepancy,
-                ActualQuantity = item.ActualQuantity,
-                UnitPrice = (item.UnitPrice ?? 0) > 0 ? item.UnitPrice : (item.BranchProduct?.CostPrice ?? 0),
-                UnitName = item.BranchProduct?.Product?.BaseUnit ?? item.UnitName,
-                InwardTicketItemId = item.InwardTicketItemId
+                var invItem = invoice?.InvoiceItems?.FirstOrDefault(ii => ii.BranchProductId == item.BranchProductId);
+                var baseUnit = item.BranchProduct?.Product?.BaseUnit ?? item.UnitName ?? "";
+                var selectedUnit = invItem?.SelectedUnit ?? item.UnitName ?? baseUnit;
+                var convertValue = invItem?.ConvertValue ?? 1m;
+                var saleQty = invItem?.Quantity ?? (convertValue > 0 ? item.Discrepancy / convertValue : item.Discrepancy);
+                var sellPrice = invItem?.SellPrice ?? (item.UnitPrice.HasValue ? item.UnitPrice.Value * convertValue : 0m);
+                var totalPrice = invItem != null ? (invItem.Quantity * invItem.SellPrice) : (item.Discrepancy * (item.UnitPrice ?? 0));
+
+                return new OutwardInventoryItemResponseDto
+                {
+                    TicketItemId = item.TicketItemId,
+                    BranchProductId = item.BranchProductId,
+                    ProductId = item.BranchProduct?.ProductId ?? Guid.Empty,
+                    ProductCode = item.BranchProduct?.Product?.ProductCode ?? string.Empty,
+                    ProductName = item.BranchProduct?.Product?.ProductName ?? string.Empty,
+                    SystemQuantity = item.SystemQuantity,
+                    Quantity = item.Discrepancy,
+                    ActualQuantity = item.ActualQuantity,
+                    UnitPrice = invItem != null ? invItem.SellPrice : ((item.UnitPrice ?? 0) > 0 ? item.UnitPrice : (item.BranchProduct?.CostPrice ?? 0)),
+                    UnitName = selectedUnit,
+                    SelectedUnit = selectedUnit,
+                    BaseUnit = baseUnit,
+                    ConvertValue = convertValue,
+                    SaleQuantity = saleQty,
+                    SellPrice = sellPrice,
+                    TotalPrice = totalPrice,
+                    InwardTicketItemId = item.InwardTicketItemId
+                };
             }).ToList() ?? new()
         };
     }

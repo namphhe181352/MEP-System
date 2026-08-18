@@ -32,7 +32,7 @@ public class UserCleanupService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("UserCleanupService started. Retention days: {RetentionDays}", _retentionDays);
+        try { _logger.LogInformation("UserCleanupService started. Retention days: {RetentionDays}", _retentionDays); } catch { }
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -40,13 +40,27 @@ public class UserCleanupService : BackgroundService
             {
                 await PurgeExpiredUsersAsync(stoppingToken);
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in UserCleanupService");
+                if (!stoppingToken.IsCancellationRequested)
+                {
+                    try { _logger.LogError(ex, "Error in UserCleanupService"); } catch { }
+                }
             }
 
-            // Run every 24 hours
-            await Task.Delay(TimeSpan.FromHours(24), stoppingToken);
+            try
+            {
+                // Run every 24 hours
+                await Task.Delay(TimeSpan.FromHours(24), stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
         }
     }
 

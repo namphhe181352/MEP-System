@@ -112,7 +112,7 @@ public class ReturnServiceImpl : IReturnService
             .Include(r => r.Order).ThenInclude(o => o!.Customer)
             .Include(r => r.User)
             .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product).ThenInclude(p => p!.ProductConversionUnits)
-            .Include(r => r.ExchangeItems).ThenInclude(ei => ei.BranchProduct).ThenInclude(bp => bp!.Product)
+            .Include(r => r.ExchangeItems).ThenInclude(ei => ei.BranchProduct).ThenInclude(bp => bp!.Product).ThenInclude(p => p!.ProductConversionUnits)
             .FirstOrDefaultAsync(r => r.ReturnOrderId == id && r.Order!.BranchId == branchId);
 
         if (r == null) return null;
@@ -413,7 +413,7 @@ public class ReturnServiceImpl : IReturnService
             .Include(r => r.Order).ThenInclude(o => o!.Invoice)
             .Include(r => r.User)
             .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product).ThenInclude(p => p!.ProductConversionUnits)
-            .Include(r => r.ExchangeItems).ThenInclude(ei => ei.BranchProduct).ThenInclude(bp => bp!.Product)
+            .Include(r => r.ExchangeItems).ThenInclude(ei => ei.BranchProduct).ThenInclude(bp => bp!.Product).ThenInclude(p => p!.ProductConversionUnits)
             .FirstOrDefaultAsync(r => r.ReturnOrderId == id && r.Order!.BranchId == branchId);
 
         if (ret == null)
@@ -679,7 +679,7 @@ public class ReturnServiceImpl : IReturnService
                 .Include(r => r.Order).ThenInclude(o => o!.Invoice)
                 .Include(r => r.User)
                 .Include(r => r.ReturnItems).ThenInclude(ri => ri.BranchProduct).ThenInclude(bp => bp!.Product).ThenInclude(p => p!.ProductConversionUnits)
-                .Include(r => r.ExchangeItems).ThenInclude(ei => ei.BranchProduct).ThenInclude(bp => bp!.Product)
+                .Include(r => r.ExchangeItems).ThenInclude(ei => ei.BranchProduct).ThenInclude(bp => bp!.Product).ThenInclude(p => p!.ProductConversionUnits)
                 .FirstOrDefaultAsync(r => r.ReturnOrderId == ro.ReturnOrderId);
 
             return _mapper.Map<ReturnOrderDto>(full!);

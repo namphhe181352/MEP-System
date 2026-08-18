@@ -469,12 +469,17 @@ using (var scope = app.Services.CreateScope())
 UPDATE stock_ticket_items sti
 SET unit_price = ROUND((sti.unit_price / COALESCE(NULLIF(ii.convert_value, 0), 1.0)), 4),
     unit_name = COALESCE(p.base_unit, sti.unit_name)
-FROM stock_tickets st
-JOIN invoices inv ON inv.invoice_code = st.ticket_code
-JOIN invoice_items ii ON ii.invoice_id = inv.invoice_id AND ii.branch_product_id = sti.branch_product_id
-JOIN branch_products bp ON bp.branch_product_id = sti.branch_product_id
-JOIN products p ON p.product_id = bp.product_id
+FROM stock_tickets st,
+     invoices inv,
+     invoice_items ii,
+     branch_products bp,
+     products p
 WHERE sti.stock_ticket_id = st.stock_ticket_id
+  AND inv.invoice_code = st.ticket_code
+  AND ii.invoice_id = inv.invoice_id
+  AND ii.branch_product_id = sti.branch_product_id
+  AND bp.branch_product_id = sti.branch_product_id
+  AND p.product_id = bp.product_id
   AND st.ticket_type = 'SALE'
   AND COALESCE(ii.convert_value, 1.0) > 1.0
   AND NOT EXISTS (SELECT 1 FROM system_configs WHERE config_key = 'SALE_UOM_CONVERSION_FIX_V1');

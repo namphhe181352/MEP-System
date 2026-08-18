@@ -75,6 +75,8 @@ public class ExchangeItemDto
     public Guid ProductId { get; set; }
     public string? ProductName { get; set; }
     public string? ProductCode { get; set; }
+    public string? Unit { get; set; }
+    public string? BaseUnit { get; set; }
     public decimal Quantity { get; set; }
     public decimal ConversionRate { get; set; } = 1;
     public decimal BaseQuantity { get; set; }
