@@ -1414,7 +1414,9 @@ public class ReturnServiceImpl : IReturnService
         {
             var bp = await _context.BranchProducts.Include(b => b.Product).FirstOrDefaultAsync(b => b.BranchProductId == ei.BranchProductId);
             if (bp == null) continue;
-            var baseQty = ei.BaseQuantity > 0 ? ei.BaseQuantity : ei.Quantity;
+            var convRate = ei.ConversionRate > 0 ? ei.ConversionRate : 1m;
+            var baseQty = ei.BaseQuantity > 0 ? ei.BaseQuantity : (ei.Quantity * convRate);
+            var netBaseUnitPrice = Math.Round(ei.UnitPrice / convRate, 4);
 
             _context.StockTicketItems.Add(new StockTicketItem
             {
@@ -1424,7 +1426,7 @@ public class ReturnServiceImpl : IReturnService
                 SystemQuantity = bp.ActualStock,
                 ActualQuantity = bp.ActualStock - baseQty,
                 Discrepancy = baseQty,
-                UnitPrice = ei.UnitPrice,
+                UnitPrice = netBaseUnitPrice,
                 UnitName = bp.Product?.BaseUnit ?? ""
             });
 

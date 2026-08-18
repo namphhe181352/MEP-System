@@ -1342,7 +1342,7 @@ th {{ background: #f0f0f0; }}
                 Quantity = item.Discrepancy,
                 ActualQuantity = item.ActualQuantity,
                 UnitPrice = (item.UnitPrice ?? 0) > 0 ? item.UnitPrice : (item.BranchProduct?.CostPrice ?? 0),
-                UnitName = item.UnitName ?? item.BranchProduct?.Product?.BaseUnit,
+                UnitName = item.BranchProduct?.Product?.BaseUnit ?? item.UnitName,
                 InwardTicketItemId = item.InwardTicketItemId
             }).ToList() ?? new()
         };
