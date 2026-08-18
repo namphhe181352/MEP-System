@@ -4,6 +4,7 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using MEP_Management_System.Controllers;
+using MEP_Management_System.Services.AdminDashboardServices;
 using MEP_Management_System.DTOs;
 using MEP_Management_System.Models;
 using Microsoft.AspNetCore.Http;
@@ -28,7 +29,7 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
 
         private AdminDashboardController CreateController(MEPDatabaseContext context, Guid? userId = null)
         {
-            var controller = new AdminDashboardController(context);
+            var controller = new AdminDashboardController(new AdminDashboardService(context));
 
             var claims = new List<Claim>
             {
@@ -163,3 +164,5 @@ namespace MEP_Management_System.UnitTests.Controllers.AdminController
         }
     }
 }
+
+

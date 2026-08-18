@@ -1,10 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using AutoMapper;
 using MEP_Management_System.Controllers.SaleController;
+using MEP_Management_System.Services.SaleServices;
 using MEP_Management_System.DTOs.SaleDTOs;
 using MEP_Management_System.Models;
 using MEP_Management_System.Services;
@@ -34,8 +35,8 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
 
         private PrintingController CreateController(MEPDatabaseContext context, Guid? userId = null, Guid? branchId = null)
         {
-            var templateService = new InvoicePrintTemplateService(context);
-            var controller = new PrintingController(context, _mockMapper.Object, templateService);
+            var templateService = new MEP_Management_System.Services.SaleServices.InvoicePrintTemplateServiceImpl(context);
+            var controller = new PrintingController(new MEP_Management_System.Services.PrintingService(context, templateService, _mockMapper.Object));
 
             var claims = new List<Claim>();
             if (userId.HasValue)
@@ -159,3 +160,6 @@ namespace MEP_Management_System.UnitTests.Controllers.SaleController
         }
     }
 }
+
+
+
