@@ -906,7 +906,8 @@ public class OutwardInventoryService : IOutwardInventoryService
                 if ((item.UnitPrice ?? 0) <= 0 && stockTicket.TicketType != "RETURN_SUPPLIER")
                     item.UnitPrice = bp.CostPrice;
 
-                var effectiveUnitPrice = item.UnitPrice ?? bp.CostPrice;
+                var isOutwardAtCost = stockTicket.TicketType == "SALE" || stockTicket.TicketType == "WRITE_OFF" || stockTicket.TicketType == "TRANSFER";
+                var effectiveUnitPrice = isOutwardAtCost ? bp.CostPrice : (item.UnitPrice ?? bp.CostPrice);
 
                 try
                 {
@@ -1150,7 +1151,8 @@ public class OutwardInventoryService : IOutwardInventoryService
                         // -> dòng hủy ghi +discrepancy (nhận hàng về lại kho do hủy phiếu).
                         // Phải cùng DbTransaction với rollback tồn kho. Không có dòng này ->
                         // báo cáo xuất nhập tồn vẫn tính số xuất gốc (sai) & thẻ kho không thấy movement hủy.
-                        var cancelUnitPrice = item.UnitPrice ?? 0m;
+                        var isOutwardAtCost = stockTicket.TicketType == "SALE" || stockTicket.TicketType == "WRITE_OFF" || stockTicket.TicketType == "TRANSFER";
+                        var cancelUnitPrice = isOutwardAtCost ? item.BranchProduct.CostPrice : (item.UnitPrice ?? item.BranchProduct.CostPrice);
                         _context.InventoryLedgers.Add(new InventoryLedger
                         {
                             LedgerId = Guid.NewGuid(),

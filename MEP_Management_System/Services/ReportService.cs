@@ -1598,7 +1598,12 @@ public class ReportService : IReportService
         if (ledgerIn.Count > 0)
         {
             foreach (var e in ledgerIn)
-                entries.Add((e.TransactionTime, e.DocCode ?? "", e.DocType, e.UnitCostPrice, e.QtyChange));
+            {
+                var price = (e.DocType == "SALE" || e.DocType == "CUSTOMER_RETURN" || e.DocType == "WRITE_OFF" || e.DocType == "TRANSFER" || e.DocType == "EXCHANGE_OUT" || e.DocType == "CUSTOMER_RETURN_DEFECTIVE")
+                    ? (e.UnitCostPrice > 0 && e.UnitCostPrice <= bp.CostPrice * 1.5m ? e.UnitCostPrice : bp.CostPrice)
+                    : e.UnitCostPrice;
+                entries.Add((e.TransactionTime, e.DocCode ?? "", e.DocType, price, e.QtyChange));
+            }
 
             var qtyAfterToDate = await _context.InventoryLedgers
                 .Where(l => l.BranchProductId == branchProductId && l.BranchId == branchId && l.TransactionTime > to)
