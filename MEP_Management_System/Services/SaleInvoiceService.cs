@@ -118,7 +118,7 @@ public class SaleInvoiceService : ISaleInvoiceService
         var invoices = await query
             .Include(i => i.Order.User)
             .Include(i => i.Order.Customer)
-            .Include(i => i.InvoiceItems)
+            .Include(i => i.InvoiceItems).ThenInclude(ii => ii.BranchProduct).ThenInclude(bp => bp!.Product)
             .Include(i => i.Payments)
             .OrderByDescending(i => i.CreatedAt)
             .Skip((page - 1) * pageSize).Take(pageSize)

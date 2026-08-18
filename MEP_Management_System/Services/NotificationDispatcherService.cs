@@ -34,7 +34,7 @@ public class NotificationDispatcherService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("NotificationDispatcherService started. Scan every {Interval}", ScanInterval);
+        try { _logger.LogInformation("NotificationDispatcherService started. Scan every {Interval}", ScanInterval); } catch { }
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -42,16 +42,23 @@ public class NotificationDispatcherService : BackgroundService
             {
                 await DispatchScheduledNotificationsAsync(stoppingToken);
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in NotificationDispatcherService");
+                if (!stoppingToken.IsCancellationRequested)
+                {
+                    try { _logger.LogError(ex, "Error in NotificationDispatcherService"); } catch { }
+                }
             }
 
             try
             {
                 await Task.Delay(ScanInterval, stoppingToken);
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException)
             {
                 break;
             }

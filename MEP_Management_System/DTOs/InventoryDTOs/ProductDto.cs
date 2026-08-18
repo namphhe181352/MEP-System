@@ -359,6 +359,12 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public decimal? UnitPrice { get; set; }
         public decimal? CostPrice { get; set; }
         public string? UnitName { get; set; }
+        public string? SelectedUnit { get; set; }
+        public string? BaseUnit { get; set; }
+        public decimal? ConvertValue { get; set; }
+        public decimal? SaleQuantity { get; set; }
+        public decimal? SellPrice { get; set; }
+        public decimal? TotalPrice { get; set; }
         /// <summary>FK tới dòng hàng của phiếu nhập gốc.</summary>
         public Guid? InwardTicketItemId { get; set; }
     }

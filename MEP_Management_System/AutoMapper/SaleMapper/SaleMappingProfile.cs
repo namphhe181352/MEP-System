@@ -127,7 +127,10 @@ public class SaleMappingProfile : Profile
             .ForMember(d => d.ProductName, o => o.MapFrom(s =>
                 s.BranchProduct != null && s.BranchProduct.Product != null ? s.BranchProduct.Product.ProductName : null))
             .ForMember(d => d.ProductCode, o => o.MapFrom(s =>
-                s.BranchProduct != null && s.BranchProduct.Product != null ? s.BranchProduct.Product.ProductCode : null));
+                s.BranchProduct != null && s.BranchProduct.Product != null ? s.BranchProduct.Product.ProductCode : null))
+            .ForMember(d => d.BaseUnit, o => o.MapFrom(s =>
+                s.BranchProduct != null && s.BranchProduct.Product != null ? s.BranchProduct.Product.BaseUnit : null))
+            .ForMember(d => d.Unit, o => o.MapFrom(s => ResolveExchangeItemUnit(s)));
     }
 
     private static string? CalculateTier(decimal? totalSpent)
@@ -142,6 +145,16 @@ public class SaleMappingProfile : Profile
     /// <summary>Tên ĐVT bán của ReturnItem: khớp ProductConversionUnit có ConvertValue == ConversionRate;
     /// không khớp thì fallback về Product.BaseUnit.</summary>
     private static string? ResolveReturnItemUnit(ReturnItem s)
+    {
+        if (s.BranchProduct?.Product is null) return null;
+        var product = s.BranchProduct.Product;
+        var match = product.ProductConversionUnits?.FirstOrDefault(c => c.ConvertValue == s.ConversionRate);
+        return !string.IsNullOrEmpty(match?.UnitName) ? match.UnitName : product.BaseUnit;
+    }
+
+    /// <summary>Tên ĐVT bán của ExchangeItem: khớp ProductConversionUnit có ConvertValue == ConversionRate;
+    /// không khớp thì fallback về Product.BaseUnit.</summary>
+    private static string? ResolveExchangeItemUnit(ExchangeItem s)
     {
         if (s.BranchProduct?.Product is null) return null;
         var product = s.BranchProduct.Product;
