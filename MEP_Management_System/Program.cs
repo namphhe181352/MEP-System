@@ -467,7 +467,7 @@ using (var scope = app.Services.CreateScope())
     {
         var rows = await context.Database.ExecuteSqlRawAsync(@"
 UPDATE stock_ticket_items sti
-SET unit_price = ROUND((sti.unit_price / COALESCE(NULLIF(ii.convert_value, 0), 1.0)), 4),
+SET unit_price = ROUND((sti.unit_price / COALESCE(NULLIF(ii.""ConvertValue"", 0), 1.0)), 4),
     unit_name = COALESCE(p.base_unit, sti.unit_name)
 FROM stock_tickets st,
      invoices inv,
@@ -481,7 +481,7 @@ WHERE sti.stock_ticket_id = st.stock_ticket_id
   AND bp.branch_product_id = sti.branch_product_id
   AND p.product_id = bp.product_id
   AND st.ticket_type = 'SALE'
-  AND COALESCE(ii.convert_value, 1.0) > 1.0
+  AND COALESCE(ii.""ConvertValue"", 1.0) > 1.0
   AND NOT EXISTS (SELECT 1 FROM system_configs WHERE config_key = 'SALE_UOM_CONVERSION_FIX_V1');
 ");
         Console.WriteLine($"[Startup] SALE UOM conversion fix: {rows} dòng đã quy đổi về BaseUnit price & unit.");
