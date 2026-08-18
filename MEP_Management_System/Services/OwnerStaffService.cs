@@ -201,13 +201,13 @@ public class OwnerStaffService : IOwnerStaffService
 
         IQueryable<User> query;
 
-        if (isDeleted == true)
+        if (isDeleted == true || string.Equals(view, "deleted", StringComparison.OrdinalIgnoreCase))
         {
             query = _context.Users
                 .Include(u => u.UserPermissions).ThenInclude(up => up.Permission)
                 .Include(u => u.Roles).ThenInclude(r => r.Permissions)
                 .Where(u => staffUserIds.Contains(u.UserId)
-                    && u.Status == "DELETED"
+                    && (u.Status == "DELETED" || u.Status == "PERMANENT_DELETED" || u.FullName.EndsWith("(Đã xóa)") || u.Email.StartsWith("deleted_") || u.Email.StartsWith("del_") || u.Email.EndsWith("@mep.deleted"))
                     && u.UserId != ownerId
                     && !u.Roles.Any(r => r.RoleName == "Admin" || r.RoleName == "Owner"));
         }
@@ -218,6 +218,12 @@ public class OwnerStaffService : IOwnerStaffService
                 .Include(u => u.Roles).ThenInclude(r => r.Permissions)
                 .Where(u => staffUserIds.Contains(u.UserId)
                     && u.UserId != ownerId
+                    && u.Status != "DELETED"
+                    && u.Status != "PERMANENT_DELETED"
+                    && !u.FullName.EndsWith("(Đã xóa)")
+                    && !u.Email.StartsWith("deleted_")
+                    && !u.Email.StartsWith("del_")
+                    && !u.Email.EndsWith("@mep.deleted")
                     && !u.Roles.Any(r => r.RoleName == "Admin" || r.RoleName == "Owner"));
         }
 
