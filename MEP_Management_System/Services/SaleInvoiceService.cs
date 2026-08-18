@@ -573,6 +573,9 @@ public class SaleInvoiceService : ISaleInvoiceService
                 };
                 _context.InventoryLedgers.Add(ledgerEntry);
 
+                var baseUnit = item.BranchProduct?.Product?.BaseUnit ?? item.UnitName ?? "";
+                var netBaseUnitPrice = Math.Round((item.SellPrice / (item.ConvertValue.HasValue && item.ConvertValue.Value > 0 ? item.ConvertValue.Value : 1m)) * (1m - invoiceDiscountRatio), 4);
+
                 var ticketItem = new StockTicketItem
                 {
                     TicketItemId = Guid.NewGuid(),
@@ -581,10 +584,9 @@ public class SaleInvoiceService : ISaleInvoiceService
                     SystemQuantity = stockAfter + actualQty,
                     ActualQuantity = stockAfter,
                     Discrepancy = actualQty,
-                    // Giá bán NET (sau chiết khấu đơn hàng) → "thành tiền" = qty × giá net
-                    // = đúng số tiền khách thực trả cho dòng này. (Trước đây ghi SellPrice gốc.)
-                    UnitPrice = Math.Round(item.SellPrice * (1m - invoiceDiscountRatio), 4),
-                    UnitName = item.UnitName ?? item.BranchProduct.Product?.BaseUnit ?? ""
+                    // Giá bán NET quy về ĐƠN VỊ CƠ BẢN (BaseUnit): "thành tiền" = actualQty × netBaseUnitPrice = đúng số tiền khách trả
+                    UnitPrice = netBaseUnitPrice,
+                    UnitName = baseUnit
                 };
                 _context.StockTicketItems.Add(ticketItem);
             }

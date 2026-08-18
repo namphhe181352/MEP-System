@@ -561,7 +561,7 @@ th {{ background: #f0f0f0; }}
                     ActualQuantity = item.ActualQuantity,
                     CostPrice = effectivePrice,
                     UnitPrice = effectivePrice,
-                    UnitName = item.UnitName ?? item.BranchProduct?.Product?.BaseUnit
+                    UnitName = item.BranchProduct?.Product?.BaseUnit ?? item.UnitName
                 };
             }).ToList() ?? new()
         };
