@@ -117,7 +117,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         [HttpPost("notifications/mark-read")]
-        public async Task<IActionResult> MarkNotificationsAsRead([FromBody] List<Guid> notificationIds)
+        public async Task<IActionResult> MarkNotificationsAsRead([FromBody] List<Guid>? notificationIds)
         {
             var result = await _inventoryCheckService.MarkNotificationsAsReadAsync(User, notificationIds, GetCurrentBranchId());
             return Ok(result);

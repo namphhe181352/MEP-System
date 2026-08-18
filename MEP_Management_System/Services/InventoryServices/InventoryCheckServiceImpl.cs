@@ -839,18 +839,21 @@ th {{ background: #f0f0f0; }}
         };
     }
 
-    public async Task<ApiResponse<object>> MarkNotificationsAsReadAsync(ClaimsPrincipal user, List<Guid> notificationIds, Guid? branchId)
+    public async Task<ApiResponse<object>> MarkNotificationsAsReadAsync(ClaimsPrincipal user, List<Guid>? notificationIds, Guid? branchId)
     {
-        if (notificationIds == null || !notificationIds.Any())
+        var currentUserId = GetCurrentUserId(user);
+        if (!currentUserId.HasValue)
+            throw new UnauthorizedAccessException("Khong the xac dinh nguoi dung tu token.");
+
+        IQueryable<Notification> query = _context.Notifications
+            .Where(n => (n.RecipientUserId == currentUserId.Value || (n.RecipientUserId == null && (!branchId.HasValue || n.BranchId == branchId.Value))) && !n.IsRead);
+
+        if (notificationIds != null && notificationIds.Any())
         {
-            return new ApiResponse<object> { Success = true, Message = "No notifications to mark as read." };
+            query = query.Where(n => notificationIds.Contains(n.NotificationId));
         }
 
-        var currentUserId = GetCurrentUserId(user);
-        
-        var notificationsToUpdate = await _context.Notifications
-            .Where(n => notificationIds.Contains(n.NotificationId) && (n.RecipientUserId == currentUserId || n.RecipientUserId == null))
-            .ToListAsync();
+        var notificationsToUpdate = await query.ToListAsync();
 
         foreach (var notif in notificationsToUpdate)
         {
