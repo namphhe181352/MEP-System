@@ -93,19 +93,24 @@ namespace MEP_Management_System.Services
                 CancelReason = st.CancelReason,
                 CostPrice = st.TicketType == "CUSTOMER_RETURN"
                     ? 0
-                    : st.StockTicketItems?.Sum(i => i.UnitPrice ?? 0) ?? 0,
-                Items = st.StockTicketItems?.Select(i => new InwardInventoryItemResponseDto
+                    : st.StockTicketItems?.Sum(i => ((i.UnitPrice ?? 0) > 0 ? (i.UnitPrice ?? 0) : (i.BranchProduct?.CostPrice ?? 0)) * i.Discrepancy) ?? 0,
+                Items = st.StockTicketItems?.Select(i =>
                 {
-                    TicketItemId = i.TicketItemId,
-                    BranchProductId = i.BranchProductId,
-                    ProductId = i.BranchProduct?.ProductId ?? Guid.Empty,
-                    ProductCode = i.BranchProduct?.Product?.ProductCode ?? string.Empty,
-                    ProductName = i.BranchProduct?.Product?.ProductName ?? string.Empty,
-                    SystemQuantity = i.SystemQuantity,
-                    Quantity = i.Discrepancy,
-                    ActualQuantity = i.ActualQuantity,
-                    UnitPrice = i.UnitPrice,
-                    UnitName = i.UnitName ?? i.BranchProduct?.Product?.BaseUnit
+                    var effectivePrice = (i.UnitPrice ?? 0) > 0 ? (i.UnitPrice ?? 0) : (i.BranchProduct?.CostPrice ?? 0);
+                    return new InwardInventoryItemResponseDto
+                    {
+                        TicketItemId = i.TicketItemId,
+                        BranchProductId = i.BranchProductId,
+                        ProductId = i.BranchProduct?.ProductId ?? Guid.Empty,
+                        ProductCode = i.BranchProduct?.Product?.ProductCode ?? string.Empty,
+                        ProductName = i.BranchProduct?.Product?.ProductName ?? string.Empty,
+                        SystemQuantity = i.SystemQuantity,
+                        Quantity = i.Discrepancy,
+                        ActualQuantity = i.ActualQuantity,
+                        UnitPrice = effectivePrice,
+                        CostPrice = effectivePrice,
+                        UnitName = i.UnitName ?? i.BranchProduct?.Product?.BaseUnit
+                    };
                 }).ToList() ?? new List<InwardInventoryItemResponseDto>()
             };
         }

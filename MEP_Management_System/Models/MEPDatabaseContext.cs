@@ -1376,6 +1376,17 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasColumnName("cancelled_at");
             entity.Property(e => e.CancelledBy).HasColumnName("cancelled_by");
             entity.Property(e => e.CancelReason).HasMaxLength(500).HasColumnName("cancel_reason");
+            entity.Property(e => e.RecountNumber)
+                .HasDefaultValue(0)
+                .HasColumnName("recount_number");
+            entity.Property(e => e.RecountRequestedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("recount_requested_at");
+            entity.Property(e => e.RecountRequestedByUserId)
+                .HasColumnName("recount_requested_by_user_id");
+            entity.Property(e => e.RecountReason)
+                .HasMaxLength(1000)
+                .HasColumnName("recount_reason");
 
             entity.HasIndex(e => e.TicketCode, "stock_tickets_ticket_code_key").IsUnique();
 
@@ -1403,6 +1414,11 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
                 .HasForeignKey(d => d.CancelledBy)
                 .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("stock_tickets_cancelled_by_fkey");
+
+            entity.HasOne(d => d.RecountRequestedByUser).WithMany()
+                .HasForeignKey(d => d.RecountRequestedByUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("stock_tickets_recount_requested_by_user_id_fkey");
 
             // Self-referencing: phiếu xuất → phiếu nhập gốc
             entity.HasOne(d => d.InwardTicket).WithMany(p => p.OutwardTickets)

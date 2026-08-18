@@ -1046,7 +1046,7 @@ th {{ background: #f0f0f0; }}
             CancelReason = stockTicket.CancelReason,
             CostPrice = stockTicket.TicketType == "CUSTOMER_RETURN"
                 ? 0
-                : stockTicket.StockTicketItems?.Sum(i => (i.UnitPrice ?? 0) > 0 ? (i.UnitPrice ?? 0) : (i.BranchProduct?.CostPrice ?? 0)) ?? 0,
+                : stockTicket.StockTicketItems?.Sum(i => ((i.UnitPrice ?? 0) > 0 ? (i.UnitPrice ?? 0) : (i.BranchProduct?.CostPrice ?? 0)) * i.Discrepancy) ?? 0,
             Items = stockTicket.StockTicketItems?.Select(item =>
             {
                 var effectivePrice = (item.UnitPrice ?? 0) > 0 ? (item.UnitPrice ?? 0) : (item.BranchProduct?.CostPrice ?? 0);
@@ -1061,6 +1061,7 @@ th {{ background: #f0f0f0; }}
                     Quantity = item.Discrepancy,
                     ActualQuantity = item.ActualQuantity,
                     UnitPrice = effectivePrice,
+                    CostPrice = effectivePrice,
                     UnitName = item.UnitName ?? item.BranchProduct?.Product?.BaseUnit
                 };
             }).ToList() ?? new()

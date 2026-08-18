@@ -48,6 +48,7 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         public decimal Quantity { get; set; }
         public decimal ActualQuantity { get; set; }
         public decimal? UnitPrice { get; set; }
+        public decimal? CostPrice { get; set; }
         public string? UnitName { get; set; }
     }
 

@@ -123,6 +123,7 @@ namespace MEP_Management_System.Services
                     Quantity = i.Quantity,
                     ActualQuantity = i.ActualQuantity,
                     UnitPrice = i.UnitPrice,
+                    CostPrice = i.CostPrice ?? i.UnitPrice,
                     UnitName = i.UnitName
                 }).ToList() ?? new List<StockImportItemResponseDto>()
             };

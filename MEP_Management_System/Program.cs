@@ -479,6 +479,26 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// Đảm bảo các cột recount tồn tại trong stock_tickets (cho kiểm kê kho)
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<MEPDatabaseContext>();
+    try
+    {
+        await context.Database.ExecuteSqlRawAsync(@"
+            ALTER TABLE stock_tickets ADD COLUMN IF NOT EXISTS recount_number INT NOT NULL DEFAULT 0;
+            ALTER TABLE stock_tickets ADD COLUMN IF NOT EXISTS recount_requested_at TIMESTAMP WITHOUT TIME ZONE;
+            ALTER TABLE stock_tickets ADD COLUMN IF NOT EXISTS recount_requested_by_user_id UUID;
+            ALTER TABLE stock_tickets ADD COLUMN IF NOT EXISTS recount_reason VARCHAR(1000);
+        ");
+        Console.WriteLine("[Startup] stock_tickets recount columns -> ensured OK");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Startup] Alter stock_tickets recount columns thất bại: {ex.Message}");
+    }
+}
+
 // Đảm bảo các bảng mới tồn tại: store_approvals, goods_issues, goods_issue_items, goods_issue_attachments.
 // EF migration code-first chưa chạy được khi app đang lock bin -> tạo idempotent bằng raw SQL tại startup.
 // Tên bảng/cột khớp với Fluent API trong MEPDatabaseContext.OnModelCreating.
