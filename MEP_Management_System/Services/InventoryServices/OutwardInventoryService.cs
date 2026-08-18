@@ -180,6 +180,7 @@ public class OutwardInventoryService : IOutwardInventoryService
                 .Include(st => st.StockTicketItems)
                     .ThenInclude(item => item.BranchProduct)
                         .ThenInclude(bp => bp.Product)
+                            .ThenInclude(p => p.ProductConversionUnits)
                 .Where(st => st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF"
                     || st.TicketType == "TRANSFER" || st.TicketType == "SALE")
                 .Where(st => st.BranchId == branchId.Value)
@@ -281,6 +282,7 @@ public class OutwardInventoryService : IOutwardInventoryService
                 .Include(st => st.StockTicketItems)
                     .ThenInclude(item => item.BranchProduct)
                         .ThenInclude(bp => bp.Product)
+                            .ThenInclude(p => p.ProductConversionUnits)
                 .Where(st => st.StockTicketId == id &&
                     (st.TicketType == "RETURN_SUPPLIER" || st.TicketType == "WRITE_OFF"
                         || st.TicketType == "TRANSFER" || st.TicketType == "SALE"));
@@ -312,18 +314,28 @@ public class OutwardInventoryService : IOutwardInventoryService
             }
 
             Invoice? invoice = null;
+            ReturnOrder? returnOrder = null;
             if (stockTicket.TicketType == "SALE")
             {
                 invoice = await _context.Invoices
                     .Include(i => i.InvoiceItems)
                     .FirstOrDefaultAsync(i => i.InvoiceCode == stockTicket.TicketCode);
+
+                if (invoice == null && !string.IsNullOrEmpty(stockTicket.TicketCode) && stockTicket.TicketCode.StartsWith("RET-"))
+                {
+                    var retCode = stockTicket.TicketCode.Replace("-OUT", "");
+                    returnOrder = await _context.ReturnOrders
+                        .Include(r => r.ExchangeItems)
+                        .Include(r => r.ReturnItems)
+                        .FirstOrDefaultAsync(r => r.ReturnCode == retCode);
+                }
             }
 
             return new ApiResponse<OutwardInventoryResponseDto>
             {
                 Success = true,
                 Message = "Lấy chi tiết phiếu xuất kho thành công.",
-                Data = MapToResponse(stockTicket, user, invoice)
+                Data = MapToResponse(stockTicket, user, invoice, returnOrder)
             };
         }
         catch (Exception ex)
@@ -1306,7 +1318,7 @@ th {{ background: #f0f0f0; }}
 
     // ========== PRIVATE HELPERS ==========
 
-    private static OutwardInventoryResponseDto MapToResponse(StockTicket stockTicket, ClaimsPrincipal user, Invoice? invoice = null)
+    private static OutwardInventoryResponseDto MapToResponse(StockTicket stockTicket, ClaimsPrincipal user, Invoice? invoice = null, ReturnOrder? returnOrder = null)
     {
         bool canConfirm = false;
         if (stockTicket.Status == "PENDING")
@@ -1318,6 +1330,8 @@ th {{ background: #f0f0f0; }}
 
             canConfirm = isOwner || hasConfirmPermission;
         }
+
+        var totalAmount = invoice != null ? invoice.TotalAmount : (returnOrder != null ? ((returnOrder.DeltaAmount ?? 0m) > 0 ? returnOrder.DeltaAmount.Value : returnOrder.ExchangeItems.Sum(ei => ei.Quantity * ei.UnitPrice)) : stockTicket.TotalAmount);
 
         return new OutwardInventoryResponseDto
         {
@@ -1340,16 +1354,50 @@ th {{ background: #f0f0f0; }}
             CancelledBy = stockTicket.CancelledBy,
             CancelReason = stockTicket.CancelReason,
             CanConfirm = canConfirm,
-            TotalAmount = invoice != null ? invoice.TotalAmount : stockTicket.TotalAmount,
+            TotalAmount = totalAmount,
             Items = stockTicket.StockTicketItems?.Select(item =>
             {
                 var invItem = invoice?.InvoiceItems?.FirstOrDefault(ii => ii.BranchProductId == item.BranchProductId);
+                var exItem = returnOrder?.ExchangeItems?.FirstOrDefault(ei => ei.BranchProductId == item.BranchProductId);
+
                 var baseUnit = item.BranchProduct?.Product?.BaseUnit ?? item.UnitName ?? "";
-                var selectedUnit = invItem?.SelectedUnit ?? item.UnitName ?? baseUnit;
-                var convertValue = invItem?.ConvertValue ?? 1m;
-                var saleQty = invItem?.Quantity ?? (convertValue > 0 ? item.Discrepancy / convertValue : item.Discrepancy);
-                var sellPrice = invItem?.SellPrice ?? (item.UnitPrice.HasValue ? item.UnitPrice.Value * convertValue : 0m);
-                var totalPrice = invItem != null ? (invItem.Quantity * invItem.SellPrice) : (item.Discrepancy * (item.UnitPrice ?? 0));
+                string selectedUnit = baseUnit;
+                decimal convertValue = 1m;
+                decimal saleQty = item.Discrepancy;
+                decimal sellPrice = (item.UnitPrice ?? 0) > 0 ? item.UnitPrice.Value : (item.BranchProduct?.CostPrice ?? 0);
+                decimal totalPrice = item.Discrepancy * sellPrice;
+
+                if (invItem != null)
+                {
+                    selectedUnit = invItem.SelectedUnit ?? item.UnitName ?? baseUnit;
+                    convertValue = invItem.ConvertValue ?? 1m;
+                    saleQty = invItem.Quantity;
+                    sellPrice = invItem.SellPrice;
+                    totalPrice = invItem.Quantity * invItem.SellPrice;
+                }
+                else if (exItem != null)
+                {
+                    convertValue = exItem.ConversionRate > 0 ? exItem.ConversionRate : 1m;
+                    var pcu = item.BranchProduct?.Product?.ProductConversionUnits?.FirstOrDefault(u => u.ConvertValue == convertValue);
+                    selectedUnit = pcu?.UnitName ?? (convertValue > 1 ? "đơn vị quy đổi" : baseUnit);
+                    saleQty = exItem.Quantity;
+                    sellPrice = exItem.UnitPrice;
+                    totalPrice = exItem.Quantity * exItem.UnitPrice;
+                }
+                else if (item.BranchProduct?.Product?.ProductConversionUnits != null && item.BranchProduct.Product.ProductConversionUnits.Any())
+                {
+                    var matchedPcu = item.BranchProduct.Product.ProductConversionUnits
+                        .FirstOrDefault(u => (u.Price > 0 && Math.Abs(u.Price - (item.UnitPrice ?? 0)) < 0.01m)
+                            || (u.ConvertValue > 1 && item.Discrepancy % u.ConvertValue == 0 && u.Price > 0));
+                    if (matchedPcu != null)
+                    {
+                        selectedUnit = matchedPcu.UnitName;
+                        convertValue = matchedPcu.ConvertValue;
+                        saleQty = item.Discrepancy / convertValue;
+                        sellPrice = matchedPcu.Price;
+                        totalPrice = saleQty * sellPrice;
+                    }
+                }
 
                 return new OutwardInventoryItemResponseDto
                 {
@@ -1361,7 +1409,7 @@ th {{ background: #f0f0f0; }}
                     SystemQuantity = item.SystemQuantity,
                     Quantity = item.Discrepancy,
                     ActualQuantity = item.ActualQuantity,
-                    UnitPrice = invItem != null ? invItem.SellPrice : ((item.UnitPrice ?? 0) > 0 ? item.UnitPrice : (item.BranchProduct?.CostPrice ?? 0)),
+                    UnitPrice = sellPrice,
                     UnitName = selectedUnit,
                     SelectedUnit = selectedUnit,
                     BaseUnit = baseUnit,
