@@ -41,6 +41,9 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
         /// <summary>Tên sản phẩm (đối chiếu)</summary>
         public string? TenSanPham { get; set; }
 
+        /// <summary>Đơn vị tính</summary>
+        public string? DonViTinh { get; set; }
+
         /// <summary>Số lượng nhập</summary>
         public decimal SoLuong { get; set; }
 

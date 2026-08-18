@@ -49,7 +49,7 @@ namespace MEP_Management_System.Controllers.InventoryController
                 using var workbook = new XLWorkbook();
                 var worksheet = workbook.Worksheets.Add("NhapKho");
 
-                string[] headers = { "MaSanPham", "TenSanPham", "SoLuong", "DonGiaNhap", "GhiChu" };
+                string[] headers = { "MaSanPham", "TenSanPham", "DonViTinh", "SoLuong", "DonGiaNhap", "GhiChu" };
                 for (int i = 0; i < headers.Length; i++)
                 {
                     worksheet.Cell(1, i + 1).Value = headers[i];
