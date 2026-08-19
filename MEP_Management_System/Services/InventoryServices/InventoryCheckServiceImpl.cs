@@ -207,7 +207,8 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
                 Status = "Draft",
                 Notes = dto.Note ?? dto.Reason,
                 Reason = dto.Reason,
-                CreatedAt = currentTime
+                CreatedAt = currentTime,
+                AssigneeUserId = dto.AssigneeUserId // Save AssigneeUserId
             };
 
             _context.StockTickets.Add(stockTicket);
@@ -343,6 +344,7 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
 
         if (dto.Note != null) stockTicket.Notes = dto.Note;
         if (dto.Reason != null) stockTicket.Reason = dto.Reason;
+        if (dto.AssigneeUserId.HasValue) stockTicket.AssigneeUserId = dto.AssigneeUserId;
 
         await _context.SaveChangesAsync();
 
@@ -809,6 +811,47 @@ th {{ background: #f0f0f0; }}
         };
     }
 
+    public async Task<ApiResponse<object>> GetAssigneesAsync(ClaimsPrincipal user, Guid? branchId)
+    {
+        if (!branchId.HasValue)
+            return new ApiResponse<object> { Success = false, Message = "Missing branch ID" };
+
+        var users = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.IsActive == 1 && u.DeletedAt == null && u.Status != "DELETED" && u.Status != "PERMANENT_DELETED" && u.Status != "SUSPENDED" && u.Status != "BANNED")
+            .Where(u => !u.FullName.EndsWith("(Đã xóa)")
+                     && !u.Email.StartsWith("deleted_")
+                     && !u.Email.StartsWith("del_")
+                     && !u.Email.EndsWith("@mep.deleted")
+                     && !u.Roles.Any(r => r.RoleName == "Admin"))
+            .Where(u => 
+                u.StaffAssignments.Any(sa => sa.BranchId == branchId.Value) || 
+                u.DefaultBranchId == branchId.Value ||
+                _context.Branches.Any(b => b.BranchId == branchId.Value && b.ManagerUserId == u.UserId)
+            )
+            .Where(u =>
+                u.Roles.Any(r => r.RoleName == "Owner") ||
+                u.UserPermissions.Any(up => up.Permission.PermissionCode == "STOCK_CHECK_COUNT" && up.IsGranted == true) ||
+                (u.Roles.Any(r => r.Permissions.Any(p => p.PermissionCode == "STOCK_CHECK_COUNT"))
+                 && !u.UserPermissions.Any(up => up.Permission.PermissionCode == "STOCK_CHECK_COUNT" && up.IsGranted == false))
+            )
+            .Select(u => new
+            {
+                UserId = u.UserId,
+                FullName = u.FullName,
+                Email = u.Email,
+                Username = u.Username
+            })
+            .ToListAsync();
+
+        return new ApiResponse<object>
+        {
+            Success = true,
+            Message = "Assignees retrieved successfully",
+            Data = users
+        };
+    }
+
     public async Task<ApiResponse<object>> GetNotificationsAsync(ClaimsPrincipal user, Guid? branchId)
     {
         var currentUserId = GetCurrentUserId(user);
@@ -904,6 +947,8 @@ th {{ background: #f0f0f0; }}
             CreatedByUserId = stockTicket.UserId,
             CreatedByUserName = stockTicket.User?.FullName ?? stockTicket.User?.Username,
             Notes = stockTicket.Notes,
+            AssigneeUserId = stockTicket.AssigneeUserId,
+            AssigneeUserName = stockTicket.AssigneeUser?.FullName ?? stockTicket.AssigneeUser?.Username,
             CreatedAt = stockTicket.CreatedAt ?? DateTime.UtcNow,
             CancelledAt = stockTicket.CancelledAt,
             CancelledByUserId = stockTicket.CancelledBy,

@@ -113,6 +113,14 @@ namespace MEP_Management_System.Controllers.InventoryController
             return Content(html, "text/html");
         }
 
+        [HttpGet("assignees")]
+        [HasPermission(PermissionConstants.STOCK_CHECK_CREATE)]
+        public async Task<IActionResult> GetAssignees()
+        {
+            var result = await _inventoryCheckService.GetAssigneesAsync(User, GetCurrentBranchId());
+            return Ok(result);
+        }
+
         [HttpGet("counters")]
         [HasPermission(PermissionConstants.STOCK_CHECK_CREATE)]
         public async Task<IActionResult> GetCounters()

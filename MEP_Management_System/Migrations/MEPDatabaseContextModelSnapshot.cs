@@ -2086,7 +2086,7 @@ namespace MEP_Management_System.Migrations
 
                     b.HasIndex("UpdatedBy");
 
-                    b.HasIndex(new[] { "ProductCode" }, "products_product_code_key")
+                    b.HasIndex(new[] { "ProductCode", "BranchId" }, "products_product_code_branch_id_key")
                         .IsUnique();
 
                     b.ToTable("products", (string)null);
@@ -3001,6 +3001,10 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("stock_ticket_id")
                         .HasDefaultValueSql("uuid_generate_v4()");
 
+                    b.Property<Guid?>("AssigneeUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assignee_user_id");
+
                     b.Property<Guid>("BranchId")
                         .HasColumnType("uuid")
                         .HasColumnName("branch_id");
@@ -3092,6 +3096,8 @@ namespace MEP_Management_System.Migrations
 
                     b.HasKey("StockTicketId")
                         .HasName("stock_tickets_pkey");
+
+                    b.HasIndex("AssigneeUserId");
 
                     b.HasIndex("BranchId");
 
@@ -4760,6 +4766,11 @@ namespace MEP_Management_System.Migrations
 
             modelBuilder.Entity("MEP_Management_System.Models.StockTicket", b =>
                 {
+                    b.HasOne("MEP_Management_System.Models.User", "AssigneeUser")
+                        .WithMany()
+                        .HasForeignKey("AssigneeUserId")
+                        .HasConstraintName("stock_tickets_assignee_user_id_fkey");
+
                     b.HasOne("MEP_Management_System.Models.Branch", "Branch")
                         .WithMany("StockTickets")
                         .HasForeignKey("BranchId")
@@ -4801,6 +4812,8 @@ namespace MEP_Management_System.Migrations
                         .HasForeignKey("UserId")
                         .IsRequired()
                         .HasConstraintName("stock_tickets_user_id_fkey");
+
+                    b.Navigation("AssigneeUser");
 
                     b.Navigation("Branch");
 
