@@ -275,7 +275,7 @@ public class ExpenseServiceImpl : IExpenseService
     public async Task<List<ExpenseCategoryDto>> GetCategoriesAsync(Guid branchId)
     {
         var categories = await _context.ExpenseCategories
-            .Where(c => c.BranchId == branchId)
+            .Where(c => c.BranchId == branchId && c.IsActive == 1)
             .Include(c => c.ExpenseVouchers)
             .OrderBy(c => c.CategoryName)
             .ToListAsync();
@@ -296,9 +296,29 @@ public class ExpenseServiceImpl : IExpenseService
             throw new BusinessException("Tên nhóm chi phí là bắt buộc.");
 
         var existing = await _context.ExpenseCategories
+            .Include(c => c.ExpenseVouchers)
             .FirstOrDefaultAsync(c => c.CategoryName.ToLower() == dto.CategoryName.Trim().ToLower() && c.BranchId == branchId);
         if (existing != null)
+        {
+            if (existing.IsActive == 0)
+            {
+                existing.IsActive = 1;
+                await _context.SaveChangesAsync();
+                
+                await WriteSystemLog("RESTORE_EXPENSE_CATEGORY", "ExpenseCategory", existing.CategoryId,
+                    $"Khôi phục nhóm chi phí đã xóa: {existing.CategoryName}");
+
+                return new ExpenseCategoryDto
+                {
+                    CategoryId = existing.CategoryId,
+                    CategoryName = existing.CategoryName,
+                    IsActive = existing.IsActive,
+                    VoucherCount = existing.ExpenseVouchers?.Count ?? 0,
+                    PendingCount = existing.ExpenseVouchers?.Count(ev => ev.Status == "PENDING") ?? 0
+                };
+            }
             throw new BusinessException("Tên nhóm chi phí đã tồn tại.");
+        }
 
         var category = new ExpenseCategory
         {
@@ -379,11 +399,15 @@ public class ExpenseServiceImpl : IExpenseService
         var categoryName = category.CategoryName;
         var totalVouchers = category.ExpenseVouchers.Count;
 
-        _context.ExpenseCategories.Remove(category);
-        await _context.SaveChangesAsync();
+        try {
+            category.IsActive = 0;
+            await _context.SaveChangesAsync();
+        } catch (Exception ex) {
+            throw new BusinessException($"Không thể xóa do lỗi cơ sở dữ liệu: {ex.InnerException?.Message ?? ex.Message}");
+        }
 
         await WriteSystemLog("DELETE_EXPENSE_CATEGORY", "ExpenseCategory", id,
-            $"Xóa cứng nhóm chi phí: {categoryName} (đã giải phóng tham chiếu của {totalVouchers} phiếu)");
+            $"Ẩn nhóm chi phí: {categoryName} (đang có {totalVouchers} phiếu)");
 
         return true;
     }
