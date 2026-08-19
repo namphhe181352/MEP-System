@@ -74,6 +74,7 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
         var list = _context.StockTickets
             .AsNoTracking()
             .Include(st => st.User)
+            .Include(st => st.AssigneeUser)
             .Include(st => st.RecountRequestedByUser)
             .Include(st => st.StockTicketItems)
             .Where(st => st.TicketType == "INVENTORY_CHECK");
@@ -138,6 +139,7 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
         var stockTicketQuery = _context.StockTickets
             .AsNoTracking()
             .Include(st => st.User)
+            .Include(st => st.AssigneeUser)
             .Include(st => st.RecountRequestedByUser)
             .Include(st => st.StockTicketItems).ThenInclude(item => item.BranchProduct).ThenInclude(bp => bp.Product)
             .Where(st => st.StockTicketId == id && st.TicketType == "INVENTORY_CHECK");
