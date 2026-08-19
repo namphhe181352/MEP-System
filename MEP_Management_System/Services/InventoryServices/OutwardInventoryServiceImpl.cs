@@ -34,7 +34,7 @@ public class OutwardInventoryServiceImpl : IOutwardInventoryService
     private static DateTime UtcNow() => DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
     public async Task<ApiResponse<PaginatedResponse<OutwardInventoryResponseDto>>> GetOutwardInventoriesAsync(
-        ClaimsPrincipal user, Guid? branchId, string? status, string? ticketType,
+        ClaimsPrincipal user, Guid? branchId, string? searchKeyword, string? status, string? ticketType,
         DateTime? fromDate, DateTime? toDate, int pageNumber, int pageSize)
     {
         var list = _context.StockTickets
@@ -136,11 +136,25 @@ public class OutwardInventoryServiceImpl : IOutwardInventoryService
             }
         }
 
+        decimal? discountAmount = null;
+        if (stockTicket.TicketType == "SALE")
+        {
+            var invoice = await _context.Invoices
+                .AsNoTracking()
+                .Where(i => i.InvoiceCode == stockTicket.TicketCode)
+                .Select(i => new { i.DiscountAmount })
+                .FirstOrDefaultAsync();
+            if (invoice != null && invoice.DiscountAmount > 0)
+            {
+                discountAmount = invoice.DiscountAmount;
+            }
+        }
+
         return new ApiResponse<OutwardInventoryResponseDto>
         {
             Success = true,
             Message = "Outward inventory retrieved successfully",
-            Data = MapToOutwardInventoryResponse(stockTicket, isExchange, exchangeDelta)
+            Data = MapToOutwardInventoryResponse(stockTicket, isExchange, exchangeDelta, discountAmount)
         };
     }
 
@@ -550,7 +564,7 @@ th {{ background: #f0f0f0; }}
         };
     }
 
-    private OutwardInventoryResponseDto MapToOutwardInventoryResponse(StockTicket stockTicket, bool isExchange = false, decimal? exchangeDelta = null)
+    private OutwardInventoryResponseDto MapToOutwardInventoryResponse(StockTicket stockTicket, bool isExchange = false, decimal? exchangeDelta = null, decimal? discountAmount = null)
     {
         return new OutwardInventoryResponseDto
         {
@@ -572,6 +586,7 @@ th {{ background: #f0f0f0; }}
             CancelledBy = stockTicket.CancelledBy,
             CancelReason = stockTicket.CancelReason,
             TotalAmount = stockTicket.TotalAmount,
+            DiscountAmount = discountAmount,
             IsExchangeTicket = isExchange,
             ExchangeDeltaAmount = exchangeDelta,
             Items = stockTicket.StockTicketItems?.Select(item =>

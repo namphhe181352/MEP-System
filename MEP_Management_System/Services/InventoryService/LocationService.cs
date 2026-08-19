@@ -39,7 +39,20 @@ public class LocationService : ILocationService
             .FirstOrDefaultAsync(l => l.LocationName.ToLower() == dto.LocationName.Trim().ToLower() && l.BranchId == branchId);
 
         if (existing != null)
-            throw new BusinessException("Tên vị trí đã tồn tại trong chi nhánh này.");
+        {
+            if (existing.IsActive == 1)
+                throw new BusinessException("Tên vị trí đã tồn tại trong chi nhánh này.");
+            else
+            {
+                existing.IsActive = dto.IsActive;
+                existing.LocationCode = dto.LocationCode?.Trim() ?? existing.LocationCode;
+                existing.Description = dto.Description?.Trim() ?? existing.Description;
+                existing.UpdatedAt = DateTime.UtcNow;
+                existing.UpdatedBy = userId;
+                await _context.SaveChangesAsync();
+                return existing;
+            }
+        }
 
         var location = new ProductLocation
         {
@@ -68,7 +81,7 @@ public class LocationService : ILocationService
         if (!string.IsNullOrWhiteSpace(dto.LocationName))
         {
             var existing = await _context.ProductLocations
-                .FirstOrDefaultAsync(l => l.LocationName.ToLower() == dto.LocationName.Trim().ToLower() && l.LocationId != id && l.BranchId == branchId);
+                .FirstOrDefaultAsync(l => l.LocationName.ToLower() == dto.LocationName.Trim().ToLower() && l.LocationId != id && l.BranchId == branchId && l.IsActive == 1);
 
             if (existing != null)
                 throw new BusinessException("Tên vị trí đã tồn tại trong chi nhánh này.");

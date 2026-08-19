@@ -748,7 +748,7 @@ public class ProductServiceImpl : IProductService
         var currentTime = UtcNow();
         Guid? currentUserId = GetCurrentUserId(user);
 
-        var existingCodes = await _context.Products.Select(p => p.ProductCode.ToLower()).ToListAsync();
+        var existingCodes = await _context.Products.Where(p => p.BranchId == branchId).Select(p => p.ProductCode.ToLower()).ToListAsync();
         var existingCodeSet = new HashSet<string>(existingCodes, StringComparer.OrdinalIgnoreCase);
         var importedCodesInBatch = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -895,10 +895,16 @@ public class ProductServiceImpl : IProductService
         if (newTaxonomies.Any()) { _context.ProductTaxonomies.AddRange(newTaxonomies); await _context.SaveChangesAsync(); }
         if (productsToInsert.Any()) { _context.Products.AddRange(productsToInsert); _context.BranchProducts.AddRange(branchProductsToInsert); await _context.SaveChangesAsync(); }
 
+        var msg = $"Nhap thanh cong {successCount} san pham" + (errors.Any() ? $", bo qua {errors.Count} san pham loi." : ".");
+        if (errors.Any())
+        {
+            msg += $" Lỗi (mẫu): {errors.First()}";
+        }
+
         return new ApiResponse<object>
         {
             Success = true,
-            Message = $"Nhap thanh cong {successCount} san pham" + (errors.Any() ? $", bo qua {errors.Count} san pham loi." : "."),
+            Message = msg,
             Data = new { successCount, errors }
         };
     }

@@ -45,7 +45,7 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
         => permissions.Any(p => user.HasClaim("permission", p));
 
     private bool CanViewInward(ClaimsPrincipal user)
-        => IsOwner(user) || HasAnyPermission(user, PermissionConstants.STOCK_INWARD_CREATE, PermissionConstants.STOCK_INWARD_UPDATE);
+        => IsOwner(user) || HasAnyPermission(user, PermissionConstants.STOCK_INWARD_CREATE, PermissionConstants.STOCK_INWARD_UPDATE, PermissionConstants.STOCK_OUTWARD_CREATE);
 
     private static DateTime UtcNow() => DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
@@ -473,6 +473,12 @@ public class InwardInventoryServiceImpl : IInwardInventoryService
 
             if (dto.IsConfirm)
             {
+                bool canConfirm = IsOwner(user) || user.HasClaim("permission", PermissionConstants.STOCK_INWARD_UPDATE);
+                if (!canConfirm)
+                {
+                    throw new UnauthorizedAccessException("Bạn không có quyền hoàn tất phiếu (Cần quyền Cập nhật / Duyệt phiếu). Vui lòng chọn Lưu nháp.");
+                }
+
                 var confirmResult = await ConfirmInwardInventoryAsync(user, stockTicket.StockTicketId, resolvedBranchId);
                 if (!confirmResult.Success)
                     throw new BusinessException("Lỗi khi cộng kho tự động: " + confirmResult.Message);

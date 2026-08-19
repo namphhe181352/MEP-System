@@ -78,11 +78,13 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             .Include(st => st.StockTicketItems)
             .Where(st => st.TicketType == "INVENTORY_CHECK");
 
-        if (!IsOwner(user))
+        if (branchId.HasValue)
         {
-            if (!branchId.HasValue)
-                throw new UnauthorizedAccessException("JWT token is missing or invalid");
             list = list.Where(st => st.BranchId == branchId.Value);
+        }
+        else if (!IsOwner(user))
+        {
+            throw new UnauthorizedAccessException("JWT token is missing or invalid");
         }
 
         if (!string.IsNullOrWhiteSpace(status))
@@ -140,11 +142,13 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             .Include(st => st.StockTicketItems).ThenInclude(item => item.BranchProduct).ThenInclude(bp => bp.Product)
             .Where(st => st.StockTicketId == id && st.TicketType == "INVENTORY_CHECK");
 
-        if (!IsOwner(user))
+        if (branchId.HasValue)
         {
-            if (branchId == null)
-                throw new UnauthorizedAccessException("JWT token is missing or invalid");
             stockTicketQuery = stockTicketQuery.Where(st => st.BranchId == branchId.Value);
+        }
+        else if (!IsOwner(user))
+        {
+            throw new UnauthorizedAccessException("JWT token is missing or invalid");
         }
 
         var stockTicket = await stockTicketQuery.FirstOrDefaultAsync();
@@ -317,11 +321,13 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             .Include(st => st.StockTicketItems)
             .Where(st => st.StockTicketId == id && st.TicketType == "INVENTORY_CHECK");
 
-        if (!IsOwner(user))
+        if (branchId.HasValue)
         {
-            if (branchId == null)
-                throw new UnauthorizedAccessException("JWT token is missing or invalid");
             stockTicketQuery = stockTicketQuery.Where(st => st.BranchId == branchId.Value);
+        }
+        else if (!IsOwner(user))
+        {
+            throw new UnauthorizedAccessException("JWT token is missing or invalid");
         }
 
         var stockTicket = await stockTicketQuery.FirstOrDefaultAsync();
@@ -360,11 +366,13 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             .Include(st => st.StockTicketItems)
             .Where(st => st.StockTicketId == id && st.TicketType == "INVENTORY_CHECK");
 
-        if (!IsOwner(user))
+        if (branchId.HasValue)
         {
-            if (branchId == null)
-                throw new UnauthorizedAccessException("JWT token is missing or invalid");
             stockTicketQuery = stockTicketQuery.Where(st => st.BranchId == branchId.Value);
+        }
+        else if (!IsOwner(user))
+        {
+            throw new UnauthorizedAccessException("JWT token is missing or invalid");
         }
 
         var stockTicket = await stockTicketQuery.FirstOrDefaultAsync();
@@ -420,11 +428,13 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
                 .Include(st => st.StockTicketItems).ThenInclude(item => item.BranchProduct)
                 .Where(st => st.StockTicketId == id && st.TicketType == "INVENTORY_CHECK");
 
-            if (!IsOwner(user))
+            if (branchId.HasValue)
             {
-                if (branchId == null)
-                    throw new UnauthorizedAccessException("JWT token is missing or invalid");
                 stockTicketQuery = stockTicketQuery.Where(st => st.BranchId == branchId.Value);
+            }
+            else if (!IsOwner(user))
+            {
+                throw new UnauthorizedAccessException("JWT token is missing or invalid");
             }
 
             var stockTicket = await stockTicketQuery.FirstOrDefaultAsync();
@@ -519,11 +529,13 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             var stockTicketQuery = _context.StockTickets
                 .Where(st => st.StockTicketId == id && st.TicketType == "INVENTORY_CHECK");
 
-            if (!IsOwner(user))
+            if (branchId.HasValue)
             {
-                if (branchId == null)
-                    throw new UnauthorizedAccessException("JWT token is missing or invalid");
                 stockTicketQuery = stockTicketQuery.Where(st => st.BranchId == branchId.Value);
+            }
+            else if (!IsOwner(user))
+            {
+                throw new UnauthorizedAccessException("JWT token is missing or invalid");
             }
 
             var stockTicket = await stockTicketQuery.FirstOrDefaultAsync();
@@ -616,11 +628,13 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             var stockTicketQuery = _context.StockTickets
                 .Where(st => st.StockTicketId == id && st.TicketType == "INVENTORY_CHECK");
 
-            if (!IsOwner(user))
+            if (branchId.HasValue)
             {
-                if (branchId == null)
-                    throw new UnauthorizedAccessException("JWT token is missing or invalid");
                 stockTicketQuery = stockTicketQuery.Where(st => st.BranchId == branchId.Value);
+            }
+            else if (!IsOwner(user))
+            {
+                throw new UnauthorizedAccessException("JWT token is missing or invalid");
             }
 
             var stockTicket = await stockTicketQuery.FirstOrDefaultAsync();
@@ -667,11 +681,13 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             .Include(st => st.StockTicketItems)
             .Where(st => st.StockTicketId == id && st.TicketType == "INVENTORY_CHECK");
 
-        if (!IsOwner(user))
+        if (branchId.HasValue)
         {
-            if (branchId == null)
-                throw new UnauthorizedAccessException("JWT token is missing or invalid");
             stockTicketQuery = stockTicketQuery.Where(st => st.BranchId == branchId.Value);
+        }
+        else if (!IsOwner(user))
+        {
+            throw new UnauthorizedAccessException("JWT token is missing or invalid");
         }
 
         var stockTicket = await stockTicketQuery.FirstOrDefaultAsync();

@@ -837,7 +837,7 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
 
             entity.ToTable("products");
 
-            entity.HasIndex(e => e.ProductCode, "products_product_code_key").IsUnique();
+            entity.HasIndex(e => new { e.ProductCode, e.BranchId }, "products_product_code_branch_id_key").IsUnique();
 
             entity.Property(e => e.ProductId)
                 .HasDefaultValueSql("uuid_generate_v4()")
@@ -2227,9 +2227,9 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
             entity.Property(e => e.UpdatedBy)
                 .HasColumnName("updated_by");
 
-            entity.HasIndex(e => e.TypeName)
+            entity.HasIndex(e => new { e.TypeName, e.BranchId })
                 .IsUnique()
-                .HasDatabaseName("ix_product_attribute_types_type_name");
+                .HasDatabaseName("ix_product_attribute_types_type_name_branch_id");
         });
 
         // PRODUCT LOCATION - Vị trí lưu trữ sản phẩm

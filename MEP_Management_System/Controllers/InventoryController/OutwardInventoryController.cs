@@ -33,6 +33,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         // ============================================================
         [HttpGet]
         public async Task<IActionResult> GetOutwardInventories(
+            [FromQuery] string? searchKeyword,
             [FromQuery] string? status,
             [FromQuery] string? ticketType,
             [FromQuery] DateTime? fromDate,
@@ -42,7 +43,7 @@ namespace MEP_Management_System.Controllers.InventoryController
             [FromQuery] Guid? branchId = null)
         {
             var result = await _outwardInventoryService.GetOutwardInventoriesAsync(
-                User, GetCurrentBranchId(), status, ticketType, fromDate, toDate, pageNumber, pageSize);
+                User, GetCurrentBranchId(), searchKeyword, status, ticketType, fromDate, toDate, pageNumber, pageSize);
             return Ok(result);
         }
 

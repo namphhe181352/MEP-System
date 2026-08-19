@@ -398,6 +398,8 @@ namespace MEP_Management_System.DTOs.InventoryDTOs
 
         public decimal TotalAmount { get; set; }
 
+        public decimal? DiscountAmount { get; set; }
+
         /// <summary>True khi đây là phiếu xuất đổi hàng (Notes chứa "Doi hang").</summary>
         public bool IsExchangeTicket { get; set; }
 
