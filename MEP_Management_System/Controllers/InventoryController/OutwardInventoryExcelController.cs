@@ -39,7 +39,7 @@ public class OutwardInventoryExcelController : ControllerBase
     /// Tai file template mau cho Excel xuat kho.
     /// </summary>
     [HttpGet("template")]
-    [HasPermission(PermissionConstants.STOCK_VIEW)]
+    [HasPermission(PermissionConstants.STOCK_OUTWARD_CREATE)]
     public async Task<IActionResult> DownloadTemplate()
     {
         using var workbook = new XLWorkbook();
