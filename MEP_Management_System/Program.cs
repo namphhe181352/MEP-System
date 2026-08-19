@@ -661,6 +661,17 @@ using (var scope = app.Services.CreateScope())
     {
         Console.WriteLine($"[Startup] Alter products unique constraint thất bại: {ex.Message}");
     }
+
+    try 
+    {
+        await context.Database.ExecuteSqlRawAsync("ALTER TABLE expense_vouchers ALTER COLUMN category_id DROP NOT NULL;");
+        await context.Database.ExecuteSqlRawAsync("DELETE FROM expense_vouchers WHERE category_id IS NULL;");
+        Console.WriteLine("[Startup] Fixed expense_vouchers category_id nullable constraint OK, deleted null vouchers");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Startup] Fix expense_vouchers category_id nullable constraint failed: {ex.Message}");
+    }
 }
 
 app.Run();
