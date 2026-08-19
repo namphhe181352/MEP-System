@@ -1660,6 +1660,15 @@ public class ReportService : IReportService
         var resultEntries = entries.Select(e =>
         {
             running += e.Qty;
+
+            // Xác định xem giao dịch có phải là giao dịch hủy (đảo ngược) không.
+            // Các phiếu XUẤT (SALE, WRITE_OFF, TRANSFER, EXCHANGE_OUT, RETURN_SUPPLIER) bình thường làm giảm tồn (Qty < 0). Nếu Qty > 0 -> Hủy xuất.
+            // Các phiếu NHẬP (PURCHASE, CUSTOMER_RETURN, CUSTOMER_RETURN_DEFECTIVE, EXCHANGE_IN) bình thường làm tăng tồn (Qty > 0). Nếu Qty < 0 -> Hủy nhập.
+            bool isOutType = e.Type == "SALE" || e.Type == "WRITE_OFF" || e.Type == "TRANSFER" || e.Type == "EXCHANGE_OUT" || e.Type == "RETURN_SUPPLIER" || e.Type == "SUPPLIER_RETURN" || e.Type == "STOCK_EXPORT";
+            bool isInType = e.Type == "PURCHASE" || e.Type == "CUSTOMER_RETURN" || e.Type == "CUSTOMER_RETURN_DEFECTIVE" || e.Type == "EXCHANGE_IN" || e.Type == "STOCK_IMPORT";
+            
+            bool isCancel = (isOutType && e.Qty > 0) || (isInType && e.Qty < 0);
+
             return new
             {
                 TransactionTime = e.Time,
@@ -1668,7 +1677,8 @@ public class ReportService : IReportService
                 UnitCostPrice = e.Price,
                 QtyIn = e.Qty > 0 ? e.Qty : 0m,
                 QtyOut = e.Qty < 0 ? -e.Qty : 0m,
-                StockAfter = running
+                StockAfter = running,
+                IsCancellation = isCancel
             };
         }).ToList();
 
