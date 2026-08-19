@@ -1387,6 +1387,12 @@ public virtual DbSet<SupplierPayment> SupplierPayments { get; set; }
             entity.Property(e => e.RecountReason)
                 .HasMaxLength(1000)
                 .HasColumnName("recount_reason");
+            entity.Property(e => e.AssigneeUserId)
+                .HasColumnName("assignee_user_id");
+
+            entity.HasOne(d => d.AssigneeUser).WithMany()
+                .HasForeignKey(d => d.AssigneeUserId)
+                .HasConstraintName("stock_tickets_assignee_user_id_fkey");
 
             entity.HasIndex(e => e.TicketCode, "stock_tickets_ticket_code_key").IsUnique();
 

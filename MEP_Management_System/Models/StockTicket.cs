@@ -46,6 +46,8 @@ public partial class StockTicket
     public virtual User? ConfirmedByUser { get; set; }
     public virtual User? CancelledByUser { get; set; }
     public virtual User? RecountRequestedByUser { get; set; }
+    public Guid? AssigneeUserId { get; set; }
+    public virtual User? AssigneeUser { get; set; }
 
     public DateTime? CreatedAt { get; set; }
 

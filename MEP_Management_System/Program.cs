@@ -532,6 +532,7 @@ using (var scope = app.Services.CreateScope())
             ALTER TABLE stock_tickets ADD COLUMN IF NOT EXISTS recount_requested_at TIMESTAMP WITHOUT TIME ZONE;
             ALTER TABLE stock_tickets ADD COLUMN IF NOT EXISTS recount_requested_by_user_id UUID;
             ALTER TABLE stock_tickets ADD COLUMN IF NOT EXISTS recount_reason VARCHAR(1000);
+            ALTER TABLE stock_tickets ADD COLUMN IF NOT EXISTS assignee_user_id UUID;
         ");
         Console.WriteLine("[Startup] stock_tickets recount columns -> ensured OK");
     }

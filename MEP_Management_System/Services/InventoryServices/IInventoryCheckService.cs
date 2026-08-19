@@ -34,6 +34,8 @@ public interface IInventoryCheckService
 
     Task<ApiResponse<object>> GetCountersAsync(ClaimsPrincipal user, Guid? branchId);
 
+    Task<ApiResponse<object>> GetAssigneesAsync(ClaimsPrincipal user, Guid? branchId);
+
     Task<ApiResponse<object>> GetNotificationsAsync(ClaimsPrincipal user, Guid? branchId);
 
     Task<ApiResponse<object>> MarkNotificationsAsReadAsync(ClaimsPrincipal user, List<Guid>? notificationIds, Guid? branchId);

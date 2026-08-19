@@ -994,13 +994,10 @@ public class ProductServiceImpl : IProductService
             throw new BusinessException("Ten nhom hang la bat buoc.");
 
         var trimmedName = dto.Name.Trim();
-        var exists = await _context.BranchProducts
-            .Include(bp => bp.Product)
-            .AnyAsync(bp => bp.BranchId == branchId && bp.Product.CategoryName != null && bp.Product.CategoryName.ToLower() == trimmedName.ToLower());
         var existsInTaxonomies = await _context.ProductTaxonomies
             .AnyAsync(t => t.BranchId == branchId && t.Type == "Category" && t.Name.ToLower() == trimmedName.ToLower());
 
-        if (exists || existsInTaxonomies)
+        if (existsInTaxonomies)
             throw new BusinessException($"Nhom hang '{trimmedName}' da ton tai trong chi nhanh nay.");
 
         var tax = new ProductTaxonomy
@@ -1026,13 +1023,10 @@ public class ProductServiceImpl : IProductService
             throw new BusinessException("Ten thuong hieu la bat buoc.");
 
         var trimmedName = dto.Name.Trim();
-        var exists = await _context.BranchProducts
-            .Include(bp => bp.Product)
-            .AnyAsync(bp => bp.BranchId == branchId && bp.Product.BrandName != null && bp.Product.BrandName.ToLower() == trimmedName.ToLower());
         var existsInTaxonomies = await _context.ProductTaxonomies
             .AnyAsync(t => t.BranchId == branchId && t.Type == "Brand" && t.Name.ToLower() == trimmedName.ToLower());
 
-        if (exists || existsInTaxonomies)
+        if (existsInTaxonomies)
             throw new BusinessException($"Thuong hieu '{trimmedName}' da ton tai trong chi nhanh nay.");
 
         var tax = new ProductTaxonomy
