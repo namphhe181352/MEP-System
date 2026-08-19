@@ -1355,6 +1355,9 @@ th {{ background: #f0f0f0; }}
                 : stockTicket.TotalAmount);
         decimal? exchangeDeltaAmount = isExchangeTicket ? (returnOrder!.DeltaAmount ?? 0m) : null;
 
+        var availableInvoiceItems = invoice?.InvoiceItems?.ToList() ?? new List<InvoiceItem>();
+        var availableExchangeItems = returnOrder?.ExchangeItems?.ToList() ?? new List<ExchangeItem>();
+
         return new OutwardInventoryResponseDto
         {
             StockTicketId = stockTicket.StockTicketId,
@@ -1381,8 +1384,21 @@ th {{ background: #f0f0f0; }}
             ExchangeDeltaAmount = exchangeDeltaAmount,
             Items = stockTicket.StockTicketItems?.Select(item =>
             {
-                var invItem = invoice?.InvoiceItems?.FirstOrDefault(ii => ii.BranchProductId == item.BranchProductId);
-                var exItem = returnOrder?.ExchangeItems?.FirstOrDefault(ei => ei.BranchProductId == item.BranchProductId);
+                var invItem = availableInvoiceItems.FirstOrDefault(ii => 
+                    ii.BranchProductId == item.BranchProductId && 
+                    ii.Quantity * (ii.ConvertValue ?? 1m) == item.Discrepancy);
+                if (invItem == null)
+                    invItem = availableInvoiceItems.FirstOrDefault(ii => ii.BranchProductId == item.BranchProductId);
+                if (invItem != null)
+                    availableInvoiceItems.Remove(invItem);
+
+                var exItem = availableExchangeItems.FirstOrDefault(ei => 
+                    ei.BranchProductId == item.BranchProductId && 
+                    ei.Quantity * (ei.ConversionRate > 0 ? ei.ConversionRate : 1m) == item.Discrepancy);
+                if (exItem == null)
+                    exItem = availableExchangeItems.FirstOrDefault(ei => ei.BranchProductId == item.BranchProductId);
+                if (exItem != null)
+                    availableExchangeItems.Remove(exItem);
 
                 var baseUnit = item.BranchProduct?.Product?.BaseUnit ?? item.UnitName ?? "";
                 string selectedUnit = baseUnit;
