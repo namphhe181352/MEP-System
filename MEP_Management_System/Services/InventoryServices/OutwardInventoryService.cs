@@ -989,6 +989,7 @@ public class OutwardInventoryService : IOutwardInventoryService
                     .FirstOrDefaultAsync(bp2 => bp2.BranchProductId == item.BranchProductId);
                 if (updatedBp != null)
                 {
+                    await _context.Entry(updatedBp).ReloadAsync();
                     item.SystemQuantity = updatedBp.ActualStock + item.Discrepancy;
                     item.ActualQuantity = updatedBp.ActualStock;
                 }
