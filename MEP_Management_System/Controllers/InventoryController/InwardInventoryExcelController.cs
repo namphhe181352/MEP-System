@@ -41,7 +41,7 @@ namespace MEP_Management_System.Controllers.InventoryController
         private bool IsOwner() => User.IsInRole("Owner");
 
         [HttpGet("template")]
-        [HasPermission(PermissionConstants.STOCK_VIEW)]
+        [HasPermission(PermissionConstants.STOCK_INWARD_CREATE)]
         public async Task<IActionResult> DownloadTemplate()
         {
             try
