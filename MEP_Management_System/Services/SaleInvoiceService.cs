@@ -87,7 +87,10 @@ public class SaleInvoiceService : ISaleInvoiceService
         // Count query
         var countQuery = _context.Invoices.Include(i => i.Order).Where(i => i.Order.BranchId == branchId);
         if (!string.IsNullOrEmpty(status))
-            countQuery = countQuery.Where(i => i.Status == status);
+        {
+            var statuses = status.Split(',').Select(s => s.Trim()).ToList();
+            countQuery = countQuery.Where(i => statuses.Contains(i.Status));
+        }
         if (dateFrom.HasValue)
             countQuery = countQuery.Where(i => i.CreatedAt >= dateFrom.Value);
         if (dateTo.HasValue)
@@ -104,7 +107,10 @@ public class SaleInvoiceService : ISaleInvoiceService
             .Where(i => i.Order.BranchId == branchId);
 
         if (!string.IsNullOrEmpty(status))
-            query = query.Where(i => i.Status == status);
+        {
+            var statuses = status.Split(',').Select(s => s.Trim()).ToList();
+            query = query.Where(i => statuses.Contains(i.Status));
+        }
         if (dateFrom.HasValue)
             query = query.Where(i => i.CreatedAt >= dateFrom.Value);
         if (dateTo.HasValue)
