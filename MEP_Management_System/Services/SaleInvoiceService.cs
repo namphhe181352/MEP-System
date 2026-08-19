@@ -553,6 +553,10 @@ public class SaleInvoiceService : ISaleInvoiceService
                 // Đọc lại tồn kho sau khi trừ
                 var updatedBp = await _context.BranchProducts
                     .FirstOrDefaultAsync(bp2 => bp2.BranchProductId == item.BranchProductId);
+                if (updatedBp != null)
+                {
+                    await _context.Entry(updatedBp).ReloadAsync();
+                }
                 var stockAfter = updatedBp?.ActualStock ?? 0;
 
                 var ledgerEntry = new InventoryLedger
