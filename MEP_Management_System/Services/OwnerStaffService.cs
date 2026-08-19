@@ -103,7 +103,7 @@ public class OwnerStaffService : IOwnerStaffService
             .Include(sa => sa.User)
             .AnyAsync(sa => sa.BranchId == branchId &&
                 sa.User.Username.ToLower() == username.Trim().ToLower() &&
-                sa.User.Status != "DELETED");
+                sa.User.Status != "DELETED" && sa.User.Status != "PERMANENT_DELETED");
     }
 
     private async Task<(List<Permission> Permissions, List<string> MissingCodes)> ValidatePermissionsAsync(
@@ -806,6 +806,10 @@ public class OwnerStaffService : IOwnerStaffService
 
         staff.FullName = $"{originalName} (Đã xóa)";
         staff.Email = $"deleted_{Guid.NewGuid()}@mep.deleted";
+        var shortId = staff.UserId.ToString().Substring(0, 6);
+        var newUsername = $"del_{shortId}_{staff.Username}";
+        if (newUsername.Length > 50) newUsername = newUsername.Substring(0, 50);
+        staff.Username = newUsername;
         staff.PhoneNumber = null;
         staff.PasswordHash = "PERMANENTLY_DELETED";
         staff.Status = "PERMANENT_DELETED";
