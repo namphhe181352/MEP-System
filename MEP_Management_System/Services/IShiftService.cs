@@ -13,7 +13,7 @@ public interface IShiftService
     Task<ShiftDto> StartShiftAsync(CreateShiftRequest request, Guid userId, Guid branchId, string? userName);
     Task<ShiftDto?> EndShiftAsync(Guid shiftId, EndShiftRequest request, Guid userId, Guid branchId, string? userName);
     Task<ShiftSummaryDto?> GetShiftSummaryAsync(Guid shiftId, Guid branchId);
-    Task<DTOs.PageResultDto<ShiftDto>> GetShiftsAsync(DateTime? from, DateTime? to, string? status, Guid? filterUserId, Guid branchId, int page, int pageSize);
+    Task<DTOs.PageResultDto<ShiftDto>> GetShiftsAsync(string? search, DateTime? from, DateTime? to, string? status, Guid? filterUserId, Guid branchId, int page, int pageSize);
 }
 
 public class ShiftService : IShiftService
@@ -420,13 +420,20 @@ public class ShiftService : IShiftService
         };
     }
 
-    public async Task<DTOs.PageResultDto<ShiftDto>> GetShiftsAsync(DateTime? from, DateTime? to, string? status, Guid? filterUserId, Guid branchId, int page, int pageSize)
+    public async Task<DTOs.PageResultDto<ShiftDto>> GetShiftsAsync(string? search, DateTime? from, DateTime? to, string? status, Guid? filterUserId, Guid branchId, int page, int pageSize)
     {
         var query = _context.Shifts
             .Include(s => s.User)
             .Include(s => s.ClosedBy)
             .Where(s => s.BranchId == branchId)
             .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var t = search.Trim().ToLower();
+            query = query.Where(s => s.ShiftCode.ToLower().Contains(t) || 
+                                     (s.User != null && s.User.FullName.ToLower().Contains(t)));
+        }
 
         if (from.HasValue) query = query.Where(s => s.StartedAt >= from.Value);
         if (to.HasValue) query = query.Where(s => s.StartedAt <= to.Value);

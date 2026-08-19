@@ -97,10 +97,10 @@ public class AdminBranchesController : ControllerBase
     /// DELETE /api/admin/branches/{id}
     /// </summary>
     [HttpDelete("{id:guid}")]
-    public async Task<IActionResult> DeleteBranch(Guid id)
+    public async Task<IActionResult> DeleteBranch(Guid id, [FromQuery] bool force = false)
     {
         var adminId = GetRequiredAdminId();
-        var (message, isActive) = await _service.DeleteBranchAsync(id, adminId);
+        var (message, isActive) = await _service.DeleteBranchAsync(id, adminId, force);
         return Ok(new { message, isActive });
     }
 
@@ -119,10 +119,10 @@ public class AdminBranchesController : ControllerBase
     /// DELETE /api/admin/branches/{id}/permanent
     /// </summary>
     [HttpDelete("{id:guid}/permanent")]
-    public async Task<IActionResult> HardDeleteBranch(Guid id)
+    public async Task<IActionResult> HardDeleteBranch(Guid id, [FromQuery] bool force = false)
     {
         var adminId = GetRequiredAdminId();
-        var message = await _service.HardDeleteBranchAsync(id, adminId);
+        var message = await _service.HardDeleteBranchAsync(id, adminId, force);
         return Ok(new { message });
     }
 

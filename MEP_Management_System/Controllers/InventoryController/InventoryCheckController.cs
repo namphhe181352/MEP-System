@@ -122,7 +122,6 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         [HttpGet("notifications")]
-        [HasPermission(PermissionConstants.STOCK_CHECK_VIEW)]
         public async Task<IActionResult> GetNotifications()
         {
             var result = await _inventoryCheckService.GetNotificationsAsync(User, GetCurrentBranchId());
@@ -130,7 +129,6 @@ namespace MEP_Management_System.Controllers.InventoryController
         }
 
         [HttpPost("notifications/mark-read")]
-        [HasPermission(PermissionConstants.STOCK_CHECK_VIEW)]
         public async Task<IActionResult> MarkNotificationsAsRead([FromBody] List<Guid>? notificationIds)
         {
             var result = await _inventoryCheckService.MarkNotificationsAsReadAsync(User, notificationIds, GetCurrentBranchId());

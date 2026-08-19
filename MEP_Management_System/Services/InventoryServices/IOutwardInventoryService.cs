@@ -10,7 +10,7 @@ namespace MEP_Management_System.Services.InventoryServices;
 public interface IOutwardInventoryService
 {
     Task<ApiResponse<PaginatedResponse<OutwardInventoryResponseDto>>> GetOutwardInventoriesAsync(
-        ClaimsPrincipal user, Guid? branchId, string? status, string? ticketType,
+        ClaimsPrincipal user, Guid? branchId, string? searchKeyword, string? status, string? ticketType,
         DateTime? fromDate, DateTime? toDate, int pageNumber, int pageSize);
 
     Task<ApiResponse<OutwardInventoryResponseDto>> GetOutwardInventoryByIdAsync(ClaimsPrincipal user, Guid id, Guid? branchId);

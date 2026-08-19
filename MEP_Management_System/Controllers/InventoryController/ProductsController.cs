@@ -218,5 +218,78 @@ namespace MEP_Management_System.Controllers.InventoryController
             var result = await _productService.RenameLocationAsync(User, dto, GetCurrentBranchId());
             return Ok(result);
         }
+
+        [HttpGet("attribute-types")]
+        public async Task<IActionResult> GetAttributeTypes()
+        {
+            var branchId = GetCurrentBranchId();
+            var db = HttpContext.RequestServices.GetRequiredService<MEP_Management_System.Models.MEPDatabaseContext>();
+            
+            // Temporary index fix
+            try {
+                await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.ExecuteSqlRawAsync(db.Database, "DROP INDEX IF EXISTS ix_product_attribute_types_type_name;");
+                await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.ExecuteSqlRawAsync(db.Database, "CREATE UNIQUE INDEX IF NOT EXISTS ix_product_attribute_types_type_name_branch_id ON product_attribute_types (type_name, branch_id);");
+            } catch { }
+
+            var types = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(
+                System.Linq.Queryable.Where(db.ProductAttributeTypes, t => t.BranchId == branchId || t.BranchId == null));
+            return Ok(new ApiResponse<List<MEP_Management_System.Models.ProductAttributeType>> { Success = true, Data = types });
+        }
+
+        [HttpPost("attribute-types")]
+        public async Task<IActionResult> CreateAttributeType([FromBody] CreateAttributeTypeDto dto)
+        {
+            var branchId = GetCurrentBranchId();
+            var db = HttpContext.RequestServices.GetRequiredService<MEP_Management_System.Models.MEPDatabaseContext>();
+            var exists = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(
+                db.ProductAttributeTypes, t => t.TypeName.ToLower() == dto.TypeName.ToLower() && t.BranchId == branchId);
+            if (exists) return BadRequest(new ApiResponse<object> { Success = false, Message = "Tên thuộc tính đã tồn tại trong chi nhánh này." });
+            
+            var type = new MEP_Management_System.Models.ProductAttributeType
+            {
+                TypeId = Guid.NewGuid(),
+                BranchId = branchId,
+                TypeName = dto.TypeName.Trim(),
+                TypeCode = dto.TypeCode?.Trim()
+            };
+            db.ProductAttributeTypes.Add(type);
+            await db.SaveChangesAsync();
+            return Ok(new ApiResponse<MEP_Management_System.Models.ProductAttributeType> { Success = true, Data = type });
+        }
+
+        [HttpPut("attribute-types/{id:guid}")]
+        public async Task<IActionResult> UpdateAttributeType(Guid id, [FromBody] UpdateAttributeTypeDto dto)
+        {
+            var branchId = GetCurrentBranchId();
+            var db = HttpContext.RequestServices.GetRequiredService<MEP_Management_System.Models.MEPDatabaseContext>();
+            var type = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(
+                db.ProductAttributeTypes, t => t.TypeId == id && (t.BranchId == branchId || t.BranchId == null));
+            if (type == null) return NotFound(new ApiResponse<object> { Success = false, Message = "Không tìm thấy thuộc tính." });
+            
+            if (!string.IsNullOrWhiteSpace(dto.TypeName) && dto.TypeName.Trim() != type.TypeName)
+            {
+                var exists = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(
+                    db.ProductAttributeTypes, t => t.TypeName.ToLower() == dto.TypeName.ToLower() && (t.BranchId == branchId || t.BranchId == null) && t.TypeId != id);
+                if (exists) return BadRequest(new ApiResponse<object> { Success = false, Message = "Tên thuộc tính đã tồn tại." });
+                type.TypeName = dto.TypeName.Trim();
+            }
+            if (dto.TypeCode != null) type.TypeCode = dto.TypeCode.Trim();
+            await db.SaveChangesAsync();
+            return Ok(new ApiResponse<MEP_Management_System.Models.ProductAttributeType> { Success = true, Data = type });
+        }
+
+        [HttpDelete("attribute-types/{id:guid}")]
+        public async Task<IActionResult> DeleteAttributeType(Guid id)
+        {
+            var branchId = GetCurrentBranchId();
+            var db = HttpContext.RequestServices.GetRequiredService<MEP_Management_System.Models.MEPDatabaseContext>();
+            var type = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(
+                db.ProductAttributeTypes, t => t.TypeId == id && (t.BranchId == branchId || t.BranchId == null));
+            if (type == null) return NotFound(new ApiResponse<object> { Success = false, Message = "Không tìm thấy thuộc tính." });
+            
+            db.ProductAttributeTypes.Remove(type);
+            await db.SaveChangesAsync();
+            return Ok(new ApiResponse<object> { Success = true, Message = "Xóa thành công." });
+        }
     }
 }

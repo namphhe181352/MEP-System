@@ -581,6 +581,248 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("expense_vouchers", (string)null);
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.GoodsIssue", b =>
+                {
+                    b.Property<Guid>("GoodsIssueId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("goods_issue_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_id");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<string>("CustomerId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("customer_id");
+
+                    b.Property<string>("CustomerName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("customer_name");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<DateTime?>("IssueDate")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("issue_date");
+
+                    b.Property<string>("IssueNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("issue_number");
+
+                    b.Property<string>("IssueType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("issue_type");
+
+                    b.Property<string>("PaymentMethod")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("payment_method");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("reference");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("SyncNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("sync_number");
+
+                    b.Property<string>("SyncStatus")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("sync_status");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("total_amount");
+
+                    b.Property<decimal?>("TotalPayment")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("total_payment");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("GoodsIssueId")
+                        .HasName("goods_issues_pkey");
+
+                    b.HasIndex("BranchId")
+                        .HasDatabaseName("ix_goods_issues_branch");
+
+                    b.HasIndex("IssueNumber")
+                        .HasDatabaseName("ix_goods_issues_number");
+
+                    b.ToTable("goods_issues", (string)null);
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.GoodsIssueAttachment", b =>
+                {
+                    b.Property<Guid>("GoodsIssueAttachmentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("goods_issue_attachment_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("content_type");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("file_name");
+
+                    b.Property<Guid>("GoodsIssueId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("goods_issue_id");
+
+                    b.Property<string>("MediaUrl")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("media_url");
+
+                    b.Property<long?>("Size")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size");
+
+                    b.Property<DateTime?>("UploadedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("uploaded_at");
+
+                    b.Property<Guid?>("UploadedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("uploaded_by");
+
+                    b.HasKey("GoodsIssueAttachmentId")
+                        .HasName("goods_issue_attachments_pkey");
+
+                    b.HasIndex("GoodsIssueId")
+                        .HasDatabaseName("ix_goods_issue_attachments_issue");
+
+                    b.ToTable("goods_issue_attachments", (string)null);
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.GoodsIssueItem", b =>
+                {
+                    b.Property<Guid>("GoodsIssueItemId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("goods_issue_item_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<string>("ExpiryDate")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("expiry_date");
+
+                    b.Property<Guid>("GoodsIssueId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("goods_issue_id");
+
+                    b.Property<int>("LineNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("line_number");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("location");
+
+                    b.Property<string>("LotNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("lot_number");
+
+                    b.Property<string>("ProductCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("product_code");
+
+                    b.Property<string>("ProductId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("product_id");
+
+                    b.Property<string>("ProductName")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("product_name");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)")
+                        .HasColumnName("quantity");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("total_amount");
+
+                    b.Property<string>("Unit")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("unit");
+
+                    b.Property<decimal?>("UnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("unit_price");
+
+                    b.Property<string>("WarehouseId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("warehouse_id");
+
+                    b.Property<string>("WarehouseName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("warehouse_name");
+
+                    b.HasKey("GoodsIssueItemId")
+                        .HasName("goods_issue_items_pkey");
+
+                    b.HasIndex("GoodsIssueId")
+                        .HasDatabaseName("ix_goods_issue_items_issue");
+
+                    b.ToTable("goods_issue_items", (string)null);
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.InventoryCheckDetail", b =>
                 {
                     b.Property<Guid>("DetailId")
@@ -1929,9 +2171,9 @@ namespace MEP_Management_System.Migrations
                     b.HasKey("TypeId")
                         .HasName("product_attribute_types_pkey");
 
-                    b.HasIndex("TypeName")
+                    b.HasIndex("TypeName", "BranchId")
                         .IsUnique()
-                        .HasDatabaseName("ix_product_attribute_types_type_name");
+                        .HasDatabaseName("ix_product_attribute_types_type_name_branch_id");
 
                     b.ToTable("product_attribute_types", (string)null);
                 });
@@ -2801,6 +3043,25 @@ namespace MEP_Management_System.Migrations
                     b.Property<string>("Reason")
                         .HasColumnType("text");
 
+                    b.Property<int>("RecountNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("recount_number");
+
+                    b.Property<string>("RecountReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("recount_reason");
+
+                    b.Property<DateTime?>("RecountRequestedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("recount_requested_at");
+
+                    b.Property<Guid?>("RecountRequestedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recount_requested_by_user_id");
+
                     b.Property<string>("Status")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
@@ -2839,6 +3100,8 @@ namespace MEP_Management_System.Migrations
                     b.HasIndex("ConfirmedBy");
 
                     b.HasIndex("InwardTicketId");
+
+                    b.HasIndex("RecountRequestedByUserId");
 
                     b.HasIndex("SupplierId");
 
@@ -2883,6 +3146,10 @@ namespace MEP_Management_System.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("inward_ticket_item_id");
 
+                    b.Property<string>("Notes")
+                        .HasColumnType("text")
+                        .HasColumnName("notes");
+
                     b.Property<Guid>("StockTicketId")
                         .HasColumnType("uuid")
                         .HasColumnName("stock_ticket_id");
@@ -2893,7 +3160,8 @@ namespace MEP_Management_System.Migrations
                         .HasColumnName("system_quantity");
 
                     b.Property<string>("UnitName")
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasColumnName("unit_name");
 
                     b.Property<decimal?>("UnitPrice")
                         .HasPrecision(15, 2)
@@ -2972,6 +3240,82 @@ namespace MEP_Management_System.Migrations
                     b.HasIndex("StockTicketId");
 
                     b.ToTable("stock_ticket_receipts", (string)null);
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.StoreApproval", b =>
+                {
+                    b.Property<Guid>("ApprovalId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("approval_id")
+                        .HasDefaultValueSql("uuid_generate_v4()");
+
+                    b.Property<string>("BusinessLicense")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("business_license");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("DocumentUrls")
+                        .HasColumnType("text")
+                        .HasColumnName("document_urls");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("RejectReason")
+                        .HasColumnType("text")
+                        .HasColumnName("reject_reason");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<Guid?>("ReviewedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reviewed_by");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StoreAddress")
+                        .HasColumnType("text")
+                        .HasColumnName("store_address");
+
+                    b.Property<string>("StoreName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("store_name");
+
+                    b.Property<string>("TaxCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("tax_code");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("ApprovalId")
+                        .HasName("store_approvals_pkey");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_store_approvals_status");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_store_approvals_user");
+
+                    b.ToTable("store_approvals", (string)null);
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.Supplier", b =>
@@ -3447,6 +3791,81 @@ namespace MEP_Management_System.Migrations
                     b.ToTable("user_permissions", (string)null);
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.WarrantyClaim", b =>
+                {
+                    b.Property<Guid>("ClaimId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ClaimCode")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ClaimDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("ClaimType")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ClaimedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("ClaimedQuantity")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("CustomerName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CustomerPhone")
+                        .HasColumnType("text");
+
+                    b.Property<string>("IssueDescription")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProcessNotes")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ProcessedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid?>("ProcessedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ReplacementProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("SupplierId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TicketItemId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ClaimId");
+
+                    b.HasIndex("ClaimedByUserId");
+
+                    b.HasIndex("ProcessedByUserId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("SupplierId");
+
+                    b.HasIndex("TicketItemId");
+
+                    b.ToTable("WarrantyClaims");
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.WarrantyLotAllocation", b =>
                 {
                     b.Property<Guid>("AllocationId")
@@ -3741,6 +4160,42 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("CreatedByUser");
 
                     b.Navigation("Supplier");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.GoodsIssue", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_goods_issues_branch");
+
+                    b.Navigation("Branch");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.GoodsIssueAttachment", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.GoodsIssue", "GoodsIssue")
+                        .WithMany("Attachments")
+                        .HasForeignKey("GoodsIssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_goods_issue_attachments_issue");
+
+                    b.Navigation("GoodsIssue");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.GoodsIssueItem", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.GoodsIssue", "GoodsIssue")
+                        .WithMany("Items")
+                        .HasForeignKey("GoodsIssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_goods_issue_items_issue");
+
+                    b.Navigation("GoodsIssue");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.InventoryCheckDetail", b =>
@@ -4329,6 +4784,12 @@ namespace MEP_Management_System.Migrations
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("stock_tickets_inward_ticket_id_fkey");
 
+                    b.HasOne("MEP_Management_System.Models.User", "RecountRequestedByUser")
+                        .WithMany()
+                        .HasForeignKey("RecountRequestedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("stock_tickets_recount_requested_by_user_id_fkey");
+
                     b.HasOne("MEP_Management_System.Models.Supplier", "Supplier")
                         .WithMany("StockTickets")
                         .HasForeignKey("SupplierId")
@@ -4348,6 +4809,8 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("ConfirmedByUser");
 
                     b.Navigation("InwardTicket");
+
+                    b.Navigation("RecountRequestedByUser");
 
                     b.Navigation("Supplier");
 
@@ -4516,6 +4979,43 @@ namespace MEP_Management_System.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("MEP_Management_System.Models.WarrantyClaim", b =>
+                {
+                    b.HasOne("MEP_Management_System.Models.User", "ClaimedByUser")
+                        .WithMany()
+                        .HasForeignKey("ClaimedByUserId");
+
+                    b.HasOne("MEP_Management_System.Models.User", "ProcessedByUser")
+                        .WithMany()
+                        .HasForeignKey("ProcessedByUserId");
+
+                    b.HasOne("MEP_Management_System.Models.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MEP_Management_System.Models.Supplier", "Supplier")
+                        .WithMany()
+                        .HasForeignKey("SupplierId");
+
+                    b.HasOne("MEP_Management_System.Models.StockTicketItem", "TicketItem")
+                        .WithMany()
+                        .HasForeignKey("TicketItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ClaimedByUser");
+
+                    b.Navigation("ProcessedByUser");
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Supplier");
+
+                    b.Navigation("TicketItem");
+                });
+
             modelBuilder.Entity("MEP_Management_System.Models.WarrantyLotAllocation", b =>
                 {
                     b.HasOne("MEP_Management_System.Models.StockTicketItem", "StockTicketItem")
@@ -4626,6 +5126,13 @@ namespace MEP_Management_System.Migrations
             modelBuilder.Entity("MEP_Management_System.Models.ExpenseCategory", b =>
                 {
                     b.Navigation("ExpenseVouchers");
+                });
+
+            modelBuilder.Entity("MEP_Management_System.Models.GoodsIssue", b =>
+                {
+                    b.Navigation("Attachments");
+
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("MEP_Management_System.Models.InventoryCheckTicket", b =>

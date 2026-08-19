@@ -149,7 +149,7 @@ public class AdminBranchService : IAdminBranchService
 
         if (lockedIds.Count > 0)
         {
-            await LogActionWithUser(adminId, branchId, "LOCK_USERS_ON_BRANCH_DELETE", "users", "User",
+            await LogActionWithUser(adminId, branchId, "Khóa tài khoản nhân viên", "users", "User",
                 $"Khoa {lockedIds.Count} user do chi nhanh bi xoa (khong con chi nhanh hoat dong).");
             await _context.SaveChangesAsync();
         }
@@ -184,6 +184,8 @@ public class AdminBranchService : IAdminBranchService
 
         if (isActive.HasValue)
             query = query.Where(b => b.IsActive == isActive.Value);
+        else
+            query = query.Where(b => b.IsActive >= 0);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -294,7 +296,7 @@ public class AdminBranchService : IAdminBranchService
             });
         }
 
-        await LogActionWithUser(currentAdminId, branch.BranchId, "CREATE_BRANCH", "branches", "Branch",
+        await LogActionWithUser(currentAdminId, branch.BranchId, "Tạo chi nhánh mới", "branches", "Branch",
             $"Tao chi nhanh: {branch.BranchName}");
 
         await _context.SaveChangesAsync();
@@ -358,7 +360,7 @@ public class AdminBranchService : IAdminBranchService
 
         branch.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
-        await LogActionWithUser(currentAdminId, branch.BranchId, "UPDATE_BRANCH", "branches", "Branch",
+        await LogActionWithUser(currentAdminId, branch.BranchId, "Cập nhật chi nhánh", "branches", "Branch",
             $"Cap nhat chi nhanh: {branch.BranchName}");
 
         await _context.SaveChangesAsync();
@@ -369,7 +371,7 @@ public class AdminBranchService : IAdminBranchService
         return MapToDto(branch);
     }
 
-    public async Task<(string message, short isActive)> DeleteBranchAsync(Guid id, Guid currentAdminId)
+    public async Task<(string message, short isActive)> DeleteBranchAsync(Guid id, Guid currentAdminId, bool force = false)
     {
         var branch = await _context.Branches
             .FirstOrDefaultAsync(b => b.BranchId == id);
@@ -380,9 +382,12 @@ public class AdminBranchService : IAdminBranchService
         if (branch.IsActive == 0)
             return ("Chi nhanh da o trang thai xoa nho.", (short)0);
 
-        var relatedData = await CheckBranchHasBusinessDataAsync(id);
-        if (relatedData.HasRelations)
-            throw new BusinessException(relatedData.Message);
+        if (!force)
+        {
+            var relatedData = await CheckBranchHasBusinessDataAsync(id);
+            if (relatedData.HasRelations)
+                throw new BusinessException(relatedData.Message);
+        }
 
         var managerId = branch.ManagerUserId;
         var branchName = branch.BranchName;
@@ -390,7 +395,7 @@ public class AdminBranchService : IAdminBranchService
         branch.IsActive = 0;
         branch.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
 
-        await LogActionWithUser(currentAdminId, branch.BranchId, "SOFT_DELETE_BRANCH", "branches", "Branch",
+        await LogActionWithUser(currentAdminId, branch.BranchId, "Xóa tạm thời chi nhánh", "branches", "Branch",
             $"Xoa nho chi nhanh: {branchName}");
 
         await _context.SaveChangesAsync();
@@ -431,7 +436,7 @@ public class AdminBranchService : IAdminBranchService
             u.DeletedAt = null;
         }
 
-        await LogActionWithUser(currentAdminId, branch.BranchId, "RESTORE_BRANCH", "branches", "Branch",
+        await LogActionWithUser(currentAdminId, branch.BranchId, "Khôi phục chi nhánh", "branches", "Branch",
             $"Khoi phuc chi nhanh: {branch.BranchName}");
 
         await _context.SaveChangesAsync();
@@ -442,7 +447,7 @@ public class AdminBranchService : IAdminBranchService
         return ("Khoi phuc chi nhanh thanh cong.", (short)1);
     }
 
-    public async Task<string> HardDeleteBranchAsync(Guid id, Guid currentAdminId)
+    public async Task<string> HardDeleteBranchAsync(Guid id, Guid currentAdminId, bool force = false)
     {
         var branch = await _context.Branches
             .FirstOrDefaultAsync(b => b.BranchId == id);
@@ -453,9 +458,12 @@ public class AdminBranchService : IAdminBranchService
         if (branch.IsActive == 1)
             throw new BusinessException("Vui long xoa nho truoc khi xoa han.");
 
-        var relatedData = await CheckBranchHasBusinessDataAsync(id);
-        if (relatedData.HasRelations)
-            throw new BusinessException(relatedData.Message);
+        if (!force)
+        {
+            var relatedData = await CheckBranchHasBusinessDataAsync(id);
+            if (relatedData.HasRelations)
+                throw new BusinessException(relatedData.Message);
+        }
 
         var managerId = branch.ManagerUserId;
         var branchName = branch.BranchName;
@@ -466,35 +474,94 @@ public class AdminBranchService : IAdminBranchService
         // (sau khi ExecuteDelete xóa StaffAssignments thì không còn truy vết được nữa).
         await LockUsersWithoutActiveBranchAsync(id, currentAdminId);
 
-        await _context.StaffAssignments.Where(sa => sa.BranchId == id).ExecuteDeleteAsync();
-        await _context.Shifts.Where(s => s.BranchId == id).ExecuteDeleteAsync();
-        await _context.SystemConfigs.Where(c => c.BranchId == id).ExecuteDeleteAsync();
-        await _context.InvoicePrintTemplates.Where(t => t.BranchId == id).ExecuteDeleteAsync();
-        await _context.StockPrintTemplates.Where(t => t.BranchId == id).ExecuteDeleteAsync();
-        await _context.ProductTaxonomies.Where(t => t.BranchId == id).ExecuteDeleteAsync();
-        await _context.OrderDiscountTiers.Where(t => t.BranchId == id).ExecuteDeleteAsync();
-        await _context.BranchProducts.Where(bp => bp.BranchId == id).ExecuteDeleteAsync();
+        try
+        {
+            await _context.StaffAssignments.Where(sa => sa.BranchId == id).ExecuteDeleteAsync();
+            await _context.Shifts.Where(s => s.BranchId == id).ExecuteDeleteAsync();
+            await _context.SystemConfigs.Where(c => c.BranchId == id).ExecuteDeleteAsync();
+            await _context.InvoicePrintTemplates.Where(t => t.BranchId == id).ExecuteDeleteAsync();
+            await _context.StockPrintTemplates.Where(t => t.BranchId == id).ExecuteDeleteAsync();
+            await _context.ProductTaxonomies.Where(t => t.BranchId == id).ExecuteDeleteAsync();
+            await _context.OrderDiscountTiers.Where(t => t.BranchId == id).ExecuteDeleteAsync();
+            await _context.BranchProducts.Where(bp => bp.BranchId == id).ExecuteDeleteAsync();
 
-        var deletedRows = await _context.Branches
-            .Where(b => b.BranchId == id)
-            .ExecuteDeleteAsync();
+            var deletedRows = await _context.Branches
+                .Where(b => b.BranchId == id)
+                .ExecuteDeleteAsync();
 
-        if (deletedRows == 0)
+            if (deletedRows == 0)
+            {
+                await transaction.RollbackAsync();
+                throw new BusinessException("Chi nhanh dang duoc xu ly boi mot yeu cau khac. Vui long thu lai.");
+            }
+
+            await LogActionWithUser(currentAdminId, id, "Xóa vĩnh viễn chi nhánh", "branches", "Branch",
+                $"Xoa han chi nhanh: {branchName}");
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            await SafeNotifyBranchChangeAsync(managerId, id, branchName, "HARD_DELETE_BRANCH",
+                $"Cua hang \"{branchName}\" cua ban da bi xoa vinh vien boi quan tri vien.");
+
+            return "Xóa hẳn chi nhánh thành công.";
+        }
+        catch (Exception ex)
         {
             await transaction.RollbackAsync();
-            throw new BusinessException("Chi nhanh dang duoc xu ly boi mot yeu cau khac. Vui long thu lai.");
+            
+            if (force)
+            {
+                // Fallback: Pseudo Hard Delete (Ẩn hoàn toàn khỏi hệ thống, nhưng giữ lại database)
+                await using var fallbackTx = await _context.Database.BeginTransactionAsync();
+                
+                var branchToHide = await _context.Branches.FirstOrDefaultAsync(b => b.BranchId == id);
+                if (branchToHide != null)
+                {
+                    branchToHide.IsActive = -1;
+                    branchToHide.BranchName = $"[ĐÃ XÓA] {branchToHide.BranchName}";
+                    branchToHide.BranchCode = $"DEL_{Guid.NewGuid().ToString("N").Substring(0, 8)}_{branchToHide.BranchCode}";
+                    branchToHide.Phone = $"del_{Guid.NewGuid().ToString("N").Substring(0, 5)}_{branchToHide.Phone}";
+                    branchToHide.ManagerUserId = null;
+                    branchToHide.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+                    
+                    if (managerId != Guid.Empty)
+                    {
+                        var manager = await _context.Users.FirstOrDefaultAsync(u => u.UserId == managerId);
+                        if (manager != null)
+                        {
+                            var otherBranches = await _context.Branches.AnyAsync(b => b.ManagerUserId == managerId && b.BranchId != id && b.IsActive >= 0);
+                            if (!otherBranches)
+                            {
+                                manager.Status = "0"; 
+                                manager.Email = $"del_{Guid.NewGuid().ToString("N").Substring(0, 6)}_{manager.Email}";
+                                manager.Username = $"del_{Guid.NewGuid().ToString("N").Substring(0, 6)}_{manager.Username}";
+                                manager.PhoneNumber = $"del_{Guid.NewGuid().ToString("N").Substring(0, 6)}_{manager.PhoneNumber}";
+                            }
+                        }
+                    }
+
+                    await _context.StaffAssignments.Where(sa => sa.BranchId == id).ExecuteDeleteAsync();
+                    
+                    await LogActionWithUser(currentAdminId, id, "Xóa ẩn chi nhánh", "branches", "Branch",
+                        $"Xóa ẩn chi nhánh (do vướng dữ liệu): {branchName}");
+
+                    await _context.SaveChangesAsync();
+                    await fallbackTx.CommitAsync();
+
+                    await SafeNotifyBranchChangeAsync(managerId, id, branchName, "HARD_DELETE_BRANCH",
+                        $"Cua hang \"{branchName}\" cua ban da bi xoa boi quan tri vien.");
+
+                    return "Đã xóa ẩn cửa hàng và giải phóng thông tin do còn dữ liệu lịch sử liên kết.";
+                }
+                
+                throw new BusinessException("Lỗi trong quá trình xóa ẩn cửa hàng.");
+            }
+            else
+            {
+                throw new BusinessException("Không thể xóa hẳn cửa hàng này vì vẫn còn dữ liệu giao dịch liên kết chặt chẽ trong hệ thống. Vui lòng chỉ sử dụng chức năng Xóa Nháp.");
+            }
         }
-
-        await LogActionWithUser(currentAdminId, id, "HARD_DELETE_BRANCH", "branches", "Branch",
-            $"Xoa han chi nhanh: {branchName}");
-
-        await _context.SaveChangesAsync();
-        await transaction.CommitAsync();
-
-        await SafeNotifyBranchChangeAsync(managerId, id, branchName, "HARD_DELETE_BRANCH",
-            $"Cua hang \"{branchName}\" cua ban da bi xoa vinh vien boi quan tri vien.");
-
-        return "Xoa han chi nhanh thanh cong.";
     }
 
     public async Task<List<BranchUserDto>> GetBranchUsersAsync(Guid id)
@@ -550,7 +617,7 @@ public class AdminBranchService : IAdminBranchService
         if (dto.IsManager)
             branch.ManagerUserId = dto.UserId;
 
-        await LogActionWithUser(currentAdminId, branch.BranchId, "ASSIGN_USER", "staff_assignments", "Branch",
+        await LogActionWithUser(currentAdminId, branch.BranchId, "Gán nhân viên vào chi nhánh", "staff_assignments", "Branch",
             $"Gan user {dto.UserId} vao chi nhanh {branch.BranchName}");
 
         await _context.SaveChangesAsync();
@@ -573,7 +640,7 @@ public class AdminBranchService : IAdminBranchService
         if (branch.ManagerUserId == userId)
             branch.ManagerUserId = null;
 
-        await LogActionWithUser(currentAdminId, branch.BranchId, "REMOVE_USER", "staff_assignments", "Branch",
+        await LogActionWithUser(currentAdminId, branch.BranchId, "Xóa nhân viên khỏi chi nhánh", "staff_assignments", "Branch",
             $"Xoa user {userId} khoi chi nhanh {branch.BranchName}");
 
         await _context.SaveChangesAsync();

@@ -147,7 +147,7 @@ public class OutwardInventoryService : IOutwardInventoryService
     }
 
     public async Task<ApiResponse<PaginatedResponse<OutwardInventoryResponseDto>>> GetOutwardInventoriesAsync(
-        ClaimsPrincipal user, Guid? branchId, string? status, string? ticketType,
+        ClaimsPrincipal user, Guid? branchId, string? searchKeyword, string? status, string? ticketType,
         DateTime? fromDate, DateTime? toDate, int pageNumber, int pageSize)
     {
         try
@@ -177,6 +177,7 @@ public class OutwardInventoryService : IOutwardInventoryService
 
             var query = _context.StockTickets
                 .Include(st => st.User)
+                .Include(st => st.Supplier)
                 .Include(st => st.StockTicketItems)
                     .ThenInclude(item => item.BranchProduct)
                         .ThenInclude(bp => bp.Product)
@@ -185,6 +186,18 @@ public class OutwardInventoryService : IOutwardInventoryService
                     || st.TicketType == "TRANSFER" || st.TicketType == "SALE")
                 .Where(st => st.BranchId == branchId.Value)
                 .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(searchKeyword))
+            {
+                var kw = searchKeyword.Trim().ToLower();
+                query = query.Where(st =>
+                    (st.TicketCode != null && st.TicketCode.ToLower().Contains(kw)) ||
+                    (st.Supplier != null && st.Supplier.SupplierName != null && st.Supplier.SupplierName.ToLower().Contains(kw)) ||
+                    st.StockTicketItems.Any(i => i.BranchProduct != null && i.BranchProduct.Product != null &&
+                        (i.BranchProduct.Product.ProductName != null && i.BranchProduct.Product.ProductName.ToLower().Contains(kw) ||
+                         i.BranchProduct.Product.ProductCode != null && i.BranchProduct.Product.ProductCode.ToLower().Contains(kw)))
+                );
+            }
 
             // Default: hide CANCELLED, only PENDING + COMPLETED
             if (!string.IsNullOrWhiteSpace(status))

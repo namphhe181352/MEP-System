@@ -74,13 +74,14 @@ public class ShiftsController : ControllerBase
 
     [HttpGet]
     public async Task<ActionResult<PageResultDto<ShiftDto>>> GetShifts(
+        [FromQuery] string? search,
         [FromQuery] DateTime? from, [FromQuery] DateTime? to,
         [FromQuery] string? status, [FromQuery] Guid? filterUserId,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         var branchId = GetBranchId();
         if (branchId == null) return Ok(new PageResultDto<ShiftDto> { Items = new(), TotalCount = 0 });
-        var result = await _shiftService.GetShiftsAsync(from, to, status, filterUserId, branchId.Value, page, pageSize);
+        var result = await _shiftService.GetShiftsAsync(search, from, to, status, filterUserId, branchId.Value, page, pageSize);
         return Ok(result);
     }
 }

@@ -643,6 +643,25 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// Thay đổi index của products để ProductCode chỉ unique theo BranchId
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<MEPDatabaseContext>();
+    try
+    {
+        await context.Database.ExecuteSqlRawAsync(@"
+            ALTER TABLE products DROP CONSTRAINT IF EXISTS products_product_code_key;
+            DROP INDEX IF EXISTS products_product_code_key;
+            CREATE UNIQUE INDEX IF NOT EXISTS products_product_code_branch_id_key ON products (product_code, ""BranchId"");
+        ");
+        Console.WriteLine("[Startup] products_product_code_branch_id_key -> ensured OK");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Startup] Alter products unique constraint thất bại: {ex.Message}");
+    }
+}
+
 app.Run();
 
 public class UtcDateTimeConverter : System.Text.Json.Serialization.JsonConverter<DateTime>
