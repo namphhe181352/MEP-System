@@ -454,12 +454,14 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
             // If items lack actual quantities, they will have the default value or we rely on FillActualQuantities to populate them.
             foreach (var item in stockTicket.StockTicketItems)
             {
-                var qtyChange = item.ActualQuantity - item.SystemQuantity;
+                var currentBp = await _context.BranchProducts.AsNoTracking().FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
+                var currentActualStock = currentBp?.ActualStock ?? 0;
+                var actualQtyChange = item.ActualQuantity - currentActualStock;
 
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
                     UPDATE branch_products
                     SET actual_stock = {item.ActualQuantity},
-                        available_stock = available_stock + {qtyChange}
+                        available_stock = available_stock + {actualQtyChange}
                     WHERE branch_product_id = {item.BranchProductId}");
 
                 var updatedBp = await _context.BranchProducts.FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
@@ -467,6 +469,9 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
                 {
                     await _context.Entry(updatedBp).ReloadAsync();
                 }
+
+                item.SystemQuantity = currentActualStock;
+                item.Discrepancy = actualQtyChange;
 
                 var ledger = new InventoryLedger
                 {
@@ -477,9 +482,9 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
                     DocId = stockTicket.StockTicketId,
                     DocCode = stockTicket.TicketCode,
                     TransactionTime = DateTime.UtcNow,
-                    QtyChange = qtyChange,
+                    QtyChange = actualQtyChange,
                     UnitCostPrice = Math.Round(item.UnitPrice ?? 0, 4),
-                    TotalCostValue = Math.Round(qtyChange * (item.UnitPrice ?? 0), 4),
+                    TotalCostValue = Math.Round(actualQtyChange * (item.UnitPrice ?? 0), 4),
                     StockAfter = updatedBp?.ActualStock ?? 0,
                     AvgCostAfter = Math.Round(updatedBp?.CostPrice ?? (item.UnitPrice ?? 0), 4),
                     CreatedAt = DateTime.UtcNow
