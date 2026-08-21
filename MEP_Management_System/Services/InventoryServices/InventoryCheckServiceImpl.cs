@@ -454,6 +454,9 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
 
             // ActualQuantity is a non-nullable decimal, so checking for null is invalid.
             // If items lack actual quantities, they will have the default value or we rely on FillActualQuantities to populate them.
+            var positiveItems = new List<StockTicketItem>();
+            var negativeItems = new List<StockTicketItem>();
+
             foreach (var item in stockTicket.StockTicketItems)
             {
                 var currentBp = await _context.BranchProducts.AsNoTracking().FirstOrDefaultAsync(bp => bp.BranchProductId == item.BranchProductId);
@@ -492,10 +495,93 @@ public class InventoryCheckServiceImpl : IInventoryCheckService
                     CreatedAt = DateTime.UtcNow
                 };
                 _context.InventoryLedgers.Add(ledger);
+
+                if (actualQtyChange > 0)
+                {
+                    positiveItems.Add(new StockTicketItem
+                    {
+                        TicketItemId = Guid.NewGuid(),
+                        BranchProductId = item.BranchProductId,
+                        SystemQuantity = currentActualStock,
+                        ActualQuantity = item.ActualQuantity,
+                        Discrepancy = actualQtyChange,
+                        UnitPrice = item.UnitPrice,
+                        UnitName = item.UnitName,
+                        WarrantyPeriod = item.WarrantyPeriod,
+                        WarrantyUnit = item.WarrantyUnit
+                    });
+                }
+                else if (actualQtyChange < 0)
+                {
+                    negativeItems.Add(new StockTicketItem
+                    {
+                        TicketItemId = Guid.NewGuid(),
+                        BranchProductId = item.BranchProductId,
+                        SystemQuantity = currentActualStock,
+                        ActualQuantity = item.ActualQuantity,
+                        Discrepancy = Math.Abs(actualQtyChange),
+                        UnitPrice = item.UnitPrice,
+                        UnitName = item.UnitName,
+                        WarrantyPeriod = item.WarrantyPeriod,
+                        WarrantyUnit = item.WarrantyUnit
+                    });
+                }
+            }
+
+            var currentTime = DateTime.UtcNow;
+            
+            if (positiveItems.Any())
+            {
+                var inwardTicket = new StockTicket
+                {
+                    StockTicketId = Guid.NewGuid(),
+                    TicketCode = $"ADJ-{currentTime:yyyyMMddHHmmss}",
+                    BranchId = stockTicket.BranchId,
+                    UserId = currentUserId.Value,
+                    TicketType = "BALANCE_ADJUST",
+                    Status = "COMPLETED",
+                    Reason = "Cân bằng kho (tăng) từ phiếu kiểm kê",
+                    Notes = $"Tự động tạo từ phiếu kiểm kê {stockTicket.TicketCode}",
+                    CreatedAt = currentTime,
+                    CompletedAt = currentTime,
+                    ConfirmedBy = currentUserId,
+                    TotalAmount = positiveItems.Sum(x => x.Discrepancy * (x.UnitPrice ?? 0))
+                };
+                _context.StockTickets.Add(inwardTicket);
+                foreach (var pi in positiveItems)
+                {
+                    pi.StockTicketId = inwardTicket.StockTicketId;
+                    _context.StockTicketItems.Add(pi);
+                }
+            }
+
+            if (negativeItems.Any())
+            {
+                var outwardTicket = new StockTicket
+                {
+                    StockTicketId = Guid.NewGuid(),
+                    TicketCode = $"DAM-{currentTime:yyyyMMddHHmmss}",
+                    BranchId = stockTicket.BranchId,
+                    UserId = currentUserId.Value,
+                    TicketType = "WRITE_OFF",
+                    Status = "COMPLETED",
+                    Reason = "Cân bằng kho (giảm) từ phiếu kiểm kê",
+                    Notes = $"Tự động tạo từ phiếu kiểm kê {stockTicket.TicketCode}",
+                    CreatedAt = currentTime.AddSeconds(1), // Tránh trùng thời gian
+                    CompletedAt = currentTime.AddSeconds(1),
+                    ConfirmedBy = currentUserId,
+                    TotalAmount = negativeItems.Sum(x => x.Discrepancy * (x.UnitPrice ?? 0))
+                };
+                _context.StockTickets.Add(outwardTicket);
+                foreach (var ni in negativeItems)
+                {
+                    ni.StockTicketId = outwardTicket.StockTicketId;
+                    _context.StockTicketItems.Add(ni);
+                }
             }
 
             stockTicket.Status = "Completed";
-            stockTicket.CompletedAt = DateTime.UtcNow;
+            stockTicket.CompletedAt = currentTime;
             stockTicket.ConfirmedBy = currentUserId;
 
             await _context.SaveChangesAsync();
