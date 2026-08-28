@@ -32,3 +32,4 @@ GEMINI.md
 .codegraph
 skills-lock.json
 logs/
+.vscode/
